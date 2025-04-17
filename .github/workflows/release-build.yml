@@ -1,0 +1,90 @@
+name: Build OpenStack-Helm Images
+
+on:
+  workflow_dispatch:  # 手动触发
+
+env:
+  REGISTRY: ghcr.io
+  OWNER: ${{ github.repository_owner }}
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+    strategy:
+      fail-fast: false
+      matrix:
+        image: [
+          # 添加所有镜像目录
+          "calicoctl-utility",
+          "ceph-config-helper",
+          "ceph-daemon",
+          "elasticsearch-s3",
+          "gate-utils",
+          "htk",
+          "kubernetes-keystone-webhook",
+          "libvirt",
+          "mariadb",
+          "nororos",
+          "ospurge",
+          "prometheus-openstack-exporter",
+          "vbmc",
+        ]
+        os_release: [
+          "ubuntu_focal" # 使用Ubuntu 20.04 Focal
+        ]
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v3
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v2
+
+      - name: Log in to GitHub Container Registry
+        uses: docker/login-action@v2
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.CR_PAT }}
+
+      - name: Set up build environment
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y make build-essential
+
+      - name: Build and push image
+        run: |
+          # 设置环境变量
+          export VERSION=latest
+          export DISTRO=${{ matrix.os_release }}
+          export REGISTRY_URI="${{ env.REGISTRY }}/${{ env.OWNER }}/"
+          export EXTRA_ARGS="--label org.opencontainers.image.source=https://github.com/${{ github.repository }}"
+          
+          # 检查镜像是否已存在
+          FULL_IMAGE_NAME="${REGISTRY_URI}${{ matrix.image }}:${VERSION}"
+          echo "检查镜像是否存在: ${FULL_IMAGE_NAME}"
+          if docker pull ${FULL_IMAGE_NAME} &>/dev/null; then
+            echo "镜像已存在，跳过构建"
+            exit 0
+          fi
+          
+          # 检查目录结构并选择构建方法
+          if [ -f "${{ matrix.image }}/build.sh" ]; then
+            echo "使用build.sh脚本构建镜像"
+            cd ${{ matrix.image }}
+            ./build.sh
+          elif [ -f "Makefile" ]; then
+            echo "使用Makefile构建镜像"
+            make IMAGE_NAME=${{ matrix.image }} OS_RELEASE=${{ matrix.os_release }}
+          else
+            echo "无法找到构建方法，尝试使用Docker直接构建"
+            cd ${{ matrix.image }}
+            docker build --pull \
+              --tag ${FULL_IMAGE_NAME} \
+              --label org.opencontainers.image.source=https://github.com/${{ github.repository }} \
+              .
+            docker push ${FULL_IMAGE_NAME}
+          fi
