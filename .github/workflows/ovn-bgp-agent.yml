@@ -38,6 +38,7 @@ jobs:
       - name: Build and push ovn-bgp-agent
         run: |
           cd ovn-bgp-agent
+          chmod +x build.sh
           
           # 映射 DISTRO 变量
           export DISTRO="${{ matrix.distro }}"
