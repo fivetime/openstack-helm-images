@@ -1,4 +1,5 @@
 name: Build OVN-BGP-Agent Image
+
 on:
   workflow_dispatch:
   push:
@@ -40,18 +41,20 @@ jobs:
           cd ovn-bgp-agent
           chmod +x build.sh
           
-          # 映射 DISTRO 变量
+          # Map environment variables for build.sh
           export DISTRO="${{ matrix.distro }}"
           export PROJECT_REF="master"
-          export REGISTRY="${{ env.REGISTRY }}/${{ env.OWNER }}/${{ env.NAMESPACE }}"
-          export IMAGE_PREFIX=""
+          export REGISTRY="${{ env.REGISTRY }}/${{ env.OWNER }}"
+          export IMAGE_PREFIX="${{ env.NAMESPACE }}"
           export PUSH="true"
           
-          echo "Building ovn-bgp-agent:master-${DISTRO}"
+          echo "Building ovn-bgp-agent:${PROJECT_REF}-${DISTRO}"
+          echo "Target: ${REGISTRY}/${IMAGE_PREFIX}/ovn-bgp-agent:${PROJECT_REF}-${DISTRO}"
           ./build.sh
 
       - name: Verify image
         run: |
           IMAGE="${{ env.REGISTRY }}/${{ env.OWNER }}/${{ env.NAMESPACE }}/ovn-bgp-agent:master-${{ matrix.distro }}"
+          echo "Verifying image: ${IMAGE}"
           docker pull ${IMAGE}
           docker inspect ${IMAGE}
