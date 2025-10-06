@@ -1,22 +1,17 @@
+# Build stage
 ARG FROM=ubuntu:24.04
-FROM ${FROM}
-
-LABEL maintainer="OpenStack Helm Team" \
-      org.opencontainers.image.title="OVN BGP Agent" \
-      org.opencontainers.image.description="BGP agent for OVN" \
-      org.opencontainers.image.source="https://opendev.org/openstack/ovn-bgp-agent"
+FROM ${FROM} AS builder
 
 ARG PROJECT=ovn-bgp-agent
 ARG PROJECT_REF=master
 ARG PIP_INDEX_URL=https://pypi.python.org/simple
 ARG PIP_TRUSTED_HOST=pypi.python.org
 
-# Set environment variables
 ENV DEBIAN_FRONTEND=noninteractive \
     LANG=C.UTF-8 \
     LC_ALL=C.UTF-8
 
-# Install system dependencies
+# Install build dependencies
 RUN set -ex && \
     apt-get update && \
     apt-get install -y --no-install-recommends \
@@ -25,10 +20,48 @@ RUN set -ex && \
         python3 \
         python3-pip \
         python3-dev \
-        gcc \
+        gcc && \
+    rm -rf /var/lib/apt/lists/*
+
+# Upgrade pip
+RUN python3 -m pip install --no-cache-dir --break-system-packages \
+    --ignore-installed --upgrade pip setuptools wheel
+
+# Clone and install ovn-bgp-agent
+WORKDIR /tmp
+RUN git clone --depth 1 --branch ${PROJECT_REF} \
+        https://opendev.org/openstack/${PROJECT}.git && \
+    cd ${PROJECT} && \
+    pip3 install --no-cache-dir --break-system-packages \
+        --index-url ${PIP_INDEX_URL} \
+        --trusted-host ${PIP_TRUSTED_HOST} \
+        -c https://releases.openstack.org/constraints/upper/${PROJECT_REF} \
+        --prefix=/install \
+        .
+
+# Runtime stage
+FROM ${FROM}
+
+LABEL maintainer="OpenStack Helm Team" \
+      org.opencontainers.image.title="OVN BGP Agent" \
+      org.opencontainers.image.description="BGP agent for OVN" \
+      org.opencontainers.image.source="https://opendev.org/openstack/ovn-bgp-agent"
+
+ENV DEBIAN_FRONTEND=noninteractive \
+    LANG=C.UTF-8 \
+    LC_ALL=C.UTF-8 \
+    PATH=/install/bin:$PATH \
+    PYTHONPATH=/install/lib/python3.12/site-packages
+
+# Install runtime dependencies only
+RUN set -ex && \
+    apt-get update && \
+    apt-get install -y --no-install-recommends \
+        ca-certificates \
+        python3 \
         iproute2 \
-        iputils-ping \
-        iptables && \
+        iptables \
+        openvswitch-common && \
     apt-get clean && \
     rm -rf /var/lib/apt/lists/*
 
@@ -47,22 +80,8 @@ RUN groupadd -g 42424 openvswitch && \
         /var/log/ovn-bgp-agent \
         /run/ovn-bgp-agent
 
-# Upgrade pip and install build tools
-RUN python3 -m pip install --no-cache-dir --break-system-packages \
-    --ignore-installed --upgrade pip setuptools wheel
-
-# Clone and install ovn-bgp-agent from source
-WORKDIR /tmp
-RUN git clone --depth 1 --branch ${PROJECT_REF} \
-        https://opendev.org/openstack/${PROJECT}.git && \
-    cd ${PROJECT} && \
-    pip3 install --no-cache-dir --break-system-packages \
-        --index-url ${PIP_INDEX_URL} \
-        --trusted-host ${PIP_TRUSTED_HOST} \
-        -c https://releases.openstack.org/constraints/upper/${PROJECT_REF} \
-        . && \
-    cd / && \
-    rm -rf /tmp/${PROJECT}
+# Copy installed packages from builder
+COPY --from=builder /install /install
 
 # Switch to non-root user
 USER ovn-bgp-agent
@@ -75,4 +94,4 @@ HEALTHCHECK --interval=30s --timeout=10s --start-period=60s --retries=3 \
     CMD pgrep -f "ovn-bgp-agent" > /dev/null || exit 1
 
 # Default command
-CMD ["/usr/local/bin/ovn-bgp-agent", "--config-dir", "/etc/ovn-bgp-agent"]
+CMD ["/install/bin/ovn-bgp-agent", "--config-dir", "/etc/ovn-bgp-agent"]
