@@ -1,5 +1,4 @@
-name: Build OVN BGP Agent Image
-
+name: Build OVN-BGP-Agent Image
 on:
   workflow_dispatch:
   push:

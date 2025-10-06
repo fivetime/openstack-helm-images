@@ -1,10 +1,7 @@
-name: Build OVN-BGP-Agent Image
+name: Build OpenStack-Helm Images
 
 on:
-  workflow_dispatch:
-  push:
-    paths:
-      - 'ovn-bgp-agent/**'
+  workflow_dispatch:  # 手动触发
 
 env:
   REGISTRY: ghcr.io
@@ -12,7 +9,7 @@ env:
   NAMESPACE: openstackhelm
 
 jobs:
-  build-ovn-bgp-agent:
+  build:
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -20,7 +17,40 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        distro: [ubuntu_noble, ubuntu_jammy]
+        image: [
+          # 基础组件
+          "calicoctl-utility",
+          "ceph-config-helper",
+          "ceph-daemon",
+
+          # 网络和存储相关
+          "elasticsearch-s3",
+          "mariadb",
+          "openvswitch",
+
+          # 监控和工具
+          "gate-utils",
+          "htk",
+          "kubernetes-keystone-webhook",
+          "prometheus-openstack-exporter",
+
+          # 虚拟化和计算
+          "libvirt",
+          "vbmc",
+
+          # 测试和清理工具
+          "nororos",
+          "ospurge",
+          "tempest",
+        ]
+        os_release: [
+          "ubuntu_focal",    # Ubuntu 20.04 Focal
+          "ubuntu_bionic",   # Ubuntu 18.04 Bionic
+          "ubuntu_xenial",   # Ubuntu 16.04 Xenial
+          "debian",          # Debian
+          "centos_7",        # CentOS 7
+          "suse_15"          # openSUSE Leap 15
+        ]
 
     steps:
       - name: Checkout code
@@ -36,22 +66,136 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.CR_PAT }}
 
-      - name: Build and push ovn-bgp-agent
+      - name: Set up build environment
         run: |
-          cd ovn-bgp-agent
-          
-          # Map DISTRO variable
-          export DISTRO="${{ matrix.distro }}"
-          export PROJECT_REF="master"
-          export REGISTRY="${{ env.REGISTRY }}/${{ env.OWNER }}/${{ env.NAMESPACE }}"
-          export IMAGE_PREFIX=""
-          export PUSH="true"
-          
-          echo "Building ovn-bgp-agent:master-${DISTRO}"
-          ./build.sh
+          sudo apt-get update
+          sudo apt-get install -y make build-essential
 
-      - name: Verify image
+      - name: Build and push image
         run: |
-          IMAGE="${{ env.REGISTRY }}/${{ env.OWNER }}/${{ env.NAMESPACE }}/ovn-bgp-agent:master-${{ matrix.distro }}"
-          docker pull ${IMAGE}
-          docker inspect ${IMAGE}
+          # 设置环境变量
+          export VERSION=latest
+          export REGISTRY_URI="${{ env.REGISTRY }}/${{ env.OWNER }}/${{ env.NAMESPACE }}/"
+          
+          # 为不同镜像设置适当的OS_RELEASE
+          case "${{ matrix.image }}" in
+            # 特殊处理calicoctl-utility镜像，只支持alpine
+            "calicoctl-utility")
+              echo "calicoctl-utility 只支持 alpine OS"
+              export OS_RELEASE="alpine"
+              ;;
+            # 特殊处理默认使用centos_7的镜像
+            "vbmc")
+              if [ "${{ matrix.os_release }}" == "ubuntu_focal" ]; then
+                export OS_RELEASE="centos_7"
+                echo "vbmc 默认使用 centos_7，已调整"
+              else
+                export OS_RELEASE="${{ matrix.os_release }}"
+              fi
+              ;;
+            # 特殊处理ospurge镜像，推荐使用ubuntu_bionic
+            "ospurge")
+              if [ "${{ matrix.os_release }}" == "ubuntu_focal" ]; then
+                export OS_RELEASE="ubuntu_bionic"
+                echo "ospurge 推荐使用 ubuntu_bionic，已调整"
+              else
+                export OS_RELEASE="${{ matrix.os_release }}"
+              fi
+              ;;
+            # 其他镜像使用矩阵中指定的OS_RELEASE
+            *)
+              export OS_RELEASE="${{ matrix.os_release }}"
+              ;;
+          esac
+          
+          echo "开始构建镜像: ${{ matrix.image }} 使用 OS_RELEASE=${OS_RELEASE}"
+          
+          # 检查镜像是否已存在
+          FULL_IMAGE_NAME="${REGISTRY_URI}${{ matrix.image }}:${VERSION}-${OS_RELEASE}"
+          echo "检查镜像是否存在: ${FULL_IMAGE_NAME}"
+          if docker pull ${FULL_IMAGE_NAME} &>/dev/null; then
+            echo "镜像已存在，跳过构建"
+            exit 0
+          fi
+          
+          # 设置DISTRO_VERSION（如果需要）
+          case "${OS_RELEASE}" in
+            "ubuntu_focal")
+              export DISTRO="ubuntu"
+              export DISTRO_VERSION="focal"
+              ;;
+            "ubuntu_bionic")
+              export DISTRO="ubuntu"
+              export DISTRO_VERSION="bionic"
+              ;;
+            "ubuntu_xenial")
+              export DISTRO="ubuntu"
+              export DISTRO_VERSION="xenial"
+              ;;
+            "debian")
+              export DISTRO="debian"
+              ;;
+            "centos_7")
+              export DISTRO="centos_7"
+              ;;
+            "suse_15")
+              export DISTRO="suse_15"
+              ;;
+            "alpine")
+              export DISTRO="alpine"
+              ;;
+          esac
+          
+          # 检查目录结构并选择构建方法
+          if [ -f "${{ matrix.image }}/build.sh" ]; then
+            echo "使用build.sh脚本构建镜像"
+            cd ${{ matrix.image }}
+            
+            # 设置额外的构建参数
+            EXTRA_BUILD_ARGS="--label org.opencontainers.image.source=https://github.com/${{ github.repository }}"
+            
+            # 传递所有需要的环境变量给build.sh
+            VERSION=${VERSION} \
+            DISTRO=${DISTRO} \
+            DISTRO_VERSION=${DISTRO_VERSION} \
+            REGISTRY_URI=${REGISTRY_URI} \
+            OS_RELEASE=${OS_RELEASE} \
+            EXTRA_TAG_INFO="" \
+            extra_build_args="${EXTRA_BUILD_ARGS}" \
+            ./build.sh
+          elif [ -f "Makefile" ]; then
+            echo "使用Makefile构建镜像"
+            # 使用正确的环境变量格式
+            VERSION=${VERSION} \
+            REGISTRY_URI=${REGISTRY_URI} \
+            EXTRA_TAG_INFO="" \
+            make IMAGE_NAME=${{ matrix.image }} OS_RELEASE=${OS_RELEASE}
+          elif [ "${{ matrix.image }}" == "openstack/loci" ]; then
+            echo "构建LOCI镜像"
+            cd openstack/loci
+            ./build.sh
+          else
+            echo "无法找到构建方法，尝试使用Docker直接构建"
+            cd ${{ matrix.image }}
+            
+            # 尝试找到正确的Dockerfile
+            if [ -f "Dockerfile.${OS_RELEASE}" ]; then
+              DOCKERFILE="Dockerfile.${OS_RELEASE}"
+            elif [ -f "Dockerfile.${DISTRO}" ]; then
+              DOCKERFILE="Dockerfile.${DISTRO}"
+            elif [ -f "Dockerfile" ]; then
+              DOCKERFILE="Dockerfile"
+            else
+              echo "错误：找不到Dockerfile"
+              exit 1
+            fi
+            
+            echo "使用Dockerfile: ${DOCKERFILE}"
+            docker build --pull \
+              -f ${DOCKERFILE} \
+              --tag ${FULL_IMAGE_NAME} \
+              --label org.opencontainers.image.source=https://github.com/${{ github.repository }} \
+              .
+            
+            docker push ${FULL_IMAGE_NAME}
+          fi
