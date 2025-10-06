@@ -1,0 +1,78 @@
+ARG FROM=ubuntu:24.04
+FROM ${FROM}
+
+LABEL maintainer="OpenStack Helm Team" \
+      org.opencontainers.image.title="OVN BGP Agent" \
+      org.opencontainers.image.description="BGP agent for OVN" \
+      org.opencontainers.image.source="https://opendev.org/openstack/ovn-bgp-agent"
+
+ARG PROJECT=ovn-bgp-agent
+ARG PROJECT_REF=master
+ARG PIP_INDEX_URL=https://pypi.python.org/simple
+ARG PIP_TRUSTED_HOST=pypi.python.org
+
+# Set environment variables
+ENV DEBIAN_FRONTEND=noninteractive \
+    LANG=C.UTF-8 \
+    LC_ALL=C.UTF-8
+
+# Install system dependencies
+RUN set -ex && \
+    apt-get update && \
+    apt-get install -y --no-install-recommends \
+        ca-certificates \
+        git \
+        python3 \
+        python3-pip \
+        python3-dev \
+        gcc \
+        iproute2 \
+        iputils-ping \
+        iptables && \
+    apt-get clean && \
+    rm -rf /var/lib/apt/lists/*
+
+# Create groups and user
+# GID 42424: openvswitch group (for accessing OVS socket, matches host GID)
+# GID 42494: ovn-bgp-agent group
+# UID 42494: ovn-bgp-agent user (next available in Kolla registry)
+RUN groupadd -g 42424 openvswitch && \
+    groupadd -g 42494 ovn-bgp-agent && \
+    useradd -m -u 42494 -g 42494 -G openvswitch \
+      -d /var/lib/ovn-bgp-agent -s /bin/bash ovn-bgp-agent && \
+    mkdir -p /etc/ovn-bgp-agent /var/log/ovn-bgp-agent /run/ovn-bgp-agent && \
+    chown -R ovn-bgp-agent:ovn-bgp-agent \
+        /var/lib/ovn-bgp-agent \
+        /etc/ovn-bgp-agent \
+        /var/log/ovn-bgp-agent \
+        /run/ovn-bgp-agent
+
+# Upgrade pip and install build tools
+RUN python3 -m pip install --no-cache-dir --break-system-packages \
+    --upgrade pip setuptools wheel
+
+# Clone and install ovn-bgp-agent from source
+WORKDIR /tmp
+RUN git clone --depth 1 --branch ${PROJECT_REF} \
+        https://opendev.org/openstack/${PROJECT}.git && \
+    cd ${PROJECT} && \
+    pip3 install --no-cache-dir --break-system-packages \
+        --index-url ${PIP_INDEX_URL} \
+        --trusted-host ${PIP_TRUSTED_HOST} \
+        -c https://releases.openstack.org/constraints/upper/${PROJECT_REF} \
+        . && \
+    cd / && \
+    rm -rf /tmp/${PROJECT}
+
+# Switch to non-root user
+USER ovn-bgp-agent
+
+# Set working directory
+WORKDIR /var/lib/ovn-bgp-agent
+
+# Health check
+HEALTHCHECK --interval=30s --timeout=10s --start-period=60s --retries=3 \
+    CMD pgrep -f "ovn-bgp-agent" > /dev/null || exit 1
+
+# Default command
+CMD ["/usr/local/bin/ovn-bgp-agent", "--config-dir", "/etc/ovn-bgp-agent"]
