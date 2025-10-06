@@ -48,7 +48,7 @@ RUN groupadd -g 42424 openvswitch && \
         /run/ovn-bgp-agent
 
 # Upgrade pip and install build tools
-RUN python3 -m pip install --no-cache-dir --break-system-packages \
+RUN python3 -m pip install --no-cache-dir \
     --ignore-installed --upgrade pip setuptools wheel
 
 # Clone and install ovn-bgp-agent from source
