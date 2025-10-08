@@ -5,6 +5,7 @@ ARG PROJECT=ovn-bgp-agent
 ARG PROJECT_REF=master
 ARG PIP_INDEX_URL=https://pypi.python.org/simple
 ARG PIP_TRUSTED_HOST=pypi.python.org
+ARG PROJECT_REPO=https://github.com/fivetime/openstack-ovn-bgp-agent.git
 
 ENV DEBIAN_FRONTEND=noninteractive \
     LANG=C.UTF-8 \
@@ -27,7 +28,7 @@ RUN python3 -m pip install --no-cache-dir \
 
 WORKDIR /tmp
 RUN git clone --depth 1 --branch ${PROJECT_REF} \
-        https://opendev.org/openstack/${PROJECT}.git && \
+        ${PROJECT_REPO} ${PROJECT} && \
     cd ${PROJECT} && \
     pip3 install --no-cache-dir \
         --index-url ${PIP_INDEX_URL} \
@@ -54,7 +55,7 @@ RUN set -ex && \
     apt-get update && \
     apt-get install -y --no-install-recommends \
         ca-certificates \
-        python3 curl \
+        python3 \
         iproute2 \
         iptables \
         openvswitch-common \
