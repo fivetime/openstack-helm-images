@@ -46,7 +46,7 @@ ENV DEBIAN_FRONTEND=noninteractive \
     LANG=C.UTF-8 \
     LC_ALL=C.UTF-8 \
     PATH=/install/local/bin:/install/bin:$PATH \
-    PYTHONPATH=/install/local/lib/python3.12/site-packages
+    PYTHONPATH=/install/local/lib/python3.12/dist-packages
 
 RUN set -ex && \
     apt-get update && \

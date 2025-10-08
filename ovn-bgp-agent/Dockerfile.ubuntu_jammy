@@ -48,7 +48,7 @@ ENV DEBIAN_FRONTEND=noninteractive \
     LC_ALL=C.UTF-8 \
     PIP_BREAK_SYSTEM_PACKAGES=1 \
     PATH=/install/local/bin:/install/bin:$PATH \
-    PYTHONPATH=/install/local/lib/python3.10/site-packages
+    PYTHONPATH=/install/local/lib/python3.10/dist-packages
 
 RUN set -ex && \
     apt-get update && \
