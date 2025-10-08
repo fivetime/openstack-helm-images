@@ -1,11 +1,15 @@
 ARG FROM=ubuntu:24.04
 FROM ${FROM} AS builder
 
-ARG PROJECT=ovn-bgp-agent
 ARG PROJECT_REF=master
 ARG PIP_INDEX_URL=https://pypi.python.org/simple
 ARG PIP_TRUSTED_HOST=pypi.python.org
-ARG PROJECT_REPO=https://github.com/fivetime/openstack-ovn-bgp-agent.git
+
+ARG PROJECT=ovn-bgp-agent
+ARG PROJECT_REPO=https://github.com/openstack
+
+#ARG PROJECT=openstack-ovn-bgp-agent
+#ARG PROJECT_REPO=https://github.com/fivetime
 
 ENV DEBIAN_FRONTEND=noninteractive \
     LANG=C.UTF-8 \
@@ -27,7 +31,7 @@ RUN python3 -m pip install --no-cache-dir --break-system-packages \
 
 WORKDIR /tmp
 RUN git clone --depth 1 --branch ${PROJECT_REF} \
-        ${PROJECT_REPO} ${PROJECT} && \
+        ${PROJECT_REPO}/${PROJECT}.git && \
     cd ${PROJECT} && \
     pip3 install --no-cache-dir --break-system-packages \
         --index-url ${PIP_INDEX_URL} \
@@ -40,7 +44,7 @@ FROM ${FROM}
 LABEL maintainer="OpenStack Helm Team" \
       org.opencontainers.image.title="OVN BGP Agent" \
       org.opencontainers.image.description="BGP agent for OVN" \
-      org.opencontainers.image.source="https://opendev.org/openstack/ovn-bgp-agent"
+      org.opencontainers.image.source="${PROJECT_REPO}/${PROJECT_REF"
 
 ENV DEBIAN_FRONTEND=noninteractive \
     LANG=C.UTF-8 \
