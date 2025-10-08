@@ -44,7 +44,7 @@ FROM ${FROM}
 LABEL maintainer="OpenStack Helm Team" \
       org.opencontainers.image.title="OVN BGP Agent" \
       org.opencontainers.image.description="BGP agent for OVN" \
-      org.opencontainers.image.source="${PROJECT_REPO}/${PROJECT_REF"
+      org.opencontainers.image.source="${PROJECT_REPO}/${PROJECT_REF}"
 
 ENV DEBIAN_FRONTEND=noninteractive \
     LANG=C.UTF-8 \
