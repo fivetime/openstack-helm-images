@@ -33,7 +33,6 @@ RUN git clone --depth 1 --branch ${PROJECT_REF} \
     pip3 install --no-cache-dir \
         --index-url ${PIP_INDEX_URL} \
         --trusted-host ${PIP_TRUSTED_HOST} \
-        -c https://releases.openstack.org/constraints/upper/${PROJECT_REF} \
         --prefix=/install \
         .
 
