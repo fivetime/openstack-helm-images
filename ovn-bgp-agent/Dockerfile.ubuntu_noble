@@ -73,6 +73,18 @@ RUN groupadd -g 42424 openvswitch && \
 
 COPY --from=builder /install /install
 
+# Configure sudo for privsep
+RUN ln -sf /install/local/bin/privsep-helper /usr/local/bin/privsep-helper && \
+    echo "Defaults:ovn-bgp-agent env_keep += \"PYTHONPATH\"" > /etc/sudoers.d/ovn-bgp-agent && \
+    echo "ovn-bgp-agent ALL=(root) NOPASSWD: /usr/local/bin/privsep-helper" >> /etc/sudoers.d/ovn-bgp-agent && \
+    echo "ovn-bgp-agent ALL=(root) NOPASSWD: /install/local/bin/privsep-helper" >> /etc/sudoers.d/ovn-bgp-agent && \
+    chmod 0440 /etc/sudoers.d/ovn-bgp-agent && \
+    visudo -c -f /etc/sudoers.d/ovn-bgp-agent
+
+# Prepare writable directories
+RUN mkdir -p /tmp /var/tmp && \
+    chown ovn-bgp-agent:ovn-bgp-agent /tmp /var/tmp
+
 USER ovn-bgp-agent
 WORKDIR /var/lib/ovn-bgp-agent
 
