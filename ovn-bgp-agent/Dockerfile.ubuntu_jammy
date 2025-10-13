@@ -84,9 +84,10 @@ RUN set -ex && \
     fi
 
 # Create users and directories
-# Note: openvswitch group may already exist if OVN packages were installed
+# Note: OVN packages may create openvswitch user/group automatically
 RUN set -ex && \
-    getent group openvswitch > /dev/null 2>&1 || groupadd -g 42424 openvswitch && \
+    getent group openvswitch >/dev/null 2>&1 || groupadd -g 42424 openvswitch && \
+    getent passwd openvswitch >/dev/null 2>&1 || useradd -r -g openvswitch -d /var/lib/openvswitch -s /bin/false openvswitch && \
     groupadd -g 42494 ovn-bgp-agent && \
     useradd -m -u 42494 -g 42494 -G openvswitch \
       -d /var/lib/ovn-bgp-agent -s /bin/bash ovn-bgp-agent && \
