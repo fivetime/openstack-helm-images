@@ -8,9 +8,6 @@ ARG PIP_TRUSTED_HOST=pypi.python.org
 ARG PROJECT=ovn-bgp-agent
 ARG PROJECT_REPO=https://github.com/openstack
 
-#ARG PROJECT=openstack-ovn-bgp-agent
-#ARG PROJECT_REPO=https://github.com/fivetime
-
 ENV DEBIAN_FRONTEND=noninteractive \
     LANG=C.UTF-8 \
     LC_ALL=C.UTF-8
@@ -42,6 +39,8 @@ RUN git clone --depth 1 --branch ${PROJECT_REF} \
 FROM ${FROM}
 
 ARG INCLUDE_OVN=false
+ARG PROJECT_REPO=https://github.com/openstack
+ARG PROJECT_REF=master
 
 LABEL maintainer="OpenStack Helm Team" \
       org.opencontainers.image.title="OVN BGP Agent" \
@@ -82,27 +81,22 @@ RUN set -ex && \
         rm -rf /var/lib/apt/lists/*; \
     fi
 
-# Create users and directories
+# Create users and ALL directories (including OVN ones)
 RUN groupadd -g 42424 openvswitch && \
     groupadd -g 42494 ovn-bgp-agent && \
     useradd -m -u 42494 -g 42494 -G openvswitch \
       -d /var/lib/ovn-bgp-agent -s /bin/bash ovn-bgp-agent && \
-    mkdir -p /etc/ovn-bgp-agent /var/log/ovn-bgp-agent /run/ovn-bgp-agent && \
+    mkdir -p /etc/ovn-bgp-agent /var/log/ovn-bgp-agent /run/ovn-bgp-agent \
+             /var/run/ovn /var/log/ovn /etc/ovn && \
     chown -R ovn-bgp-agent:ovn-bgp-agent \
         /var/lib/ovn-bgp-agent \
         /etc/ovn-bgp-agent \
         /var/log/ovn-bgp-agent \
-        /run/ovn-bgp-agent
-
-# Conditionally create OVN directories
-RUN set -ex && \
-    if [ "$INCLUDE_OVN" = "true" ]; then \
-        mkdir -p /var/run/ovn /var/log/ovn /etc/ovn && \
-        chown -R openvswitch:openvswitch \
-            /var/run/ovn \
-            /var/log/ovn \
-            /etc/ovn; \
-    fi
+        /run/ovn-bgp-agent && \
+    chown -R openvswitch:openvswitch \
+        /var/run/ovn \
+        /var/log/ovn \
+        /etc/ovn
 
 COPY --from=builder /install /install
 
