@@ -41,6 +41,8 @@ RUN git clone --depth 1 --branch ${PROJECT_REF} \
 
 FROM ${FROM}
 
+ARG INCLUDE_OVN=false
+
 LABEL maintainer="OpenStack Helm Team" \
       org.opencontainers.image.title="OVN BGP Agent" \
       org.opencontainers.image.description="BGP agent for OVN" \
@@ -52,6 +54,7 @@ ENV DEBIAN_FRONTEND=noninteractive \
     PATH=/install/local/bin:/install/bin:$PATH \
     PYTHONPATH=/install/local/lib/python3.12/dist-packages
 
+# Install base packages
 RUN set -ex && \
     apt-get update && \
     apt-get install -y --no-install-recommends \
@@ -62,10 +65,24 @@ RUN set -ex && \
         openvswitch-common \
         openvswitch-switch \
         frr-pythontools \
-        jq sudo && \
+        jq \
+        sudo && \
     apt-get clean && \
     rm -rf /var/lib/apt/lists/*
 
+# Conditionally install OVN packages
+RUN set -ex && \
+    if [ "$INCLUDE_OVN" = "true" ]; then \
+        apt-get update && \
+        apt-get install -y --no-install-recommends \
+            ovn-central \
+            ovn-host \
+            ovn-common && \
+        apt-get clean && \
+        rm -rf /var/lib/apt/lists/*; \
+    fi
+
+# Create users and directories
 RUN groupadd -g 42424 openvswitch && \
     groupadd -g 42494 ovn-bgp-agent && \
     useradd -m -u 42494 -g 42494 -G openvswitch \
@@ -76,6 +93,16 @@ RUN groupadd -g 42424 openvswitch && \
         /etc/ovn-bgp-agent \
         /var/log/ovn-bgp-agent \
         /run/ovn-bgp-agent
+
+# Conditionally create OVN directories
+RUN set -ex && \
+    if [ "$INCLUDE_OVN" = "true" ]; then \
+        mkdir -p /var/run/ovn /var/log/ovn /etc/ovn && \
+        chown -R openvswitch:openvswitch \
+            /var/run/ovn \
+            /var/log/ovn \
+            /etc/ovn; \
+    fi
 
 COPY --from=builder /install /install
 

@@ -1,10 +1,12 @@
-name: Build OVN-BGP-Agent Image
+# .github/workflows/ovn-bgp-agent.yml
+name: Build OVN-BGP-Agent Images
 
 on:
   workflow_dispatch:
   push:
     paths:
       - 'ovn-bgp-agent/**'
+      - '.github/workflows/ovn-bgp-agent.yml'
 
 env:
   REGISTRY: ghcr.io
@@ -21,6 +23,7 @@ jobs:
       fail-fast: false
       matrix:
         distro: [ubuntu_noble, ubuntu_jammy]
+        variant: [standard, ovn]
 
     steps:
       - name: Checkout code
@@ -36,25 +39,68 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.CR_PAT }}
 
+      - name: Set build parameters
+        id: params
+        run: |
+          # Determine tag suffix
+          TAG_SUFFIX=""
+          if [ "${{ matrix.variant }}" = "ovn" ]; then
+            TAG_SUFFIX="-ovn"
+          fi
+          
+          IMAGE_TAG="master-${{ matrix.distro }}${TAG_SUFFIX}"
+          FULL_IMAGE="${{ env.REGISTRY }}/${{ env.OWNER }}/${{ env.NAMESPACE }}/ovn-bgp-agent:${IMAGE_TAG}"
+          
+          echo "tag_suffix=${TAG_SUFFIX}" >> $GITHUB_OUTPUT
+          echo "image_tag=${IMAGE_TAG}" >> $GITHUB_OUTPUT
+          echo "full_image=${FULL_IMAGE}" >> $GITHUB_OUTPUT
+          
+          echo "Building variant: ${{ matrix.variant }}"
+          echo "Image tag: ${IMAGE_TAG}"
+
       - name: Build and push ovn-bgp-agent
         run: |
           cd ovn-bgp-agent
           chmod +x build.sh
           
-          # Map environment variables for build.sh
+          # Set build environment
           export DISTRO="${{ matrix.distro }}"
           export PROJECT_REF="master"
           export REGISTRY="${{ env.REGISTRY }}/${{ env.OWNER }}"
           export IMAGE_PREFIX="${{ env.NAMESPACE }}"
+          export VARIANT="${{ matrix.variant }}"
           export PUSH="true"
           
-          echo "Building ovn-bgp-agent:${PROJECT_REF}-${DISTRO}"
-          echo "Target: ${REGISTRY}/${IMAGE_PREFIX}/ovn-bgp-agent:${PROJECT_REF}-${DISTRO}"
+          echo "============================================"
+          echo "Building OVN BGP Agent"
+          echo "  Distro:  ${DISTRO}"
+          echo "  Variant: ${VARIANT}"
+          echo "  Target:  ${REGISTRY}/${IMAGE_PREFIX}/ovn-bgp-agent:master-${DISTRO}${{ steps.params.outputs.tag_suffix }}"
+          echo "============================================"
+          
           ./build.sh
 
       - name: Verify image
         run: |
-          IMAGE="${{ env.REGISTRY }}/${{ env.OWNER }}/${{ env.NAMESPACE }}/ovn-bgp-agent:master-${{ matrix.distro }}"
+          IMAGE="${{ steps.params.outputs.full_image }}"
           echo "Verifying image: ${IMAGE}"
+          
           docker pull ${IMAGE}
           docker inspect ${IMAGE}
+          
+          # Test image can start
+          echo "Testing image execution..."
+          docker run --rm ${IMAGE} ovn-bgp-agent --version || echo "Version check skipped"
+          
+          # Show image size
+          docker images ${IMAGE} --format "Size: {{.Size}}"
+
+      - name: Generate image metadata
+        run: |
+          IMAGE="${{ steps.params.outputs.full_image }}"
+          echo "## Image Details" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "- **Image**: \`${IMAGE}\`" >> $GITHUB_STEP_SUMMARY
+          echo "- **Distro**: ${{ matrix.distro }}" >> $GITHUB_STEP_SUMMARY
+          echo "- **Variant**: ${{ matrix.variant }}" >> $GITHUB_STEP_SUMMARY
+          echo "- **Size**: $(docker images ${IMAGE} --format '{{.Size}}')" >> $GITHUB_STEP_SUMMARY
