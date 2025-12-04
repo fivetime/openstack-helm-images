@@ -54,6 +54,14 @@
           tags:
             - "latest-ubuntu_jammy"
             - "ubuntu_jammy-{{ currentdate }}"
+        - context: mariadb
+          repository: openstackhelm/mariadb
+          dockerfile: Dockerfile.ubuntu
+          build_args:
+            - FROM=mariadb:11.4.8-noble
+          tags:
+            - "latest-ubuntu_noble"
+            - "ubuntu_noble-{{ currentdate }}"
     files: &mariadb_files
       - mariadb/.*
       - zuul.d/mariadb.yaml
