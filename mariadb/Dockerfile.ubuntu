@@ -6,10 +6,8 @@ RUN set -ex ;\
     apt update ;\
     apt install -y --no-install-recommends \
         python3-pip ;\
-    pip3 --no-cache-dir install --upgrade pip ;\
-    hash -r ;\
-    pip3 --no-cache-dir install --upgrade setuptools ;\
-    pip3 --no-cache-dir install --upgrade \
+    rm -f /usr/lib/python*/EXTERNALLY-MANAGED ;\
+    pip3 --no-cache-dir install \
       configparser \
       iso8601 \
       kubernetes \
