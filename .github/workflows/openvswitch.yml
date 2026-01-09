@@ -92,5 +92,12 @@ jobs:
           IMAGE="${{ env.REGISTRY }}/${{ env.OWNER }}/${{ env.NAMESPACE }}/openvswitch:${{ matrix.distro }}_${{ matrix.version }}"
           echo "Verifying image: ${IMAGE}"
           docker pull ${IMAGE}
-          docker run --rm ${IMAGE} ovs-vswitchd --version
-          docker run --rm ${IMAGE} ovsdb-server --version
+          
+          # DPDK 版本的 ovs-vswitchd 需要运行时环境，跳过
+          if [[ "${{ matrix.version }}" == *"dpdk"* ]]; then
+            docker run --rm ${IMAGE} ovsdb-server --version
+            docker run --rm ${IMAGE} ovs-vsctl --version
+          else
+            docker run --rm ${IMAGE} ovs-vswitchd --version
+            docker run --rm ${IMAGE} ovsdb-server --version
+          fi
