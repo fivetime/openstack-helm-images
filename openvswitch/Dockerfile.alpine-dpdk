@@ -84,7 +84,6 @@ RUN git clone --depth 1 --branch ${DPDK_BRANCH} https://github.com/DPDK/dpdk.git
         --libdir=/usr/lib \
         -Dplatform=generic \
         -Ddisable_drivers=raw/*,crypto/*,baseband/*,dma/*,regex/*,ml/*,gpu/*,net/mlx*,common/mlx* \
-        -Denable_kmods=false \
         -Dtests=false \
         -Denable_docs=false && \
     ninja -C build && \
