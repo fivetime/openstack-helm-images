@@ -130,8 +130,22 @@ RUN cd /install && \
 # -----------------------------------------------------------------------------
 FROM alpine:${ALPINE_VERSION}
 
+ARG TARGETPLATFORM=linux/amd64
+
 LABEL maintainer="OpenStack-Helm"
 LABEL description="OVN runtime image for OpenStack-Helm"
+
+# 下载 kubectl
+RUN apk add --no-cache curl && \
+    ARCH=$(case "${TARGETPLATFORM}" in \
+        "linux/amd64") echo "amd64" ;; \
+        "linux/arm64") echo "arm64" ;; \
+        *) echo "amd64" ;; \
+    esac) && \
+    curl -fsSL -o /usr/local/bin/kubectl \
+        "https://dl.k8s.io/release/v1.30.3/bin/linux/${ARCH}/kubectl" && \
+    chmod +x /usr/local/bin/kubectl && \
+    apk del curl
 
 RUN apk add --no-cache \
     # 运行时库
