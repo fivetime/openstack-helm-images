@@ -19,13 +19,13 @@
 ARG ALPINE_VERSION=3.23
 
 # -----------------------------------------------------------------------------
-# 阶段 1: 下载并 patch ovn-kubernetes 组件
+# 阶段 1: 下载并 patch ovn-kubernetes，编译 ovn-kube-util
 # -----------------------------------------------------------------------------
-FROM alpine:${ALPINE_VERSION} AS kube-downloader
+FROM golang:1.24-alpine AS kube-builder
 
 ARG OVN_KUBERNETES_REF=5359e7d7f872058b6e5bf884c9f19d1922451f29
 
-RUN apk add --no-cache curl jq git
+RUN apk add --no-cache git
 
 WORKDIR /src
 
@@ -37,13 +37,9 @@ RUN git clone https://github.com/ovn-org/ovn-kubernetes.git . && \
 COPY patches/ovn-kubernetes /patches/ovn-kubernetes
 RUN git apply --verbose /patches/ovn-kubernetes/*
 
-# 下载预编译的 ovn-kube-util
-WORKDIR /download
-RUN LATEST_VERSION=$(curl -sL https://api.github.com/repos/ovn-kubernetes/ovn-kubernetes/releases/latest | jq -r '.tag_name') && \
-    echo "Downloading ovn-kubernetes ${LATEST_VERSION}" && \
-    curl -fsSL -o /download/ovn-kube-util \
-        "https://github.com/ovn-kubernetes/ovn-kubernetes/releases/download/${LATEST_VERSION}/ovn-kube-util" && \
-    chmod +x /download/ovn-kube-util
+# 编译 ovn-kube-util (静态链接)
+RUN cd go-controller && \
+    CGO_ENABLED=0 go build -ldflags="-s -w" -o /ovn-kube-util ./cmd/ovn-kube-util
 
 # -----------------------------------------------------------------------------
 # 阶段 2: 编译 OVS 和 OVN
@@ -169,12 +165,12 @@ COPY --from=builder /install/usr/lib/ /usr/lib/
 COPY --from=builder /install/usr/share/ovn/ /usr/share/ovn/
 COPY --from=builder /install/usr/share/openvswitch/ /usr/share/openvswitch/
 
-# 复制 ovn-kube-util
-COPY --from=kube-downloader /download/ovn-kube-util /usr/bin/ovn-kube-util
+# 复制 ovn-kube-util (从 kube-builder 编译)
+COPY --from=kube-builder /ovn-kube-util /usr/bin/ovn-kube-util
 
 # 复制 patched 的 ovn-kubernetes 脚本
-COPY --from=kube-downloader /src/dist/images/ovnkube.sh /root/ovnkube.sh
-COPY --from=kube-downloader /src/dist/images/ovndb-raft-functions.sh /root/ovndb-raft-functions.sh
+COPY --from=kube-builder /src/dist/images/ovnkube.sh /root/ovnkube.sh
+COPY --from=kube-builder /src/dist/images/ovndb-raft-functions.sh /root/ovndb-raft-functions.sh
 
 # 创建必要目录和用户
 RUN mkdir -p /var/run/ovn /var/log/ovn /var/run/openvswitch /etc/ovn && \
