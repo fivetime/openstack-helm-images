@@ -24,6 +24,9 @@ jobs:
           - distro: alpine
             version: latest
             dockerfile: Dockerfile.alpine
+          - distro: alpine
+            version: latest-dpdk
+            dockerfile: Dockerfile.alpine-dpdk
           - distro: ubuntu
             version: jammy
             dockerfile: Dockerfile.ubuntu
