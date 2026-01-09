@@ -19,9 +19,9 @@
 ARG ALPINE_VERSION=3.23
 
 # -----------------------------------------------------------------------------
-# 阶段 1: 下载并 patch ovn-kubernetes，编译 ovn-kube-util
+# 阶段 1: 下载并 patch ovn-kubernetes 脚本
 # -----------------------------------------------------------------------------
-FROM golang:1.24-alpine AS kube-builder
+FROM alpine:${ALPINE_VERSION} AS kube-patcher
 
 ARG OVN_KUBERNETES_REF=5359e7d7f872058b6e5bf884c9f19d1922451f29
 
@@ -36,10 +36,6 @@ RUN git clone https://github.com/ovn-org/ovn-kubernetes.git . && \
 # 复制并应用 patches
 COPY patches/ovn-kubernetes /patches/ovn-kubernetes
 RUN git apply --verbose /patches/ovn-kubernetes/*
-
-# 编译 ovn-kube-util (静态链接)
-RUN cd go-controller && \
-    CGO_ENABLED=0 go build -ldflags="-s -w" -o /ovn-kube-util ./cmd/ovn-kube-util
 
 # -----------------------------------------------------------------------------
 # 阶段 2: 编译 OVS 和 OVN
@@ -165,17 +161,17 @@ COPY --from=builder /install/usr/lib/ /usr/lib/
 COPY --from=builder /install/usr/share/ovn/ /usr/share/ovn/
 COPY --from=builder /install/usr/share/openvswitch/ /usr/share/openvswitch/
 
-# 复制 ovn-kube-util (从 kube-builder 编译)
-COPY --from=kube-builder /ovn-kube-util /usr/bin/ovn-kube-util
+# 复制 ovn-kube-util 替代脚本
+COPY ovn-kube-util.sh /usr/bin/ovn-kube-util
 
 # 复制 patched 的 ovn-kubernetes 脚本
-COPY --from=kube-builder /src/dist/images/ovnkube.sh /root/ovnkube.sh
-COPY --from=kube-builder /src/dist/images/ovndb-raft-functions.sh /root/ovndb-raft-functions.sh
+COPY --from=kube-patcher /src/dist/images/ovnkube.sh /root/ovnkube.sh
+COPY --from=kube-patcher /src/dist/images/ovndb-raft-functions.sh /root/ovndb-raft-functions.sh
 
 # 创建必要目录和用户
 RUN mkdir -p /var/run/ovn /var/log/ovn /var/run/openvswitch /etc/ovn && \
     adduser -D -u 42424 -s /sbin/nologin openvswitch && \
-    chmod +x /root/*.sh
+    chmod +x /root/*.sh /usr/bin/ovn-kube-util
 
 # 验证安装
 RUN ovn-nbctl --version && \
@@ -183,7 +179,6 @@ RUN ovn-nbctl --version && \
     ovn-controller --version && \
     ovn-northd --version && \
     ovs-vsctl --version && \
-    ovsdb-server --version && \
-    ovn-kube-util --help > /dev/null 2>&1
+    ovsdb-server --version
 
 CMD ["/bin/sh"]
