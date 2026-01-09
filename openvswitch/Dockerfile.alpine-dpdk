@@ -30,7 +30,7 @@
 #   docker build -f Dockerfile.alpine-dpdk -t openvswitch:alpine_latest-dpdk .
 #
 # 指定版本:
-#   docker build -f Dockerfile.alpine-dpdk --build-arg OVS_BRANCH=v3.4.0 --build-arg DPDK_VERSION=23.11 -t openvswitch:v3.4.0-dpdk .
+#   docker build -f Dockerfile.alpine-dpdk --build-arg OVS_BRANCH=v3.6.0 --build-arg DPDK_VERSION=25.11 -t openvswitch:v3.6.0-dpdk .
 #
 # 验证:
 #   docker run --rm openvswitch:alpine_latest-dpdk ovs-vswitchd --version
@@ -45,7 +45,7 @@ ARG ALPINE_VERSION=3.21
 FROM alpine:${ALPINE_VERSION} AS builder
 
 ARG OVS_BRANCH=main
-ARG DPDK_VERSION=24.11
+ARG DPDK_VERSION=main
 
 RUN apk add --no-cache \
     git \
