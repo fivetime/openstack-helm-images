@@ -21,6 +21,8 @@ jobs:
       fail-fast: false
       matrix:
         include:
+          - distro: alpine
+            version: latest
           - distro: centos
             from: quay.io/centos/centos:stream9
             version: stream9
@@ -49,24 +51,31 @@ jobs:
         run: |
           cd ovn
           
-          IMAGE="${{ env.REGISTRY }}/${{ env.OWNER }}/${{ env.NAMESPACE }}/ovn:${{ matrix.version }}-${{ matrix.distro }}"
+          IMAGE="${{ env.REGISTRY }}/${{ env.OWNER }}/${{ env.NAMESPACE }}/ovn:${{ matrix.distro }}_${{ matrix.version }}"
           
-          echo "Building ovn:${{ matrix.version }}-${{ matrix.distro }}"
+          echo "Building ovn:${{ matrix.distro }}_${{ matrix.version }}"
           echo "Target: ${IMAGE}"
-          echo "FROM: ${{ matrix.from }}"
           
-          docker build \
-            -f Dockerfile.${{ matrix.distro }} \
-            --network=host \
-            --build-arg="FROM=${{ matrix.from }}" \
-            -t ${IMAGE} \
-            .
+          if [ "${{ matrix.distro }}" = "alpine" ]; then
+            # Alpine 构建不需要 FROM 参数
+            docker build -f Dockerfile.${{ matrix.distro }} --network=host -t ${IMAGE} .
+          else
+            # 其他发行版需要 FROM 参数
+            echo "FROM: ${{ matrix.from }}"
+            docker build \
+              -f Dockerfile.${{ matrix.distro }} \
+              --network=host \
+              --build-arg="FROM=${{ matrix.from }}" \
+              -t ${IMAGE} \
+              .
+          fi
           
           docker push ${IMAGE}
 
       - name: Verify image
         run: |
-          IMAGE="${{ env.REGISTRY }}/${{ env.OWNER }}/${{ env.NAMESPACE }}/ovn:${{ matrix.version }}-${{ matrix.distro }}"
+          IMAGE="${{ env.REGISTRY }}/${{ env.OWNER }}/${{ env.NAMESPACE }}/ovn:${{ matrix.distro }}_${{ matrix.version }}"
           echo "Verifying image: ${IMAGE}"
           docker pull ${IMAGE}
-          docker inspect ${IMAGE}
+          docker run --rm ${IMAGE} ovn-nbctl --version
+          docker run --rm ${IMAGE} ovs-vsctl --version

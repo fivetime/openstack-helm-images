@@ -61,3 +61,9 @@ ChangeLog
 releasenotes/build
 
 .vscode
+/.idea/.gitignore
+/.idea/misc.xml
+/.idea/modules.xml
+/.idea/openstack-helm-images.iml
+/qodana.yaml
+/.idea/vcs.xml

@@ -1,0 +1,171 @@
+# =============================================================================
+# OVN 运行时镜像 - 适用于 OpenStack-Helm
+# 
+# 包含: OVN 全部组件 + 必要的 OVS 工具 (ovs-vsctl, ovsdb-server, ovsdb-tool)
+# 不含: ovs-vswitchd (由独立 OVS 镜像/Pod 提供)
+#
+# 构建:
+#   docker build -f Dockerfile.alpine -t ovn:latest .
+#
+# 指定版本:
+#   docker build -f Dockerfile.alpine --build-arg OVN_BRANCH=v24.09.0 -t ovn:v24.09.0 .
+#
+# 验证:
+#   docker run --rm ovn:latest ovn-nbctl --version
+#   docker run --rm ovn:latest ovs-vsctl --version
+#   docker run --rm ovn:latest ovn-kube-util --help
+# =============================================================================
+
+ARG ALPINE_VERSION=3.23
+
+# -----------------------------------------------------------------------------
+# 阶段 1: 下载并 patch ovn-kubernetes 组件
+# -----------------------------------------------------------------------------
+FROM alpine:${ALPINE_VERSION} AS kube-downloader
+
+ARG OVN_KUBERNETES_REF=5359e7d7f872058b6e5bf884c9f19d1922451f29
+
+RUN apk add --no-cache curl jq git
+
+WORKDIR /src
+
+# 克隆 ovn-kubernetes 到指定 commit
+RUN git clone https://github.com/ovn-org/ovn-kubernetes.git . && \
+    git checkout ${OVN_KUBERNETES_REF}
+
+# 复制并应用 patches
+COPY patches/ovn-kubernetes /patches/ovn-kubernetes
+RUN git apply --verbose /patches/ovn-kubernetes/*
+
+# 下载预编译的 ovn-kube-util
+WORKDIR /download
+RUN LATEST_VERSION=$(curl -sL https://api.github.com/repos/ovn-kubernetes/ovn-kubernetes/releases/latest | jq -r '.tag_name') && \
+    echo "Downloading ovn-kubernetes ${LATEST_VERSION}" && \
+    curl -fsSL -o /download/ovn-kube-util \
+        "https://github.com/ovn-kubernetes/ovn-kubernetes/releases/download/${LATEST_VERSION}/ovn-kube-util" && \
+    chmod +x /download/ovn-kube-util
+
+# -----------------------------------------------------------------------------
+# 阶段 2: 编译 OVS 和 OVN
+# -----------------------------------------------------------------------------
+FROM alpine:${ALPINE_VERSION} AS builder
+
+ARG OVN_BRANCH=main
+
+RUN apk add --no-cache \
+    git \
+    build-base \
+    autoconf \
+    automake \
+    libtool \
+    pkgconf \
+    python3 \
+    python3-dev \
+    openssl-dev \
+    unbound-dev \
+    numactl-dev \
+    libcap-ng-dev \
+    linux-headers
+
+WORKDIR /build
+
+# 克隆 OVN 及 OVS 子模块
+RUN git clone --depth 1 --branch ${OVN_BRANCH} https://github.com/ovn-org/ovn.git && \
+    cd ovn && git submodule update --init --depth 1
+
+# 编译并安装 OVS
+WORKDIR /build/ovn/ovs
+RUN ./boot.sh && mkdir -p _build && cd _build && \
+    ../configure --prefix=/usr --enable-ssl --enable-shared CFLAGS="-O2 -fPIC" && \
+    make -j$(nproc) && \
+    make install
+
+# 编译并安装 OVN
+WORKDIR /build/ovn
+RUN ./boot.sh && \
+    ./configure \
+        --prefix=/usr \
+        --localstatedir=/var \
+        --sysconfdir=/etc \
+        --with-ovs-source=./ovs \
+        --with-ovs-build=./ovs/_build \
+        --enable-ssl \
+        --enable-shared \
+        CFLAGS="-O2" && \
+    make -j$(nproc) && \
+    make DESTDIR=/install install
+
+# 从 OVS 复制必要的工具到安装目录
+RUN mkdir -p /install/usr/bin /install/usr/sbin /install/usr/share/openvswitch && \
+    cp /usr/bin/ovs-vsctl /install/usr/bin/ && \
+    cp /usr/bin/ovs-appctl /install/usr/bin/ && \
+    cp /usr/bin/ovsdb-tool /install/usr/bin/ && \
+    cp /usr/bin/ovsdb-client /install/usr/bin/ && \
+    cp /usr/sbin/ovsdb-server /install/usr/sbin/ && \
+    cp /usr/share/openvswitch/vswitch.ovsschema /install/usr/share/openvswitch/
+
+# 复制 OVS 共享库
+RUN cp /usr/lib/libopenvswitch*.so* /install/usr/lib/ && \
+    cp /usr/lib/libovsdb*.so* /install/usr/lib/ 2>/dev/null || true && \
+    cp /usr/lib/libofproto*.so* /install/usr/lib/ 2>/dev/null || true && \
+    cp /usr/lib/libsflow*.so* /install/usr/lib/ 2>/dev/null || true
+
+# 清理不需要的文件
+RUN cd /install && \
+    find . -name "*.a" -delete && \
+    find . -name "*.la" -delete && \
+    rm -rf usr/include && \
+    rm -rf usr/share/man && \
+    strip usr/bin/* usr/sbin/* 2>/dev/null || true
+
+# -----------------------------------------------------------------------------
+# 阶段 3: 运行时镜像
+# -----------------------------------------------------------------------------
+FROM alpine:${ALPINE_VERSION}
+
+LABEL maintainer="OpenStack-Helm"
+LABEL description="OVN runtime image for OpenStack-Helm"
+
+RUN apk add --no-cache \
+    # 运行时库
+    libssl3 \
+    unbound-libs \
+    numactl \
+    libcap-ng \
+    # 脚本依赖
+    bash \
+    ca-certificates \
+    util-linux \
+    # ovn-controller-init.sh 依赖
+    iproute2 \
+    jq
+
+# 复制 OVN 和必要的 OVS 组件
+COPY --from=builder /install/usr/bin/ /usr/bin/
+COPY --from=builder /install/usr/sbin/ /usr/sbin/
+COPY --from=builder /install/usr/lib/ /usr/lib/
+COPY --from=builder /install/usr/share/ovn/ /usr/share/ovn/
+COPY --from=builder /install/usr/share/openvswitch/ /usr/share/openvswitch/
+
+# 复制 ovn-kube-util
+COPY --from=kube-downloader /download/ovn-kube-util /usr/bin/ovn-kube-util
+
+# 复制 patched 的 ovn-kubernetes 脚本
+COPY --from=kube-downloader /src/dist/images/ovnkube.sh /root/ovnkube.sh
+COPY --from=kube-downloader /src/dist/images/ovndb-raft-functions.sh /root/ovndb-raft-functions.sh
+
+# 创建必要目录和用户
+RUN mkdir -p /var/run/ovn /var/log/ovn /var/run/openvswitch /etc/ovn && \
+    adduser -D -u 42424 -s /sbin/nologin openvswitch && \
+    chmod +x /root/*.sh
+
+# 验证安装
+RUN ovn-nbctl --version && \
+    ovn-sbctl --version && \
+    ovn-controller --version && \
+    ovn-northd --version && \
+    ovs-vsctl --version && \
+    ovsdb-server --version && \
+    ovn-kube-util --help > /dev/null 2>&1
+
+CMD ["/bin/sh"]
