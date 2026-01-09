@@ -157,6 +157,7 @@ RUN apk add --no-cache \
     bash \
     ca-certificates \
     util-linux \
+    coreutils \
     # ovn-controller-init.sh 依赖
     iproute2 \
     jq
