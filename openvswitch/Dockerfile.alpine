@@ -15,7 +15,7 @@
 #   docker run --rm openvswitch:latest ovs-vsctl --version
 # =============================================================================
 
-ARG ALPINE_VERSION=3.21
+ARG ALPINE_VERSION=3.23
 
 # -----------------------------------------------------------------------------
 # 阶段 1: 编译 OVS
@@ -82,6 +82,7 @@ RUN apk add --no-cache \
     # 脚本依赖
     bash \
     ca-certificates \
+    coreutils \
     # 网络工具
     iproute2 \
     iptables
