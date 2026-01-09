@@ -37,20 +37,22 @@
     description: Build selenium image with chrome headless driver
     vars: &osh-selenium_vars
       currentdate: "{{ now(utc=True,fmt='%Y%m%d') }}"
-      docker_images:
+      container_images:
         - context: osh-selenium
-          repository: openstackhelm/osh-selenium
-          dockerfile: Dockerfile.ubuntu
+          registry: quay.io
+          repository: quay.io/airshipit/osh-selenium
+          container_filename: Dockerfile.ubuntu
           build_args:
-            - "FROM=docker.io/ubuntu:focal"
+            - "FROM=quay.io/airshipit/ubuntu:focal"
           tags:
             - latest-ubuntu_focal
             - "ubuntu_focal-{{ currentdate }}"
         - context: osh-selenium
-          repository: openstackhelm/osh-selenium
-          dockerfile: Dockerfile.ubuntu
+          registry: quay.io
+          repository: quay.io/airshipit/osh-selenium
+          container_filename: Dockerfile.ubuntu
           build_args:
-            - "FROM=docker.io/ubuntu:jammy"
+            - "FROM=quay.io/airshipit/ubuntu:jammy"
           tags:
             - latest-ubuntu_jammy
             - "ubuntu_jammy-{{ currentdate }}"

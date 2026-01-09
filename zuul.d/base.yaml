@@ -14,6 +14,9 @@
 # limitations under the License.
 
 - project:
+    vars:
+      helm_version: "3.18.1"
+
     check:
       jobs:
         - openstack-helm-images-buildset-registry
@@ -36,34 +39,6 @@
       - publish-openstack-docs-pti
       - release-notes-jobs-python3
 
-# This takes the same structure as other infra jobs.
-# This dict keyname matter. See also job definition for more explanations.
-- secret:
-    name: openstack-helm-dockerhub
-    data:
-      username: !encrypted/pkcs1-oaep
-        - RToLVrVSLl4ih5OcfL/AnemDTVLsg+TLijXniZ+MPK8h332v813CRMH2vVFf7zZxVw+fA
-          rjVjonkSaNkseXlGd9+psv8gRvxV5qg63emxFtpARSJiS7HgyOdBUy4ZhsrweF7F1KfH1
-          LNKXoaYdDCn7UcP/YaqYBkr2UQ/F0t7Yu6ACjdQYUr3FKh8XfAhrUtcc+uAv7broiIxKq
-          LRi7UTXa1NEpA0rH0dLep5eNKQBpiXo/7cF3fCIMJ8oCGTZToaUkJfoqax96g/oncpf+a
-          wQvlML5WN7YrB5Fi9RkylOVkCOUJcO5HUeFWpfcnPsvwELulpIKnxLlLxR94ZM0ZmCNcI
-          of8yyEAoxCOHOLYZcKNSKjWl6rMmKElTEeedqiJniBSWRwxz7/pj27fQKHDJPfPSXgfqU
-          GNkOLBHdK03idEL39G3rvPKt+lR5xV29iX5EH03VoJoKUBoeggxkC9/3/DcjZ2M8hUD7Q
-          IM5UjMV1Lgo5apodGZu5tUfaoCMPN4xHCzI2vZZ08ZP5952opp9A4c/OLKOUDHV63qei5
-          e2SA8BBtvz/eiUWhLhwMHZK18XqsB8vLZNeO8BUDS5oOfw8YYaEfm3t3hqXNn7khWNlT6
-          MAn3KrFsslsP7ENNFHIxIy4eVXDoDtG90CZWReM2cLdGnbQa2YLdwjjPWN6tlc=
-      password: !encrypted/pkcs1-oaep
-        - GPDRxEQwaaFK7427kQByOYoEzcAXvNkGJKcBhoiwXPZ2V2taDH3vZWMDByfWLPDp7HTNp
-          MHIJqeGE446EtO+eGmDNFuXHDCbwEwBIGd27QNNKGdmYAXlrU5dxKaoChra+8gcxsXYxJ
-          FlNlfdMqz3Dt+ZTA7f68db9T/hBm2PDAuJml2dHsHCQg5yFljZADcNvbRV4PPf/9SylMa
-          wJPI6XAbzo/bTBnMmsn5u6ovlrIBkO+OMdYQ2Bd22GZkOoUo04M7mz10kPTeSCaGI10b2
-          LR1eN7thS+1ViB+VqoecZ3yOf3KgU9KmVsLkmEGfJUjBXV7dfWZsCvzSM/72WE6yjybQ3
-          iwhpiKVr8EmZAePgiEvjfI/eFcDp+BCfn7fjA5vpJ1qhYXx6WX+IebC8bQ/SfDBXz2kgI
-          kgeCOCqszqR6z/lF//j6ttIIKMGM/OV8AVN8mSwqbx9x6W9y0wFX+Qr4awDcHV0eVJelA
-          aYZxpgceCShEZp54yIVNjDoe01m8UpDDSSj7qtaehX+5U8vKd6lWOf13YEVIfaYUCoNaK
-          Zp1xo0hJ2T2/8FGY/+sgZtjXJ4SETyTTw0kzQy/Ias8h63YIsDi7cQ2Yx48rGtugxArTD
-          Kkrob2q6wFLBIutk8NgfXUy0oLClufRmHidne4XB0VLHeykuxKjiujGm+O9AcQ=
-
 - job:
     name: openstack-helm-images-buildset-registry
     parent: opendev-buildset-registry
@@ -72,14 +47,17 @@
 
 # In docker_images:
 # `context` is the folder in osh-images
-# `repository` is the repo on dockerhub
+# `repository` is the repo on quay.io/airshipit
 # `tags` is a list of the tags when promoted
 #   (images are published with change id)
 # `dockerfile`. Explicit.
 - job:
     name: openstack-helm-images-build
     parent: build-docker-image
-    run: zuul.d/playbooks/build.yml
+    roles:
+      - zuul: openstack/openstack-helm-images
+      - zuul: zuul/zuul-jobs
+    run: playbooks/build.yml
     match-on-config-updates: false
     dependencies:
       - name: openstack-helm-images-buildset-registry
@@ -101,15 +79,16 @@
     name: openstack-helm-images-upload
     parent: openstack-helm-images-build
     run:
-      - zuul.d/playbooks/build.yml
-      - zuul.d/playbooks/upload.yml
+      - playbooks/build.yml
+      - playbooks/upload.yml
     match-on-config-updates: false
     dependencies:
       - name: openstack-helm-images-buildset-registry
     abstract: true
     secrets:
-      name: docker_credentials
-      secret: openstack-helm-dockerhub
+      name: container_registry_credentials
+      secret: openstack-helm-images_registry_credentials
+      pass-to-parent: true
     timeout: 3600
 
 - job:
@@ -117,8 +96,8 @@
     parent: promote-docker-image
     abstract: true
     secrets:
-      name: docker_credentials
-      secret: openstack-helm-dockerhub
+      name: container_registry_credentials
+      secret: openstack-helm-images_registry_credentials
       pass-to-parent: true
     timeout: 3600
 
@@ -162,20 +141,15 @@
     dependencies:
       - name: openstack-helm-images-build-fluentd
         soft: true
-      - name: openstack-helm-images-build-elasticsearch-s3
-        soft: true
       - name: openstack-helm-images-build-osh-selenium
         soft: true
       - name: openstack-helm-images-upload-fluentd
-        soft: true
-      - name: openstack-helm-images-upload-elasticsearch-s3
         soft: true
       - name: openstack-helm-images-upload-osh-selenium
         soft: true
     files:
       - fluentd/.*
       - zuul.d/fluentd.yaml
-      - elasticsearch-s3/.*
       - zuul.d/elasticsearch-s3.yaml
       - osh-selenium/.*
       - zuul.d/osh-selenium.yaml

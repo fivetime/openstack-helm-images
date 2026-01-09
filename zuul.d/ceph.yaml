@@ -41,11 +41,12 @@
     abstract: true
     vars:
       currentdate: "{{ now(utc=True,fmt='%Y%m%d') }}"
-      docker_images:
+      container_images:
         - &ceph_image
-          dockerfile: Dockerfile.ubuntu
+          container_filename: Dockerfile.ubuntu
+          registry: quay.io
           build_args:
-            - "FROM='ubuntu:jammy'"
+            - "FROM='quay.io/airshipit/ubuntu:jammy'"
             - "CEPH_RELEASE='squid'"
             - "CEPH_RELEASE_TAG='19.2.3-1jammy'"
             - "CEPH_REPO='http://download.ceph.com/debian-squid'"
@@ -63,10 +64,10 @@
     description: Build ceph-config-helper images
     vars: &ceph-config-helper_vars
       currentdate: "{{ now(utc=True,fmt='%Y%m%d') }}"
-      docker_images:
+      container_images:
         - <<: *ceph_image
           context: ceph-config-helper
-          repository: openstackhelm/ceph-config-helper
+          repository: quay.io/airshipit/ceph-config-helper
 
 - job:
     name: openstack-helm-images-upload-ceph-config-helper
@@ -88,10 +89,10 @@
     description: Build ceph-daemon images
     vars: &ceph-daemon_vars
       currentdate: "{{ now(utc=True,fmt='%Y%m%d') }}"
-      docker_images:
+      container_images:
         - <<: *ceph_image
           context: ceph-daemon
-          repository: openstackhelm/ceph-daemon
+          repository: quay.io/airshipit/ceph-daemon
 
 - job:
     name: openstack-helm-images-upload-ceph-daemon
@@ -113,10 +114,10 @@
     description: Build ceph-utility images
     vars: &ceph-utility_vars
       currentdate: "{{ now(utc=True,fmt='%Y%m%d') }}"
-      docker_images:
+      container_images:
         - <<: *ceph_image
           context: ceph-utility
-          repository: openstackhelm/ceph-utility
+          repository: quay.io/airshipit/ceph-utility
 
 - job:
     name: openstack-helm-images-upload-ceph-utility

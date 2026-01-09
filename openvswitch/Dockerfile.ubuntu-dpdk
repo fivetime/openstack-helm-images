@@ -1,4 +1,4 @@
-ARG FROM=docker.io/ubuntu:jammy
+ARG FROM=quay.io/airshipit/ubuntu:jammy
 FROM ${FROM}
 
 ARG DEBIAN_FRONTEND=noninteractive

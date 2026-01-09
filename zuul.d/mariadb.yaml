@@ -37,28 +37,31 @@
     description: Build mariadb images
     vars: &mariadb_vars
       currentdate: "{{ now(utc=True,fmt='%Y%m%d') }}"
-      docker_images:
+      container_images:
         - context: mariadb
-          repository: openstackhelm/mariadb
-          dockerfile: Dockerfile.ubuntu
+          registry: quay.io
+          repository: quay.io/airshipit/mariadb
+          container_filename: Dockerfile.ubuntu
           build_args:
-            - FROM=docker.io/mariadb@sha256:aa38c70792b0330da98fbf20b7191f27f65ff2f55790e5a0b0ec2a02fcb3d03d
+            - FROM=public.ecr.aws/docker/library/mariadb:10.6.14-focal
           tags:
             - "latest-ubuntu_focal"
             - "ubuntu_focal-{{ currentdate }}"
         - context: mariadb
-          repository: openstackhelm/mariadb
-          dockerfile: Dockerfile.ubuntu
+          registry: quay.io
+          repository: quay.io/airshipit/mariadb
+          container_filename: Dockerfile.ubuntu
           build_args:
-            - FROM=mariadb:10.11.6-jammy
+            - FROM=public.ecr.aws/docker/library/mariadb:10.11.6-jammy
           tags:
             - "latest-ubuntu_jammy"
             - "ubuntu_jammy-{{ currentdate }}"
         - context: mariadb
-          repository: openstackhelm/mariadb
-          dockerfile: Dockerfile.ubuntu
+          registry: quay.io
+          repository: quay.io/airshipit/mariadb
+          container_filename: Dockerfile.ubuntu
           build_args:
-            - FROM=mariadb:11.4.8-noble
+            - FROM=public.ecr.aws/docker/library/mariadb:11.4.8-noble
           tags:
             - "latest-ubuntu_noble"
             - "ubuntu_noble-{{ currentdate }}"

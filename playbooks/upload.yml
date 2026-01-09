@@ -1,0 +1,5 @@
+- hosts: all
+  roles:
+    - role: upload-container-image
+  vars:
+    container_command: docker

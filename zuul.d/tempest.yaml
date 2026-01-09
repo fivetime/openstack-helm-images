@@ -33,13 +33,16 @@
     description: Build tempest images
     vars: &tempest_vars
       currentdate: "{{ now(utc=True,fmt='%Y%m%d') }}"
-      docker_images:
+      container_images:
         - context: tempest
-          repository: openstackhelm/tempest
-          dockerfile: Dockerfile.ubuntu_focal
+          registry: quay.io
+          repository: quay.io/airshipit/tempest
+          container_filename: Dockerfile
+          build_args:
+            - "FROM='quay.io/airshipit/ubuntu:noble'"
           tags:
-            - latest-ubuntu_focal
-            - "ubuntu_focal-{{ currentdate }}"
+            - latest-ubuntu_noble
+            - "ubuntu_noble-{{ currentdate }}"
     files: &tempest_files
       - tempest/.*
       - zuul.d/tempest.yaml

@@ -1,4 +1,4 @@
-ARG FROM=docker.io/ubuntu:bionic
+ARG FROM=quay.io/airshipit/ubuntu:bionic
 FROM ${FROM}
 
 ENV PYTHONUNBUFFERED 1
