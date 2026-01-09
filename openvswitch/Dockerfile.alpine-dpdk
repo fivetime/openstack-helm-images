@@ -37,7 +37,7 @@
 #   docker run --rm openvswitch:alpine_latest-dpdk ovsdb-server --version
 # =============================================================================
 
-ARG ALPINE_VERSION=3.21
+ARG ALPINE_VERSION=3.23
 
 # -----------------------------------------------------------------------------
 # 阶段 1: 编译 DPDK 和 OVS
@@ -45,7 +45,7 @@ ARG ALPINE_VERSION=3.21
 FROM alpine:${ALPINE_VERSION} AS builder
 
 ARG OVS_BRANCH=main
-ARG DPDK_VERSION=main
+ARG DPDK_BRANCH=main
 
 RUN apk add --no-cache \
     git \
@@ -77,7 +77,7 @@ RUN apk add --no-cache \
 WORKDIR /build
 
 # 编译 DPDK
-RUN git clone --depth 1 --branch v${DPDK_VERSION} https://github.com/DPDK/dpdk.git && \
+RUN git clone --depth 1 --branch ${DPDK_BRANCH} https://github.com/DPDK/dpdk.git && \
     cd dpdk && \
     meson setup build \
         --prefix=/usr \
