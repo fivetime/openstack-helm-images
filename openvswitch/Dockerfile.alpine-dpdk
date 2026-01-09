@@ -3,6 +3,29 @@
 #
 # 包含: ovs-vswitchd (DPDK), ovsdb-server 及相关工具
 #
+# 支持的 DPDK 驱动:
+#   - net/virtio      : 虚拟机 virtio 网卡
+#   - net/i40e        : Intel X710/XL710 系列
+#   - net/ixgbe       : Intel 82599/X520/X540 系列
+#   - net/e1000       : Intel 千兆网卡
+#   - net/af_packet   : Linux AF_PACKET
+#   - net/vhost       : vhost-user
+#   - net/tap         : TAP 设备
+#   - net/ring        : Ring PMD
+#   - net/vmxnet3     : VMware VMXNET3
+#   - net/ena         : AWS ENA
+#
+# 禁用的 DPDK 驱动 (减小镜像体积):
+#   - net/mlx*        : Mellanox 网卡 (需要 MLNX_OFED SDK)
+#   - common/mlx*     : Mellanox 公共库
+#   - raw/*           : 原始设备驱动
+#   - crypto/*        : 加密加速器
+#   - baseband/*      : 基带处理器
+#   - dma/*           : DMA 设备
+#   - regex/*         : 正则表达式加速器
+#   - ml/*            : 机器学习加速器
+#   - gpu/*           : GPU 驱动
+#
 # 构建:
 #   docker build -f Dockerfile.alpine-dpdk -t openvswitch:alpine_latest-dpdk .
 #
@@ -47,7 +70,9 @@ RUN apk add --no-cache \
     pciutils-dev \
     libbpf-dev \
     elfutils-dev \
-    zlib-dev
+    zlib-dev \
+    libbsd-dev \
+    libxdp-dev
 
 WORKDIR /build
 
@@ -58,7 +83,7 @@ RUN git clone --depth 1 --branch v${DPDK_VERSION} https://github.com/DPDK/dpdk.g
         --prefix=/usr \
         --libdir=/usr/lib \
         -Dplatform=generic \
-        -Ddisable_drivers=raw/*,crypto/*,baseband/*,dma/*,regex/*,ml/*,gpu/* \
+        -Ddisable_drivers=raw/*,crypto/*,baseband/*,dma/*,regex/*,ml/*,gpu/*,net/mlx*,common/mlx* \
         -Denable_kmods=false \
         -Dtests=false \
         -Denable_docs=false && \
