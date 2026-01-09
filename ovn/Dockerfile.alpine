@@ -96,13 +96,14 @@ RUN ./boot.sh && \
     make DESTDIR=/install install
 
 # 从 OVS 复制必要的工具到安装目录
-RUN mkdir -p /install/usr/bin /install/usr/sbin /install/usr/share/openvswitch && \
+RUN mkdir -p /install/usr/bin /install/usr/sbin /install/usr/share/openvswitch/scripts && \
     cp /usr/bin/ovs-vsctl /install/usr/bin/ && \
     cp /usr/bin/ovs-appctl /install/usr/bin/ && \
     cp /usr/bin/ovsdb-tool /install/usr/bin/ && \
     cp /usr/bin/ovsdb-client /install/usr/bin/ && \
     cp /usr/sbin/ovsdb-server /install/usr/sbin/ && \
-    cp /usr/share/openvswitch/vswitch.ovsschema /install/usr/share/openvswitch/
+    cp /usr/share/openvswitch/vswitch.ovsschema /install/usr/share/openvswitch/ && \
+    cp /usr/share/openvswitch/scripts/ovs-lib /install/usr/share/openvswitch/scripts/
 
 # 复制 OVS 共享库
 RUN cp /usr/lib/libopenvswitch*.so* /install/usr/lib/ && \
