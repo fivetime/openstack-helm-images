@@ -20,8 +20,22 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        distro: [ubuntu_jammy, ubuntu_noble]
-        variant: [standard, dpdk]
+        include:
+          - distro: alpine
+            version: latest
+            dockerfile: Dockerfile.alpine
+          - distro: ubuntu
+            version: jammy
+            dockerfile: Dockerfile.ubuntu
+          - distro: ubuntu
+            version: noble
+            dockerfile: Dockerfile.ubuntu
+          - distro: ubuntu
+            version: jammy-dpdk
+            dockerfile: Dockerfile.ubuntu-dpdk
+          - distro: ubuntu
+            version: noble-dpdk
+            dockerfile: Dockerfile.ubuntu-dpdk
 
     steps:
       - name: Checkout code
@@ -37,50 +51,43 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.CR_PAT }}
 
-      - name: Set build variables
-        id: vars
-        run: |
-          DISTRO="${{ matrix.distro }}"
-          if [ "${{ matrix.variant }}" == "dpdk" ]; then
-            DISTRO="${DISTRO}-dpdk"
-            DOCKERFILE="Dockerfile.ubuntu-dpdk"
-          else
-            DOCKERFILE="Dockerfile.ubuntu"
-          fi
-          
-          # Extract distro version (jammy/noble)
-          DISTRO_VERSION="${DISTRO#ubuntu_}"
-          DISTRO_VERSION="${DISTRO_VERSION%-dpdk}"
-          
-          IMAGE_TAG="latest-${DISTRO}"
-          
-          echo "distro=${DISTRO}" >> $GITHUB_OUTPUT
-          echo "distro_version=${DISTRO_VERSION}" >> $GITHUB_OUTPUT
-          echo "dockerfile=${DOCKERFILE}" >> $GITHUB_OUTPUT
-          echo "image_tag=${IMAGE_TAG}" >> $GITHUB_OUTPUT
-
       - name: Build and push openvswitch
         run: |
           cd openvswitch
           
-          IMAGE="${{ env.REGISTRY }}/${{ env.OWNER }}/${{ env.NAMESPACE }}/openvswitch:${{ steps.vars.outputs.image_tag }}"
+          IMAGE="${{ env.REGISTRY }}/${{ env.OWNER }}/${{ env.NAMESPACE }}/openvswitch:${{ matrix.distro }}_${{ matrix.version }}"
           
-          echo "Building openvswitch:${{ steps.vars.outputs.image_tag }}"
+          echo "Building openvswitch:${{ matrix.distro }}_${{ matrix.version }}"
           echo "Target: ${IMAGE}"
-          echo "Dockerfile: ${{ steps.vars.outputs.dockerfile }}"
+          echo "Dockerfile: ${{ matrix.dockerfile }}"
           
-          docker build \
-            -f ${{ steps.vars.outputs.dockerfile }} \
-            --network=host \
-            --build-arg="FROM=ubuntu:${{ steps.vars.outputs.distro_version }}" \
-            -t ${IMAGE} \
-            .
+          if [ "${{ matrix.distro }}" = "alpine" ]; then
+            # Alpine 构建不需要 FROM 参数
+            docker build \
+              -f ${{ matrix.dockerfile }} \
+              --network=host \
+              -t ${IMAGE} \
+              .
+          else
+            # Ubuntu 构建需要 FROM 参数
+            # 提取基础版本 (去掉 -dpdk 后缀)
+            BASE_VERSION="${{ matrix.version }}"
+            BASE_VERSION="${BASE_VERSION%-dpdk}"
+          
+            docker build \
+              -f ${{ matrix.dockerfile }} \
+              --network=host \
+              --build-arg="FROM=ubuntu:${BASE_VERSION}" \
+              -t ${IMAGE} \
+              .
+          fi
           
           docker push ${IMAGE}
 
       - name: Verify image
         run: |
-          IMAGE="${{ env.REGISTRY }}/${{ env.OWNER }}/${{ env.NAMESPACE }}/openvswitch:${{ steps.vars.outputs.image_tag }}"
+          IMAGE="${{ env.REGISTRY }}/${{ env.OWNER }}/${{ env.NAMESPACE }}/openvswitch:${{ matrix.distro }}_${{ matrix.version }}"
           echo "Verifying image: ${IMAGE}"
           docker pull ${IMAGE}
-          docker inspect ${IMAGE}
+          docker run --rm ${IMAGE} ovs-vswitchd --version
+          docker run --rm ${IMAGE} ovsdb-server --version

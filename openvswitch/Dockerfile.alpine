@@ -1,0 +1,107 @@
+# =============================================================================
+# OVS 运行时镜像 - 适用于 OpenStack-Helm
+#
+# 包含: ovs-vswitchd, ovsdb-server 及相关工具
+#
+# 构建:
+#   docker build -f Dockerfile.alpine -t openvswitch:latest .
+#
+# 指定版本:
+#   docker build -f Dockerfile.alpine --build-arg OVS_BRANCH=v3.4.0 -t openvswitch:v3.4.0 .
+#
+# 验证:
+#   docker run --rm openvswitch:latest ovs-vswitchd --version
+#   docker run --rm openvswitch:latest ovsdb-server --version
+#   docker run --rm openvswitch:latest ovs-vsctl --version
+# =============================================================================
+
+ARG ALPINE_VERSION=3.21
+
+# -----------------------------------------------------------------------------
+# 阶段 1: 编译 OVS
+# -----------------------------------------------------------------------------
+FROM alpine:${ALPINE_VERSION} AS builder
+
+ARG OVS_BRANCH=v3.4.1
+
+RUN apk add --no-cache \
+    git \
+    build-base \
+    autoconf \
+    automake \
+    libtool \
+    pkgconf \
+    python3 \
+    python3-dev \
+    openssl-dev \
+    libcap-ng-dev \
+    linux-headers
+
+WORKDIR /build
+
+# 克隆 OVS
+RUN git clone --depth 1 --branch ${OVS_BRANCH} https://github.com/openvswitch/ovs.git
+
+# 编译并安装 OVS
+WORKDIR /build/ovs
+RUN ./boot.sh && \
+    ./configure \
+        --prefix=/usr \
+        --localstatedir=/var \
+        --sysconfdir=/etc \
+        --enable-ssl \
+        --enable-shared && \
+    make -j$(nproc) && \
+    make DESTDIR=/install install
+
+# 清理不需要的文件
+RUN cd /install && \
+    find . -name "*.a" -delete && \
+    find . -name "*.la" -delete && \
+    rm -rf usr/include && \
+    rm -rf usr/share/man && \
+    strip usr/bin/* usr/sbin/* 2>/dev/null || true
+
+# -----------------------------------------------------------------------------
+# 阶段 2: 运行时镜像
+# -----------------------------------------------------------------------------
+FROM alpine:${ALPINE_VERSION}
+
+LABEL maintainer="OpenStack-Helm"
+LABEL description="Open vSwitch runtime image for OpenStack-Helm"
+
+# Add Tini
+ENV TINI_VERSION=v0.19.0
+ADD https://github.com/krallin/tini/releases/download/${TINI_VERSION}/tini-static /tini
+RUN chmod +x /tini
+
+RUN apk add --no-cache \
+    # 运行时库
+    libssl3 \
+    libcap-ng \
+    # 脚本依赖
+    bash \
+    ca-certificates \
+    # 网络工具
+    iproute2 \
+    iptables
+
+# 复制 OVS
+COPY --from=builder /install/usr/bin/ /usr/bin/
+COPY --from=builder /install/usr/sbin/ /usr/sbin/
+COPY --from=builder /install/usr/lib/ /usr/lib/
+COPY --from=builder /install/usr/share/openvswitch/ /usr/share/openvswitch/
+
+# 创建必要目录和用户
+RUN mkdir -p /var/run/openvswitch /var/log/openvswitch /etc/openvswitch /var/lib/openvswitch && \
+    adduser -D -u 42424 -s /sbin/nologin openvswitch && \
+    chown -R openvswitch:openvswitch /var/lib/openvswitch /etc/openvswitch
+
+# 验证安装
+RUN ovs-vswitchd --version && \
+    ovsdb-server --version && \
+    ovs-vsctl --version && \
+    ovs-appctl --version
+
+ENTRYPOINT ["/tini", "--"]
+CMD ["/bin/sh"]
