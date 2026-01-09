@@ -76,7 +76,13 @@ RUN git clone --depth 1 --branch ${OVN_BRANCH} https://github.com/ovn-org/ovn.gi
 # 编译并安装 OVS
 WORKDIR /build/ovn/ovs
 RUN ./boot.sh && mkdir -p _build && cd _build && \
-    ../configure --prefix=/usr --enable-ssl --enable-shared CFLAGS="-O2 -fPIC" && \
+    ../configure \
+        --prefix=/usr \
+        --localstatedir=/var \
+        --sysconfdir=/etc \
+        --enable-ssl \
+        --enable-shared \
+        CFLAGS="-O2 -fPIC" && \
     make -j$(nproc) && \
     make install
 
