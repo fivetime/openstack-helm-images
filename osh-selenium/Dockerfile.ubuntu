@@ -1,27 +1,8 @@
-ARG FROM=quay.io/airshipit/ubuntu:focal
+ARG FROM=quay.io/airshipit/ubuntu:noble
 FROM ${FROM}
 
-ENV DEBIAN_FRONTEND=noninteractive
+ARG VENV=/osh-selenium_venv
+ENV PATH=${VENV}/bin:$PATH
 
-RUN set -xe && \
-    apt-get update && \
-    apt-get -y upgrade && \
-    apt-get install --no-install-recommends -y \
-      python3 \
-      python3-pip \
-      gnupg \
-      unzip \
-      wget \
-      jq && \
-    python3 -m pip install --upgrade --no-cache-dir pip && \
-    python3 -m pip install --no-cache-dir selenium && \
-    wget -qO- https://dl.google.com/linux/linux_signing_key.pub | apt-key add - && \
-    echo "deb [arch=amd64] http://dl.google.com/linux/chrome/deb/ stable main" >> /etc/apt/sources.list.d/chrome.list && \
-    apt-get update && \
-    apt-get install --no-install-recommends -y google-chrome-stable && \
-    CHROME_VERSION=$(dpkg -s google-chrome-stable | grep -Po '(?<=^Version: ).*' | awk -F'.' '{print $1"."$2"."$3}') && \
-    DRIVER_URL=$(wget -qO- https://googlechromelabs.github.io/chrome-for-testing/last-known-good-versions-with-downloads.json | jq -r --arg chrome_version "$CHROME_VERSION" '.channels.Stable.downloads.chromedriver[] | select(.platform=="linux64" and (.url | test($chrome_version))).url') && \
-    wget -O /tmp/chromedriver.zip "${DRIVER_URL}" && \
-    unzip -j /tmp/chromedriver.zip -d /etc/selenium && \
-    apt-get purge --autoremove -y unzip jq && \
-    rm -rf /var/lib/apt/lists/* /tmp/*
+COPY script.sh /script.sh
+RUN /script.sh && rm -f /script.sh

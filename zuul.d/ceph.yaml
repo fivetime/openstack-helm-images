@@ -29,11 +29,20 @@
         - openstack-helm-images-promote-ceph-config-helper
         - openstack-helm-images-promote-ceph-daemon
         - openstack-helm-images-promote-ceph-utility
-    periodic-weekly:
+    periodic:
       jobs:
-        - openstack-helm-images-build-ceph-config-helper
-        - openstack-helm-images-build-ceph-daemon
-        - openstack-helm-images-build-ceph-utility
+        - openstack-helm-images-upload-ceph-config-helper
+        - openstack-helm-images-upload-ceph-daemon
+        - openstack-helm-images-upload-ceph-utility
+        - openstack-helm-images-promote-ceph-config-helper:
+            dependencies:
+              - name: openstack-helm-images-upload-ceph-config-helper
+        - openstack-helm-images-promote-ceph-daemon:
+            dependencies:
+              - name: openstack-helm-images-upload-ceph-daemon
+        - openstack-helm-images-promote-ceph-utility:
+            dependencies:
+              - name: openstack-helm-images-upload-ceph-utility
 
 - job:
     name: openstack-helm-images-build-ceph-common

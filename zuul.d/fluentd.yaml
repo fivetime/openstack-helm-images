@@ -21,12 +21,13 @@
     promote:
       jobs:
         - openstack-helm-images-promote-fluentd
-    periodic-weekly:
+    periodic:
       jobs:
         - openstack-helm-images-upload-fluentd
         - openstack-helm-images-promote-fluentd:
             dependencies:
-              - name: openstack-helm-images-monitoring
+              - name: openstack-helm-images-logging
+        - openstack-helm-images-logging
 
 - job:
     name: openstack-helm-images-build-fluentd

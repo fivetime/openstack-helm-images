@@ -23,9 +23,12 @@
     promote:
       jobs:
         - openstack-helm-images-promote-tempest
-    periodic-weekly:
+    periodic:
       jobs:
-        - openstack-helm-images-build-tempest
+        - openstack-helm-images-upload-tempest
+        - openstack-helm-images-promote-tempest:
+            dependencies:
+              - name: openstack-helm-images-upload-tempest
 
 - job:
     name: openstack-helm-images-build-tempest

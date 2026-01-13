@@ -21,12 +21,13 @@
     promote:
       jobs:
         - openstack-helm-images-promote-node-problem-detector
-    periodic-weekly:
+    periodic:
       jobs:
         - openstack-helm-images-upload-node-problem-detector
         - openstack-helm-images-promote-node-problem-detector:
             dependencies:
               - name: openstack-helm-images-monitoring
+        - openstack-helm-images-monitoring
 
 - job:
     name: openstack-helm-images-build-node-problem-detector

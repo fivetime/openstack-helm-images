@@ -24,12 +24,13 @@
     promote:
       jobs:
         - openstack-helm-images-promote-ovn
-    periodic-weekly:
+    periodic:
       jobs:
         - openstack-helm-images-upload-ovn
         - openstack-helm-images-promote-ovn:
             dependencies:
-              - name: openstack-helm-images-upload-ovn
+              - name: openstack-helm-images-compute-kit-ovn-2025-1-ubuntu_jammy
+        - openstack-helm-images-compute-kit-ovn-2025-1-ubuntu_jammy
 
 - job:
     name: openstack-helm-images-build-ovn
@@ -82,4 +83,6 @@
     files: *ovn_files
     dependencies:
       - name: openstack-helm-images-build-ovn
+        soft: true
+      - name: openstack-helm-images-upload-ovn
         soft: true
