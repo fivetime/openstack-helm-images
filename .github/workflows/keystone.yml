@@ -93,7 +93,7 @@ jobs:
             release: "2025.1"
           - distro: ubuntu
             version: noble
-            release: "2024.2"
+            release: "2025.2"
           - distro: ubuntu
             version: noble
             release: "2025.1"
