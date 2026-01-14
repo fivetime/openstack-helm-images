@@ -37,23 +37,25 @@
     description: Build ovn images
     vars: &ovn_vars
       currentdate: "{{ now(utc=True,fmt='%Y%m%d') }}"
-      docker_images:
+      container_images:
         - context: ovn
-          repository: openstackhelm/ovn
-          dockerfile: Dockerfile.ubuntu
+          registry: quay.io
+          repository: quay.io/airshipit/ovn
+          container_filename: Dockerfile.ubuntu
           tags:
             - ubuntu_jammy
             - "ubuntu_jammy-{{ currentdate }}"
           build_args:
-            - FROM=ubuntu:jammy
+            - FROM=quay.io/airshipit/ubuntu:jammy
         - context: ovn
-          repository: openstackhelm/ovn
-          dockerfile: Dockerfile.ubuntu
+          registry: quay.io
+          repository: quay.io/airshipit/ovn
+          container_filename: Dockerfile.ubuntu
           tags:
             - ubuntu_noble
             - "ubuntu_noble-{{ currentdate }}"
           build_args:
-            - FROM=ubuntu:noble
+            - FROM=quay.io/airshipit/ubuntu:noble
       docker_use_buildkit: true
     files: &ovn_files
       - ovn/.*

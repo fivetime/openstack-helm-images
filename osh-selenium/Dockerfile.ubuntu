@@ -1,4 +1,4 @@
-ARG FROM=docker.io/ubuntu:focal
+ARG FROM=quay.io/airshipit/ubuntu:focal
 FROM ${FROM}
 
 ENV DEBIAN_FRONTEND=noninteractive

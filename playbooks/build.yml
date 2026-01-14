@@ -1,0 +1,17 @@
+- hosts: all[0]
+  gather_facts: true
+  roles:
+    - use-buildset-registry
+  vars:
+    container_command: docker
+
+  tasks:
+    - name: Build images
+      include_role:
+        name: build-container-image
+
+    - name: Return images to zuul
+      include_tasks: _return-image.yml
+      loop: "{{ container_images }}"
+      loop_control:
+        loop_var: zj_image
