@@ -37,45 +37,42 @@
     description: Build libvirt images
     vars: &libvirt_vars
       currentdate: "{{ now(utc=True,fmt='%Y%m%d') }}"
-      docker_images:
+      container_images:
         - context: libvirt
-          repository: openstackhelm/libvirt
-          dockerfile: Dockerfile
-          arch:
-            - linux/amd64
+          registry: quay.io
+          repository: quay.io/airshipit/libvirt
+          container_filename: Dockerfile
           tags:
             - "dalmatian-ubuntu_noble-{{ currentdate }}"
             - "dalmatian-ubuntu_noble"
             - "2024.2-ubuntu_noble-{{ currentdate }}"
             - "2024.2-ubuntu_noble"
           build_args:
-            - FROM=ubuntu:noble
+            - FROM=quay.io/airshipit/ubuntu:noble
             - RELEASE=dalmatian
         - context: libvirt
-          repository: openstackhelm/libvirt
-          dockerfile: Dockerfile
-          arch:
-            - linux/amd64
+          registry: quay.io
+          repository: quay.io/airshipit/libvirt
+          container_filename: Dockerfile
           tags:
             - "epoxy-ubuntu_noble-{{ currentdate }}"
             - "epoxy-ubuntu_noble"
             - "2025.1-ubuntu_noble-{{ currentdate }}"
             - "2025.1-ubuntu_noble"
           build_args:
-            - FROM=ubuntu:noble
+            - FROM=quay.io/airshipit/ubuntu:noble
             - RELEASE=epoxy
         - context: libvirt
-          repository: openstackhelm/libvirt
-          dockerfile: Dockerfile
-          arch:
-            - linux/amd64
+          registry: quay.io
+          repository: quay.io/airshipit/libvirt
+          container_filename: Dockerfile
           tags:
             - "flamingo-ubuntu_noble-{{ currentdate }}"
             - "flamingo-ubuntu_noble"
             - "2025.2-ubuntu_noble-{{ currentdate }}"
             - "2025.2-ubuntu_noble"
           build_args:
-            - FROM=ubuntu:noble
+            - FROM=quay.io/airshipit/ubuntu:noble
             - RELEASE=flamingo
     files: &libvirt_files
       - libvirt/.*

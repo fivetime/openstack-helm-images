@@ -1,5 +1,5 @@
 # mariadb:10.6.14-focal
-ARG FROM=docker.io/mariadb@sha256:aa38c70792b0330da98fbf20b7191f27f65ff2f55790e5a0b0ec2a02fcb3d03d
+ARG FROM=public.ecr.aws/docker/library/mariadb:11.4.8-noble
 FROM ${FROM}
 
 RUN set -ex ;\

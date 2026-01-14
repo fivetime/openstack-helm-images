@@ -34,13 +34,25 @@
     description: Build Node Problem Detector image
     vars: &node-problem-detector_vars
       currentdate: "{{ now(utc=True,fmt='%Y%m%d') }}"
-      docker_images:
+      container_images:
         - context: node-problem-detector
-          repository: openstackhelm/node-problem-detector
-          dockerfile: Dockerfile.ubuntu_jammy
+          registry: quay.io
+          repository: quay.io/airshipit/node-problem-detector
+          container_filename: Dockerfile
           tags:
             - latest-ubuntu_jammy
             - "ubuntu_jammy-{{ currentdate }}"
+          build_args:
+            - FROM=quay.io/airshipit/ubuntu:jammy
+        - context: node-problem-detector
+          registry: quay.io
+          repository: quay.io/airshipit/node-problem-detector
+          container_filename: Dockerfile
+          tags:
+            - latest-ubuntu_noble
+            - "ubuntu-noble-{{ currentdate }}"
+          build_args:
+            - FROM=quay.io/airshipit/ubuntu:noble
     files: &node-problem-detector_files
       - node-problem-detector/.*
       - zuul.d/node-problem-detector.yaml

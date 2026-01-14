@@ -34,20 +34,13 @@
     description: Build Prometheus aware Nagios core 4 image
     vars: &nagios_vars
       currentdate: "{{ now(utc=True,fmt='%Y%m%d') }}"
-      docker_images:
+      container_images:
         - context: nagios
-          repository: openstackhelm/nagios
-          dockerfile: Dockerfile.ubuntu
+          registry: quay.io
+          repository: quay.io/airshipit/nagios
+          container_filename: Dockerfile
           build_args:
-            - "FROM=docker.io/ubuntu:focal"
-          tags:
-            - latest-ubuntu_focal
-            - "ubuntu_focal-{{ currentdate }}"
-        - context: nagios
-          repository: openstackhelm/nagios
-          dockerfile: Dockerfile.ubuntu
-          build_args:
-            - "FROM=docker.io/ubuntu:jammy"
+            - "FROM=quay.io/airshipit/ubuntu:jammy"
           tags:
             - latest-ubuntu_jammy
             - "ubuntu_jammy-{{ currentdate }}"

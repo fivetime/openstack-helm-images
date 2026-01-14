@@ -34,10 +34,11 @@
     description: Build fluentd image with custom plugins
     vars: &fluentd_vars
       currentdate: "{{ now(utc=True,fmt='%Y%m%d') }}"
-      docker_images:
+      container_images:
         - context: fluentd
-          repository: openstackhelm/fluentd
-          dockerfile: Dockerfile.debian
+          registry: quay.io
+          repository: quay.io/airshipit/fluentd
+          container_filename: Dockerfile.debian
           tags:
             - latest-debian
             - "debian-{{ currentdate }}"
