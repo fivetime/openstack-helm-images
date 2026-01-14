@@ -87,16 +87,16 @@ jobs:
         include:
           - distro: ubuntu
             version: jammy
-            release: "2024.1"
-          - distro: ubuntu
-            version: jammy
             release: "2025.1"
           - distro: ubuntu
-            version: noble
+            version: jammy
             release: "2025.2"
           - distro: ubuntu
             version: noble
             release: "2025.1"
+          - distro: ubuntu
+            version: noble
+            release: "2025.2"
 
     steps:
       - name: Checkout code
