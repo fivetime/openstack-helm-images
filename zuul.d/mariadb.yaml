@@ -23,13 +23,13 @@
     promote:
       jobs:
         - openstack-helm-images-promote-mariadb
-    periodic-weekly:
+    periodic:
       jobs:
         - openstack-helm-images-upload-mariadb
         - openstack-helm-images-promote-mariadb:
             dependencies:
-              - name: openstack-helm-images-compute-kit-2024-2-ubuntu_jammy
-        - openstack-helm-images-compute-kit-2024-2-ubuntu_jammy
+              - name: openstack-helm-images-compute-kit-2025-1-ubuntu_jammy
+        - openstack-helm-images-compute-kit-2025-1-ubuntu_jammy
 
 - job:
     name: openstack-helm-images-build-mariadb

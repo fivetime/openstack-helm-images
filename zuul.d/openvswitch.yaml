@@ -23,13 +23,13 @@
     promote:
       jobs:
         - openstack-helm-images-promote-openvswitch
-    periodic-weekly:
+    periodic:
       jobs:
         - openstack-helm-images-upload-openvswitch
         - openstack-helm-images-promote-openvswitch:
             dependencies:
-              - name: openstack-helm-images-compute-kit-2024-2-ubuntu_jammy
-        - openstack-helm-images-compute-kit-2024-2-ubuntu_jammy
+              - name: openstack-helm-images-compute-kit-2025-1-ubuntu_jammy
+        - openstack-helm-images-compute-kit-2025-1-ubuntu_jammy
 
 - job:
     name: openstack-helm-images-build-openvswitch

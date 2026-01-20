@@ -23,13 +23,15 @@
     promote:
       jobs:
         - openstack-helm-images-promote-osh-selenium
-    periodic-weekly:
+    periodic:
       jobs:
         - openstack-helm-images-upload-osh-selenium
         - openstack-helm-images-promote-osh-selenium:
             dependencies:
               - name: openstack-helm-images-monitoring
               - name: openstack-helm-images-logging
+        - openstack-helm-images-monitoring
+        - openstack-helm-images-logging
 
 - job:
     name: openstack-helm-images-build-osh-selenium
@@ -56,6 +58,15 @@
           tags:
             - latest-ubuntu_jammy
             - "ubuntu_jammy-{{ currentdate }}"
+        - context: osh-selenium
+          registry: quay.io
+          repository: quay.io/airshipit/osh-selenium
+          container_filename: Dockerfile.ubuntu
+          build_args:
+            - "FROM=quay.io/airshipit/ubuntu:noble"
+          tags:
+            - latest-ubuntu_noble
+            - "ubuntu_noble-{{ currentdate }}"
     files: &osh-selenium_files
       - osh-selenium/.*
       - zuul.d/osh-selenium.yaml

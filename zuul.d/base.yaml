@@ -93,7 +93,7 @@
 
 - job:
     name: openstack-helm-images-promote
-    parent: promote-docker-image
+    parent: promote-container-image
     abstract: true
     secrets:
       name: container_registry_credentials
