@@ -17,24 +17,32 @@
     check:
       jobs:
         - openstack-helm-images-build-openvswitch
+        - openstack-helm-images-compute-kit-2025-2-ubuntu_noble
     gate:
       jobs:
+        - openstack-helm-images-build-openvswitch
         - openstack-helm-images-upload-openvswitch
     promote:
       jobs:
         - openstack-helm-images-promote-openvswitch
     periodic:
       jobs:
-        - openstack-helm-images-upload-openvswitch
+        - openstack-helm-images-build-openvswitch
+        - openstack-helm-images-upload-openvswitch:
+            dependencies:
+              - name: openstack-helm-images-buildset-registry
+              - name: openstack-helm-images-build-openvswitch
+              - name: openstack-helm-images-compute-kit-2025-2-ubuntu_noble
         - openstack-helm-images-promote-openvswitch:
             dependencies:
-              - name: openstack-helm-images-compute-kit-2025-1-ubuntu_jammy
-        - openstack-helm-images-compute-kit-2025-1-ubuntu_jammy
+              - name: openstack-helm-images-upload-openvswitch
+        - openstack-helm-images-compute-kit-2025-2-ubuntu_noble
 
 - job:
     name: openstack-helm-images-build-openvswitch
     parent: openstack-helm-images-build
     description: Build openvswitch images
+    nodeset: openstack-helm-images-ubuntu-noble
     vars: &openvswitch_vars
       currentdate: "{{ now(utc=True,fmt='%Y%m%d') }}"
       container_images:
@@ -42,6 +50,9 @@
           registry: quay.io
           repository: quay.io/airshipit/openvswitch
           container_filename: Dockerfile.ubuntu
+          arch:
+            - linux/amd64
+            - linux/arm64
           tags:
             - latest-ubuntu_jammy
             - "ubuntu_jammy-{{ currentdate }}"
@@ -51,6 +62,9 @@
           registry: quay.io
           repository: quay.io/airshipit/openvswitch
           container_filename: Dockerfile.ubuntu
+          arch:
+            - linux/amd64
+            - linux/arm64
           tags:
             - latest-ubuntu_noble
             - "ubuntu_noble-{{ currentdate }}"
@@ -60,6 +74,9 @@
           registry: quay.io
           repository: quay.io/airshipit/openvswitch
           container_filename: Dockerfile.ubuntu-dpdk
+          arch:
+            - linux/amd64
+            - linux/arm64
           tags:
             - latest-ubuntu_jammy-dpdk
             - "ubuntu_jammy-dpdk-{{ currentdate }}"
@@ -69,6 +86,9 @@
           registry: quay.io
           repository: quay.io/airshipit/openvswitch
           container_filename: Dockerfile.ubuntu-dpdk
+          arch:
+            - linux/amd64
+            - linux/arm64
           tags:
             - latest-ubuntu_noble-dpdk
             - "ubuntu_noble-dpdk-{{ currentdate }}"
@@ -77,11 +97,16 @@
     files: &openvswitch_files
       - openvswitch/.*
       - zuul.d/openvswitch.yaml
+      - roles/.*
+      - playbooks/.*
 
 - job:
     name: openstack-helm-images-upload-openvswitch
     parent: openstack-helm-images-upload
     description: Build and upload openvswitch images
+    dependencies:
+      - name: openstack-helm-images-buildset-registry
+      - name: openstack-helm-images-build-openvswitch
     vars: *openvswitch_vars
     files: *openvswitch_files
 

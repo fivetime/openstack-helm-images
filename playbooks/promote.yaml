@@ -1,0 +1,8 @@
+- hosts: all[0]
+  vars:
+    container_command: docker
+
+  tasks:
+    - name: Promote images
+      include_role:
+        name: promote-container-image

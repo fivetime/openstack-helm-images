@@ -14,14 +14,7 @@ EOF
 ARG RELEASE
 RUN <<EOF /bin/bash
   set -xe
-  if [ "$(lsb_release -sc)" = "jammy" ]; then
-    if [[ "${RELEASE}" = "antelope" || "${RELEASE}" = "bobcat" || "${RELEASE}" = "caracal" ]]; then
-      echo "deb http://ubuntu-cloud.archive.canonical.com/ubuntu $(lsb_release -sc)-updates/${RELEASE} main" > /etc/apt/sources.list.d/cloudarchive.list
-    else
-      echo "${RELEASE} is not supported on $(lsb_release -sc)"
-      exit 1
-    fi
-  elif [ "$(lsb_release -sc)" = "noble" ]; then
+  if [ "$(lsb_release -sc)" = "noble" ]; then
     if [[ "${RELEASE}" = "dalmatian" || "${RELEASE}" = "epoxy" || "${RELEASE}" = "flamingo" ]]; then
       echo "deb http://ubuntu-cloud.archive.canonical.com/ubuntu $(lsb_release -sc)-updates/${RELEASE} main" > /etc/apt/sources.list.d/cloudarchive.list
     else

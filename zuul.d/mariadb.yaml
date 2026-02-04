@@ -17,24 +17,32 @@
     check:
       jobs:
         - openstack-helm-images-build-mariadb
+        - openstack-helm-images-compute-kit-2025-2-ubuntu_noble
     gate:
       jobs:
+        - openstack-helm-images-build-mariadb
         - openstack-helm-images-upload-mariadb
     promote:
       jobs:
         - openstack-helm-images-promote-mariadb
     periodic:
       jobs:
-        - openstack-helm-images-upload-mariadb
+        - openstack-helm-images-build-mariadb
+        - openstack-helm-images-upload-mariadb:
+            dependencies:
+              - name: openstack-helm-images-buildset-registry
+              - name: openstack-helm-images-build-mariadb
+              - name: openstack-helm-images-compute-kit-2025-2-ubuntu_noble
         - openstack-helm-images-promote-mariadb:
             dependencies:
-              - name: openstack-helm-images-compute-kit-2025-1-ubuntu_jammy
-        - openstack-helm-images-compute-kit-2025-1-ubuntu_jammy
+              - name: openstack-helm-images-upload-mariadb
+        - openstack-helm-images-compute-kit-2025-2-ubuntu_noble
 
 - job:
     name: openstack-helm-images-build-mariadb
     parent: openstack-helm-images-build
     description: Build mariadb images
+    nodeset: openstack-helm-images-ubuntu-noble
     vars: &mariadb_vars
       currentdate: "{{ now(utc=True,fmt='%Y%m%d') }}"
       container_images:
@@ -42,15 +50,9 @@
           registry: quay.io
           repository: quay.io/airshipit/mariadb
           container_filename: Dockerfile.ubuntu
-          build_args:
-            - FROM=public.ecr.aws/docker/library/mariadb:10.6.14-focal
-          tags:
-            - "latest-ubuntu_focal"
-            - "ubuntu_focal-{{ currentdate }}"
-        - context: mariadb
-          registry: quay.io
-          repository: quay.io/airshipit/mariadb
-          container_filename: Dockerfile.ubuntu
+          arch:
+            - linux/amd64
+            - linux/arm64
           build_args:
             - FROM=public.ecr.aws/docker/library/mariadb:10.11.6-jammy
           tags:
@@ -60,6 +62,9 @@
           registry: quay.io
           repository: quay.io/airshipit/mariadb
           container_filename: Dockerfile.ubuntu
+          arch:
+            - linux/amd64
+            - linux/arm64
           build_args:
             - FROM=public.ecr.aws/docker/library/mariadb:11.4.8-noble
           tags:
@@ -68,11 +73,16 @@
     files: &mariadb_files
       - mariadb/.*
       - zuul.d/mariadb.yaml
+      - roles/.*
+      - playbooks/.*
 
 - job:
     name: openstack-helm-images-upload-mariadb
     parent: openstack-helm-images-upload
     description: Build and upload mariadb images
+    dependencies:
+      - name: openstack-helm-images-buildset-registry
+      - name: openstack-helm-images-build-mariadb
     vars: *mariadb_vars
     files: *mariadb_files
 

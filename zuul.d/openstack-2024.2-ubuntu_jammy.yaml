@@ -11,12 +11,6 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-- project:
-    check:
-      jobs:
-        - openstack-helm-images-compute-kit-2024-2-ubuntu_jammy
-        - openstack-helm-images-cinder-2024-2-ubuntu_jammy
-
 - job:
     name: openstack-helm-images-compute-kit-2024-2-ubuntu_jammy
     parent: openstack-helm-compute-kit-2024-2-ubuntu_jammy
@@ -26,12 +20,6 @@
       - name: openstack-helm-images-build-mariadb
         soft: true
       - name: openstack-helm-images-build-libvirt
-        soft: true
-      - name: openstack-helm-images-upload-openvswitch
-        soft: true
-      - name: openstack-helm-images-upload-mariadb
-        soft: true
-      - name: openstack-helm-images-upload-libvirt
         soft: true
     files:
       - openvswitch/.*
@@ -48,8 +36,6 @@
     nodeset: openstack-helm-5nodes-ubuntu_jammy
     dependencies:
       - name: openstack-helm-images-build-mariadb
-        soft: true
-      - name: openstack-helm-images-upload-mariadb
         soft: true
     files:
       - mariadb/.*

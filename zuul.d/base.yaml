@@ -53,53 +53,62 @@
 # `dockerfile`. Explicit.
 - job:
     name: openstack-helm-images-build
-    parent: build-docker-image
+    abstract: true
+    match-on-config-updates: false
     roles:
       - zuul: openstack/openstack-helm-images
       - zuul: zuul/zuul-jobs
+    pre-run:
+      - playbooks/inject-keys.yaml
+      - playbooks/pre-build.yaml
     run: playbooks/build.yml
-    match-on-config-updates: false
     dependencies:
       - name: openstack-helm-images-buildset-registry
-    abstract: true
-    description: |
-      This job is building a docker image for
-      OpenStack-Helm usage.
-      Image specific tests can be added by
-      running a post script on the relevant
-      jobs.
-    irrelevant-files:
+    irrelevant-files: &irrelevant_files
       - ^\.git.*
       - ^.*\.(example|md|rst)$
       - ^doc/.*
       - ^releasenotes/.*
     timeout: 3600
 
+# The child upload jobs must have dependencies
+# on the buildset regitsty jobs and on build jobs
+# for the images they are going to upload.
 - job:
     name: openstack-helm-images-upload
-    parent: openstack-helm-images-build
-    run:
-      - playbooks/build.yml
-      - playbooks/upload.yml
-    match-on-config-updates: false
-    dependencies:
-      - name: openstack-helm-images-buildset-registry
     abstract: true
+    match-on-config-updates: false
+    roles:
+      - zuul: openstack/openstack-helm-images
+      - zuul: zuul/zuul-jobs
+    timeout: 10800
+    pre-run:
+      - playbooks/inject-keys.yaml
+      - playbooks/pre-build.yaml
+    run:
+      - playbooks/upload.yaml
+    irrelevant-files: *irrelevant_files
     secrets:
       name: container_registry_credentials
       secret: openstack-helm-images_registry_credentials
-      pass-to-parent: true
-    timeout: 3600
 
+
+# The child promote job must be run after upload job.
 - job:
     name: openstack-helm-images-promote
-    parent: promote-container-image
     abstract: true
+    match-on-config-updates: false
+    roles:
+      - zuul: openstack/openstack-helm-images
+      - zuul: zuul/zuul-jobs
+    pre-run:
+      - playbooks/inject-keys.yaml
+      - playbooks/pre-build.yaml
+    run:
+      - playbooks/promote.yaml
     secrets:
       name: container_registry_credentials
       secret: openstack-helm-images_registry_credentials
-      pass-to-parent: true
-    timeout: 3600
 
 # Image testing jobs inheriting from osh jobs running against
 # particular image or set of images.
@@ -115,14 +124,6 @@
       - name: openstack-helm-images-build-node-problem-detector
         soft: true
       - name: openstack-helm-images-build-nagios
-        soft: true
-      - name: openstack-helm-images-upload-prometheus-openstack-exporter
-        soft: true
-      - name: openstack-helm-images-upload-osh-selenium
-        soft: true
-      - name: openstack-helm-images-upload-node-problem-detector
-        soft: true
-      - name: openstack-helm-images-upload-nagios
         soft: true
     files:
       - prometheus-openstack-exporter/.*
@@ -142,10 +143,6 @@
       - name: openstack-helm-images-build-fluentd
         soft: true
       - name: openstack-helm-images-build-osh-selenium
-        soft: true
-      - name: openstack-helm-images-upload-fluentd
-        soft: true
-      - name: openstack-helm-images-upload-osh-selenium
         soft: true
     files:
       - fluentd/.*

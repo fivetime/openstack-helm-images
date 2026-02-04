@@ -17,24 +17,32 @@
     check:
       jobs:
         - openstack-helm-images-build-libvirt
+        - openstack-helm-images-compute-kit-2025-2-ubuntu_noble
     gate:
       jobs:
+        - openstack-helm-images-build-libvirt
         - openstack-helm-images-upload-libvirt
     promote:
       jobs:
         - openstack-helm-images-promote-libvirt
     periodic:
       jobs:
-        - openstack-helm-images-upload-libvirt
+        - openstack-helm-images-build-libvirt
+        - openstack-helm-images-upload-libvirt:
+            dependencies:
+              - name: openstack-helm-images-buildset-registry
+              - name: openstack-helm-images-build-libvirt
+              - name: openstack-helm-images-compute-kit-2025-2-ubuntu_noble
         - openstack-helm-images-promote-libvirt:
             dependencies:
-              - name: openstack-helm-images-compute-kit-2025-1-ubuntu_jammy
-        - openstack-helm-images-compute-kit-2025-1-ubuntu_jammy
+              - name: openstack-helm-images-upload-libvirt
+        - openstack-helm-images-compute-kit-2025-2-ubuntu_noble
 
 - job:
     name: openstack-helm-images-build-libvirt
     parent: openstack-helm-images-build
     description: Build libvirt images
+    nodeset: openstack-helm-images-ubuntu-noble
     vars: &libvirt_vars
       currentdate: "{{ now(utc=True,fmt='%Y%m%d') }}"
       container_images:
@@ -42,6 +50,9 @@
           registry: quay.io
           repository: quay.io/airshipit/libvirt
           container_filename: Dockerfile
+          arch:
+            - linux/amd64
+            - linux/arm64
           tags:
             - "dalmatian-ubuntu_noble-{{ currentdate }}"
             - "dalmatian-ubuntu_noble"
@@ -54,6 +65,9 @@
           registry: quay.io
           repository: quay.io/airshipit/libvirt
           container_filename: Dockerfile
+          arch:
+            - linux/amd64
+            - linux/arm64
           tags:
             - "epoxy-ubuntu_noble-{{ currentdate }}"
             - "epoxy-ubuntu_noble"
@@ -66,6 +80,9 @@
           registry: quay.io
           repository: quay.io/airshipit/libvirt
           container_filename: Dockerfile
+          arch:
+            - linux/amd64
+            - linux/arm64
           tags:
             - "flamingo-ubuntu_noble-{{ currentdate }}"
             - "flamingo-ubuntu_noble"
@@ -77,11 +94,16 @@
     files: &libvirt_files
       - libvirt/.*
       - zuul.d/libvirt.yaml
+      - roles/.*
+      - playbooks/.*
 
 - job:
     name: openstack-helm-images-upload-libvirt
     parent: openstack-helm-images-upload
     description: Build and upload libvirt images
+    dependencies:
+      - name: openstack-helm-images-buildset-registry
+      - name: openstack-helm-images-build-libvirt
     vars: *libvirt_vars
     files: *libvirt_files
 

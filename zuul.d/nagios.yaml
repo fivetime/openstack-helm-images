@@ -15,24 +15,32 @@
     check:
       jobs:
         - openstack-helm-images-build-nagios
+        - openstack-helm-images-monitoring
     gate:
       jobs:
+        - openstack-helm-images-build-nagios
         - openstack-helm-images-upload-nagios
     promote:
       jobs:
         - openstack-helm-images-promote-nagios
     periodic:
       jobs:
-        - openstack-helm-images-upload-nagios
+        - openstack-helm-images-build-nagios
+        - openstack-helm-images-upload-nagios:
+            dependencies:
+              - name: openstack-helm-images-buildset-registry
+              - name: openstack-helm-images-build-nagios
+              - name: openstack-helm-images-monitoring
         - openstack-helm-images-promote-nagios:
             dependencies:
-              - name: openstack-helm-images-monitoring
+              - name: openstack-helm-images-upload-nagios
         - openstack-helm-images-monitoring
 
 - job:
     name: openstack-helm-images-build-nagios
     parent: openstack-helm-images-build
     description: Build Prometheus aware Nagios core 4 image
+    nodeset: openstack-helm-images-ubuntu-noble
     vars: &nagios_vars
       currentdate: "{{ now(utc=True,fmt='%Y%m%d') }}"
       container_images:
@@ -40,6 +48,9 @@
           registry: quay.io
           repository: quay.io/airshipit/nagios
           container_filename: Dockerfile
+          arch:
+            - linux/amd64
+            - linux/arm64
           build_args:
             - "FROM=quay.io/airshipit/ubuntu:jammy"
           tags:
@@ -48,11 +59,16 @@
     files: &nagios_files
       - nagios/.*
       - zuul.d/nagios.yaml
+      - roles/.*
+      - playbooks/.*
 
 - job:
     name: openstack-helm-images-upload-nagios
     parent: openstack-helm-images-upload
     description: Build and upload Prometheus aware Nagios core 4 image
+    dependencies:
+      - name: openstack-helm-images-buildset-registry
+      - name: openstack-helm-images-build-nagios
     vars: *nagios_vars
     files: *nagios_files
 
