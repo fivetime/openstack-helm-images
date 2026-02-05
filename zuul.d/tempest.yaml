@@ -19,13 +19,18 @@
         - openstack-helm-images-build-tempest
     gate:
       jobs:
+        - openstack-helm-images-build-tempest
         - openstack-helm-images-upload-tempest
     promote:
       jobs:
         - openstack-helm-images-promote-tempest
     periodic:
       jobs:
-        - openstack-helm-images-upload-tempest
+        - openstack-helm-images-build-tempest
+        - openstack-helm-images-upload-tempest:
+            dependencies:
+              - name: openstack-helm-images-buildset-registry
+              - name: openstack-helm-images-build-tempest
         - openstack-helm-images-promote-tempest:
             dependencies:
               - name: openstack-helm-images-upload-tempest
@@ -34,6 +39,7 @@
     name: openstack-helm-images-build-tempest
     parent: openstack-helm-images-build
     description: Build tempest images
+    nodeset: openstack-helm-images-ubuntu-noble
     vars: &tempest_vars
       currentdate: "{{ now(utc=True,fmt='%Y%m%d') }}"
       container_images:
@@ -41,6 +47,9 @@
           registry: quay.io
           repository: quay.io/airshipit/tempest
           container_filename: Dockerfile
+          arch:
+            - linux/amd64
+            - linux/arm64
           build_args:
             - "FROM='quay.io/airshipit/ubuntu:noble'"
           tags:
@@ -49,11 +58,16 @@
     files: &tempest_files
       - tempest/.*
       - zuul.d/tempest.yaml
+      - roles/.*
+      - playbooks/.*
 
 - job:
     name: openstack-helm-images-upload-tempest
     parent: openstack-helm-images-upload
     description: Build and upload tempest images
+    dependencies:
+      - name: openstack-helm-images-buildset-registry
+      - name: openstack-helm-images-build-tempest
     vars: *tempest_vars
     files: *tempest_files
 

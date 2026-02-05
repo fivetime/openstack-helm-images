@@ -17,12 +17,15 @@ RUN set -ex \
     && apt-get update \
     && apt-get upgrade -y \
     && apt-get install -y --install-recommends \
+         ca-certificates \
          jq \
          curl \
          snmp \
          snmpd \
          unzip \
          apache2 \
+         pkg-config \
+         build-essential \
          libssl-dev \
          checkinstall \
          libapache2-mod-php \

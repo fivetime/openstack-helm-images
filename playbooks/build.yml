@@ -1,4 +1,4 @@
-- hosts: all[0]
+- hosts: all
   gather_facts: true
   roles:
     - use-buildset-registry

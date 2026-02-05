@@ -26,8 +26,13 @@ curl -fsSL https://dl.google.com/linux/linux_signing_key.pub \
 
 chmod 0644 /etc/apt/keyrings/google-chrome.gpg
 
-echo "deb [arch=amd64 signed-by=/etc/apt/keyrings/google-chrome.gpg] https://dl.google.com/linux/chrome/deb/ stable main" \
-  | tee /etc/apt/sources.list.d/google-chrome.list
+if [[ "${TARGETARCH:-}" == "arm64" ]]; then
+  echo "deb [arch=arm64 signed-by=/etc/apt/keyrings/google-chrome.gpg] https://dl.google.com/linux/chrome/deb/ stable main" \
+    | tee /etc/apt/sources.list.d/google-chrome.list
+else
+  echo "deb [arch=amd64 signed-by=/etc/apt/keyrings/google-chrome.gpg] https://dl.google.com/linux/chrome/deb/ stable main" \
+    | tee /etc/apt/sources.list.d/google-chrome.list
+fi
 
 cat >/etc/apt/apt.conf.d/99retries-timeouts <<'EOF'
 Acquire::Retries "10";
@@ -37,6 +42,7 @@ Acquire::ForceIPv4 "true";
 EOF
 
 apt-get update
+apt search google-chrome
 apt-get install --no-install-recommends -y google-chrome-stable
 
 python3 -m venv ${VENV}
@@ -47,6 +53,9 @@ python -m pip install --no-cache-dir selenium
 CHROME_VERSION=$(dpkg -s google-chrome-stable | grep -Po '(?<=^Version: ).*' | awk -F'.' '{print $1"."$2"."$3}')
 echo "Detected Chrome version: ${CHROME_VERSION}"
 DRIVER_URL=$(wget -qO- https://googlechromelabs.github.io/chrome-for-testing/last-known-good-versions-with-downloads.json | jq -r --arg chrome_version "$CHROME_VERSION" '.channels | (.Stable, .Beta) | .downloads.chromedriver[] | select(.platform=="linux64" and (.url | test($chrome_version))).url')
+if [[ -z "${DRIVER_URL}" ]]; then
+  DRIVER_URL=$(wget -qO- https://googlechromelabs.github.io/chrome-for-testing/known-good-versions-with-downloads.json | jq -r --arg chrome_version "$CHROME_VERSION" '[ .versions[] | select(.version | startswith($chrome_version)) | .downloads.chromedriver[] | select(.platform=="linux64") | .url ] | last')
+fi
 echo "Downloading ChromeDriver from: ${DRIVER_URL}"
 wget -O /tmp/chromedriver.zip "${DRIVER_URL}"
 unzip -j /tmp/chromedriver.zip -d /etc/selenium

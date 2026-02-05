@@ -1,6 +1,9 @@
 ARG FROM=quay.io/airshipit/ubuntu:noble
 FROM ${FROM}
 
+ARG TARGETARCH
+ARG TARGETPLATFORM
+
 ARG VENV=/osh-selenium_venv
 ENV PATH=${VENV}/bin:$PATH
 

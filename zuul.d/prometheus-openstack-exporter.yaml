@@ -15,24 +15,32 @@
     check:
       jobs:
         - openstack-helm-images-build-prometheus-openstack-exporter
+        - openstack-helm-images-monitoring
     gate:
       jobs:
+        - openstack-helm-images-build-prometheus-openstack-exporter
         - openstack-helm-images-upload-prometheus-openstack-exporter
     promote:
       jobs:
         - openstack-helm-images-promote-prometheus-openstack-exporter
     periodic:
       jobs:
-        - openstack-helm-images-upload-prometheus-openstack-exporter
+        - openstack-helm-images-build-prometheus-openstack-exporter
+        - openstack-helm-images-upload-prometheus-openstack-exporter:
+            dependencies:
+              - name: openstack-helm-images-buildset-registry
+              - name: openstack-helm-images-build-prometheus-openstack-exporter
+              - name: openstack-helm-images-monitoring
         - openstack-helm-images-promote-prometheus-openstack-exporter:
             dependencies:
-              - name: openstack-helm-images-monitoring
+              - name: openstack-helm-images-upload-prometheus-openstack-exporter
         - openstack-helm-images-monitoring
 
 - job:
     name: openstack-helm-images-build-prometheus-openstack-exporter
     parent: openstack-helm-images-build
     description: Build Prometheus OpenStack exporter image
+    nodeset: openstack-helm-images-ubuntu-noble
     vars: &prometheus-openstack-exporter_vars
       currentdate: "{{ now(utc=True,fmt='%Y%m%d') }}"
       container_images:
@@ -40,6 +48,9 @@
           registry: quay.io
           repository: quay.io/airshipit/prometheus-openstack-exporter
           container_filename: Dockerfile.ubuntu
+          arch:
+            - linux/amd64
+            - linux/arm64
           build_args:
             - "FROM=quay.io/airshipit/ubuntu:jammy"
           tags:
@@ -48,11 +59,16 @@
     files: &prometheus-openstack-exporter_files
       - prometheus-openstack-exporter/.*
       - zuul.d/prometheus-openstack-exporter.yaml
+      - roles/.*
+      - playbooks/.*
 
 - job:
     name: openstack-helm-images-upload-prometheus-openstack-exporter
     parent: openstack-helm-images-upload
     description: Build and upload Prometheus OpenStack exporter image
+    dependencies:
+      - name: openstack-helm-images-buildset-registry
+      - name: openstack-helm-images-build-prometheus-openstack-exporter
     vars: *prometheus-openstack-exporter_vars
     files: *prometheus-openstack-exporter_files
 

@@ -21,6 +21,9 @@
         - openstack-helm-images-build-ceph-utility
     gate:
       jobs:
+        - openstack-helm-images-build-ceph-config-helper
+        - openstack-helm-images-build-ceph-daemon
+        - openstack-helm-images-build-ceph-utility
         - openstack-helm-images-upload-ceph-config-helper
         - openstack-helm-images-upload-ceph-daemon
         - openstack-helm-images-upload-ceph-utility
@@ -31,6 +34,9 @@
         - openstack-helm-images-promote-ceph-utility
     periodic:
       jobs:
+        - openstack-helm-images-build-ceph-config-helper
+        - openstack-helm-images-build-ceph-daemon
+        - openstack-helm-images-build-ceph-utility
         - openstack-helm-images-upload-ceph-config-helper
         - openstack-helm-images-upload-ceph-daemon
         - openstack-helm-images-upload-ceph-utility
@@ -82,6 +88,9 @@
     name: openstack-helm-images-upload-ceph-config-helper
     parent: openstack-helm-images-upload
     description: Build and upload ceph-config-helper images
+    dependencies:
+      - name: openstack-helm-images-buildset-registry
+      - name: openstack-helm-images-build-ceph-config-helper
     vars: *ceph-config-helper_vars
     files: *ceph_files
 
@@ -107,6 +116,9 @@
     name: openstack-helm-images-upload-ceph-daemon
     parent: openstack-helm-images-upload
     description: Build and upload ceph-daemon images
+    dependencies:
+      - name: openstack-helm-images-buildset-registry
+      - name: openstack-helm-images-build-ceph-daemon
     vars: *ceph-daemon_vars
     files: *ceph_files
 
@@ -132,6 +144,9 @@
     name: openstack-helm-images-upload-ceph-utility
     parent: openstack-helm-images-upload
     description: Build and upload ceph-utility images
+    dependencies:
+      - name: openstack-helm-images-buildset-registry
+      - name: openstack-helm-images-build-ceph-utility
     vars: *ceph-utility_vars
     files: *ceph_files
 

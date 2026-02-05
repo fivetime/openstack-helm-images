@@ -15,24 +15,32 @@
     check:
       jobs:
         - openstack-helm-images-build-node-problem-detector
+        - openstack-helm-images-monitoring
     gate:
       jobs:
+        - openstack-helm-images-build-node-problem-detector
         - openstack-helm-images-upload-node-problem-detector
     promote:
       jobs:
         - openstack-helm-images-promote-node-problem-detector
     periodic:
       jobs:
-        - openstack-helm-images-upload-node-problem-detector
+        - openstack-helm-images-build-node-problem-detector
+        - openstack-helm-images-upload-node-problem-detector:
+            dependencies:
+              - name: openstack-helm-images-buildset-registry
+              - name: openstack-helm-images-build-node-problem-detector
+              - name: openstack-helm-images-monitoring
         - openstack-helm-images-promote-node-problem-detector:
             dependencies:
-              - name: openstack-helm-images-monitoring
+              - name: openstack-helm-images-upload-node-problem-detector
         - openstack-helm-images-monitoring
 
 - job:
     name: openstack-helm-images-build-node-problem-detector
     parent: openstack-helm-images-build
     description: Build Node Problem Detector image
+    nodeset: openstack-helm-images-ubuntu-noble
     vars: &node-problem-detector_vars
       currentdate: "{{ now(utc=True,fmt='%Y%m%d') }}"
       container_images:
@@ -40,6 +48,9 @@
           registry: quay.io
           repository: quay.io/airshipit/node-problem-detector
           container_filename: Dockerfile
+          arch:
+            - linux/amd64
+            - linux/arm64
           tags:
             - latest-ubuntu_jammy
             - "ubuntu_jammy-{{ currentdate }}"
@@ -49,6 +60,9 @@
           registry: quay.io
           repository: quay.io/airshipit/node-problem-detector
           container_filename: Dockerfile
+          arch:
+            - linux/amd64
+            - linux/arm64
           tags:
             - latest-ubuntu_noble
             - "ubuntu-noble-{{ currentdate }}"
@@ -57,11 +71,16 @@
     files: &node-problem-detector_files
       - node-problem-detector/.*
       - zuul.d/node-problem-detector.yaml
+      - roles/.*
+      - playbooks/.*
 
 - job:
     name: openstack-helm-images-upload-node-problem-detector
     parent: openstack-helm-images-upload
     description: Build and upload Node problem detector image
+    dependencies:
+      - name: openstack-helm-images-buildset-registry
+      - name: openstack-helm-images-build-node-problem-detector
     vars: *node-problem-detector_vars
     files: *node-problem-detector_files
 
