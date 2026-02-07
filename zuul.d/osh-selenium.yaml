@@ -17,19 +17,27 @@
     check:
       jobs:
         - openstack-helm-images-build-osh-selenium
+        - openstack-helm-images-monitoring
+        - openstack-helm-images-logging
     gate:
       jobs:
+        - openstack-helm-images-build-osh-selenium
         - openstack-helm-images-upload-osh-selenium
     promote:
       jobs:
         - openstack-helm-images-promote-osh-selenium
     periodic:
       jobs:
-        - openstack-helm-images-upload-osh-selenium
-        - openstack-helm-images-promote-osh-selenium:
+        - openstack-helm-images-build-osh-selenium
+        - openstack-helm-images-upload-osh-selenium:
             dependencies:
+              - name: openstack-helm-images-buildset-registry
+              - name: openstack-helm-images-build-osh-selenium
               - name: openstack-helm-images-monitoring
               - name: openstack-helm-images-logging
+        - openstack-helm-images-promote-osh-selenium:
+            dependencies:
+              - name: openstack-helm-images-upload-osh-selenium
         - openstack-helm-images-monitoring
         - openstack-helm-images-logging
 
@@ -40,15 +48,6 @@
     vars: &osh-selenium_vars
       currentdate: "{{ now(utc=True,fmt='%Y%m%d') }}"
       container_images:
-        - context: osh-selenium
-          registry: quay.io
-          repository: quay.io/airshipit/osh-selenium
-          container_filename: Dockerfile.ubuntu
-          build_args:
-            - "FROM=quay.io/airshipit/ubuntu:focal"
-          tags:
-            - latest-ubuntu_focal
-            - "ubuntu_focal-{{ currentdate }}"
         - context: osh-selenium
           registry: quay.io
           repository: quay.io/airshipit/osh-selenium
@@ -70,11 +69,16 @@
     files: &osh-selenium_files
       - osh-selenium/.*
       - zuul.d/osh-selenium.yaml
+      - roles/.*
+      - playbooks/.*
 
 - job:
     name: openstack-helm-images-upload-osh-selenium
     parent: openstack-helm-images-upload
     description: Build and upload selenium image with chrome headless driver
+    dependencies:
+      - name: openstack-helm-images-buildset-registry
+      - name: openstack-helm-images-build-osh-selenium
     vars: *osh-selenium_vars
     files: *osh-selenium_files
 

@@ -1,0 +1,11 @@
+- hosts: all[0]
+  gather_facts: true
+  roles:
+    - use-buildset-registry
+  vars:
+    container_command: docker
+
+  tasks:
+    - name: Upload images
+      include_role:
+        name: upload-container-image

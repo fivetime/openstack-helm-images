@@ -17,21 +17,28 @@
         - openstack-helm-images-build-fluentd
     gate:
       jobs:
+        - openstack-helm-images-build-fluentd
         - openstack-helm-images-upload-fluentd
     promote:
       jobs:
         - openstack-helm-images-promote-fluentd
     periodic:
       jobs:
-        - openstack-helm-images-upload-fluentd
+        - openstack-helm-images-build-fluentd
+        - openstack-helm-images-upload-fluentd:
+            dependencies:
+              - name: openstack-helm-images-buildset-registry
+              - name: openstack-helm-images-build-fluentd
+              - name: openstack-helm-images-logging
         - openstack-helm-images-promote-fluentd:
             dependencies:
-              - name: openstack-helm-images-logging
+              - name: openstack-helm-images-upload-fluentd
         - openstack-helm-images-logging
 
 - job:
     name: openstack-helm-images-build-fluentd
     parent: openstack-helm-images-build
+    nodeset: openstack-helm-images-ubuntu-noble
     description: Build fluentd image with custom plugins
     vars: &fluentd_vars
       currentdate: "{{ now(utc=True,fmt='%Y%m%d') }}"
@@ -40,17 +47,25 @@
           registry: quay.io
           repository: quay.io/airshipit/fluentd
           container_filename: Dockerfile.debian
+          arch:
+            - linux/amd64
+            - linux/arm64
           tags:
             - latest-debian
             - "debian-{{ currentdate }}"
     files: &fluentd_files
       - fluentd/.*
       - zuul.d/fluentd.yaml
+      - roles/.*
+      - playbooks/.*
 
 - job:
     name: openstack-helm-images-upload-fluentd
     parent: openstack-helm-images-upload
-    description: Build and upload fluentd image with additional plugins
+    description: Upload fluentd image with additional plugins
+    dependencies:
+      - name: openstack-helm-images-buildset-registry
+      - name: openstack-helm-images-build-fluentd
     vars: *fluentd_vars
     files: *fluentd_files
 
