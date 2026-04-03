@@ -58,7 +58,7 @@ jobs:
           echo "Target: ${IMAGE}"
           
           docker build \
-            -f Dockerfile \
+            -f Dockerfile.postgresql \
             --network=host \
             --build-arg FROM=quay.io/airshipit/keystone:${{ matrix.release }}-${{ matrix.distro }}_${{ matrix.version }} \
             -t ${IMAGE} \
