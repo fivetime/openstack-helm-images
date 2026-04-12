@@ -12,9 +12,9 @@
 # limitations under the License.
 
 - job:
-    name: openstack-helm-images-build-tacker
+    name: openstack-helm-images-build-mistral
     parent: openstack-helm-images-build
-    description: Build tacker images
+    description: Build mistral images
     nodeset: openstack-helm-images-ubuntu-noble
     dependencies:
       - name: openstack-helm-images-buildset-registry
@@ -22,13 +22,13 @@
         soft: true
       - name: openstack-helm-images-build-venv-builder
         soft: true
-    vars: &tacker_vars
+    vars: &mistral_vars
       currentdate: "{{ now(utc=True,fmt='%Y%m%d') }}"
       container_images:
         - context: .
           registry: quay.io
-          repository: quay.io/airshipit/tacker
-          container_filename: tacker/Dockerfile
+          repository: quay.io/airshipit/mistral
+          container_filename: mistral/Dockerfile
           arch:
             - linux/amd64
             - linux/arm64
@@ -41,8 +41,8 @@
             - "PROJECT_REF=stable/2025.1"
         - context: .
           registry: quay.io
-          repository: quay.io/airshipit/tacker
-          container_filename: tacker/Dockerfile
+          repository: quay.io/airshipit/mistral
+          container_filename: mistral/Dockerfile
           arch:
             - linux/amd64
             - linux/arm64
@@ -55,8 +55,8 @@
             - "PROJECT_REF=stable/2025.2"
         - context: .
           registry: quay.io
-          repository: quay.io/airshipit/tacker
-          container_filename: tacker/Dockerfile
+          repository: quay.io/airshipit/mistral
+          container_filename: mistral/Dockerfile
           arch:
             - linux/amd64
             - linux/arm64
@@ -67,25 +67,25 @@
             - "BASE_VENV_BUILDER=quay.io/airshipit/venv_builder:2026.1-ubuntu_noble"
             - "BASE_RUNTIME=quay.io/airshipit/base:2026.1-ubuntu_noble"
             - "PROJECT_REF=stable/2026.1"
-    files: &tacker_files
-      - tacker/.*
-      - zuul.d/tacker.yaml
+    files: &mistral_files
+      - mistral/.*
+      - zuul.d/mistral.yaml
       - roles/.*
       - playbooks/.*
 
 - job:
-    name: openstack-helm-images-upload-tacker
+    name: openstack-helm-images-upload-mistral
     parent: openstack-helm-images-upload
-    description: Build and upload tacker images
+    description: Build and upload mistral images
     dependencies:
       - name: openstack-helm-images-buildset-registry
-      - name: openstack-helm-images-build-tacker
-    vars: *tacker_vars
-    files: *tacker_files
+      - name: openstack-helm-images-build-mistral
+    vars: *mistral_vars
+    files: *mistral_files
 
 - job:
-    name: openstack-helm-images-promote-tacker
+    name: openstack-helm-images-promote-mistral
     parent: openstack-helm-images-promote
-    description: Promote a previously published tacker image to latest.
-    vars: *tacker_vars
-    files: *tacker_files
+    description: Promote a previously published mistral image to latest.
+    vars: *mistral_vars
+    files: *mistral_files
