@@ -1,0 +1,92 @@
+# ========================================
+# Dockerfile.tsdb-packager
+# 为 Percona PGO Custom Extensions 机制打包 TimescaleDB
+# ========================================
+# 用法:
+#   docker build \
+#     --build-arg PG_MAJOR=18 \
+#     --build-arg TSDB_VERSION=2.26.3 \
+#     --build-arg EDITION=oss \
+#     -t tue-cloud/tsdb-packager:pg18-2.26.3-oss \
+#     -f Dockerfile.tsdb-packager .
+#
+# 提取产物 (最终镜像是 scratch, 无默认 CMD, docker create 需要占位命令 /x):
+#   cid=$(docker create tue-cloud/tsdb-packager:pg18-2.26.3-oss /x)
+#   docker cp "$cid:/timescaledb-pg18-2.26.3.tar.gz" ./
+#   docker rm "$cid"
+
+FROM ubuntu:24.04 AS packager
+
+ARG PG_MAJOR=18
+ARG TSDB_VERSION=2.26.3
+ARG UBUNTU_CODENAME=noble
+# EDITION: oss (Apache-2.0) 或 tsl (Timescale License)
+ARG EDITION=oss
+
+ENV DEBIAN_FRONTEND=noninteractive
+
+RUN apt-get update && apt-get install -y --no-install-recommends \
+        curl ca-certificates gnupg dpkg-dev && \
+    rm -rf /var/lib/apt/lists/*
+
+# 1. 添加 Timescale apt 仓库
+RUN install -d /usr/share/keyrings && \
+    curl -fsSL https://packagecloud.io/timescale/timescaledb/gpgkey | \
+      gpg --dearmor -o /usr/share/keyrings/timescaledb.gpg && \
+    echo "deb [signed-by=/usr/share/keyrings/timescaledb.gpg] \
+      https://packagecloud.io/timescale/timescaledb/ubuntu/ ${UBUNTU_CODENAME} main" \
+      > /etc/apt/sources.list.d/timescaledb.list && \
+    apt-get update
+
+# 2. 仅下载 .deb 不安装（避免 postinst 副作用）
+WORKDIR /work
+RUN set -eux; \
+    # Loader 包（固定名称，无版本在包名里）
+    apt-get download timescaledb-2-loader-postgresql-${PG_MAJOR}; \
+    # 版本包（OSS 或 TSL）
+    if [ "${EDITION}" = "oss" ]; then \
+        apt-get download "timescaledb-2-oss-${TSDB_VERSION}-postgresql-${PG_MAJOR}"; \
+    else \
+        apt-get download "timescaledb-2-${TSDB_VERSION}-postgresql-${PG_MAJOR}"; \
+    fi; \
+    ls -la *.deb
+
+# 3. 解开 .deb 并合并到 Percona (RHEL) 路径布局
+RUN set -eux; \
+    mkdir -p loader-ex version-ex; \
+    dpkg-deb -x timescaledb-2-loader-postgresql-${PG_MAJOR}_*.deb loader-ex/; \
+    dpkg-deb -x "timescaledb-2"*"${TSDB_VERSION}"*"postgresql-${PG_MAJOR}"*.deb version-ex/; \
+    \
+    mkdir -p "out/usr/pgsql-${PG_MAJOR}/lib" \
+             "out/usr/pgsql-${PG_MAJOR}/share/extension"; \
+    \
+    # Loader 包贡献：.control + loader stub
+    cp "loader-ex/usr/lib/postgresql/${PG_MAJOR}/lib/timescaledb.so" \
+       "out/usr/pgsql-${PG_MAJOR}/lib/"; \
+    cp "loader-ex/usr/share/postgresql/${PG_MAJOR}/extension/timescaledb.control" \
+       "out/usr/pgsql-${PG_MAJOR}/share/extension/"; \
+    \
+    # 版本包贡献：版本化 .so + SQL
+    cp "version-ex/usr/lib/postgresql/${PG_MAJOR}/lib/timescaledb-"*.so \
+       "out/usr/pgsql-${PG_MAJOR}/lib/"; \
+    cp "version-ex/usr/share/postgresql/${PG_MAJOR}/extension/timescaledb--"*.sql \
+       "out/usr/pgsql-${PG_MAJOR}/share/extension/"
+
+# 4. 校验完整性
+RUN set -eux; \
+    test -f "out/usr/pgsql-${PG_MAJOR}/share/extension/timescaledb.control"; \
+    test -f "out/usr/pgsql-${PG_MAJOR}/share/extension/timescaledb--${TSDB_VERSION}.sql"; \
+    test -f "out/usr/pgsql-${PG_MAJOR}/lib/timescaledb.so"; \
+    test -f "out/usr/pgsql-${PG_MAJOR}/lib/timescaledb-${TSDB_VERSION}.so"; \
+    grep -q "default_version = '${TSDB_VERSION}'" \
+      "out/usr/pgsql-${PG_MAJOR}/share/extension/timescaledb.control"; \
+    echo "✓ all integrity checks passed"
+
+# 5. 打包：cd 到 out 下避免前导 /
+RUN cd out && \
+    tar czf "/timescaledb-pg${PG_MAJOR}-${TSDB_VERSION}.tar.gz" usr/ && \
+    ls -lh "/timescaledb-pg${PG_MAJOR}-${TSDB_VERSION}.tar.gz"
+
+# 产物镜像
+FROM scratch
+COPY --from=packager /timescaledb-pg*.tar.gz /
