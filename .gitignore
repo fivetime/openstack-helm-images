@@ -67,3 +67,4 @@ releasenotes/build
 /.idea/openstack-helm-images.iml
 /qodana.yaml
 /.idea/vcs.xml
+/.claude/settings.local.json
