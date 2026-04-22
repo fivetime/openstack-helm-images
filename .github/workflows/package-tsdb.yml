@@ -24,6 +24,7 @@ env:
   REGISTRY: ghcr.io
   OWNER: ${{ github.repository_owner }}
   NAMESPACE: openstackhelm
+  R2_BUCKET: tsdb-percona
 
 jobs:
   package-and-publish:
@@ -76,3 +77,18 @@ jobs:
           name: timescaledb-pg${{ inputs.pg_major }}-${{ inputs.tsdb_version }}-${{ inputs.edition }}
           path: timescaledb-pg${{ inputs.pg_major }}-${{ inputs.tsdb_version }}.tar.gz
           retention-days: 30
+
+      - name: Upload tar.gz to Cloudflare R2
+        env:
+          AWS_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
+          AWS_EC2_METADATA_DISABLED: "true"
+          AWS_DEFAULT_REGION: auto
+          AWS_REQUEST_CHECKSUM_CALCULATION: when_required
+          AWS_RESPONSE_CHECKSUM_VALIDATION: when_required
+        run: |
+          artifact="timescaledb-pg${{ inputs.pg_major }}-${{ inputs.tsdb_version }}.tar.gz"
+          aws s3 cp "${artifact}" "s3://${R2_BUCKET}/${artifact}" \
+            --endpoint-url "${{ secrets.R2_ENDPOINT }}"
+          aws s3 ls "s3://${R2_BUCKET}/" \
+            --endpoint-url "${{ secrets.R2_ENDPOINT }}"
