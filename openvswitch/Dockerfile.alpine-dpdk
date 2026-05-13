@@ -1,0 +1,179 @@
+# =============================================================================
+# OVS-DPDK 运行时镜像 - 适用于 OpenStack-Helm
+#
+# 包含: ovs-vswitchd (DPDK), ovsdb-server 及相关工具
+#
+# 支持的 DPDK 驱动:
+#   - net/virtio      : 虚拟机 virtio 网卡
+#   - net/i40e        : Intel X710/XL710 系列
+#   - net/ixgbe       : Intel 82599/X520/X540 系列
+#   - net/e1000       : Intel 千兆网卡
+#   - net/af_packet   : Linux AF_PACKET
+#   - net/vhost       : vhost-user
+#   - net/tap         : TAP 设备
+#   - net/ring        : Ring PMD
+#   - net/vmxnet3     : VMware VMXNET3
+#   - net/ena         : AWS ENA
+#
+# 禁用的 DPDK 驱动 (减小镜像体积):
+#   - net/mlx*        : Mellanox 网卡 (需要 MLNX_OFED SDK)
+#   - common/mlx*     : Mellanox 公共库
+#   - raw/*           : 原始设备驱动
+#   - crypto/*        : 加密加速器
+#   - baseband/*      : 基带处理器
+#   - dma/*           : DMA 设备
+#   - regex/*         : 正则表达式加速器
+#   - ml/*            : 机器学习加速器
+#   - gpu/*           : GPU 驱动
+#
+# 构建:
+#   docker build -f Dockerfile.alpine-dpdk -t openvswitch:alpine_latest-dpdk .
+#
+# 指定版本:
+#   docker build -f Dockerfile.alpine-dpdk --build-arg OVS_BRANCH=v3.4.0 --build-arg DPDK_BRANCH=v23.11 -t openvswitch:v3.4.0-dpdk .
+#
+# 验证:
+#   docker run --rm openvswitch:alpine_latest-dpdk ovs-vswitchd --version
+#   docker run --rm openvswitch:alpine_latest-dpdk ovsdb-server --version
+# =============================================================================
+
+ARG ALPINE_VERSION=3.23
+
+# -----------------------------------------------------------------------------
+# 阶段 1: 编译 DPDK 和 OVS
+# -----------------------------------------------------------------------------
+FROM alpine:${ALPINE_VERSION} AS builder
+
+ARG OVS_BRANCH=main
+ARG DPDK_BRANCH=main
+
+RUN apk add --no-cache \
+    git \
+    build-base \
+    autoconf \
+    automake \
+    libtool \
+    pkgconf \
+    python3 \
+    python3-dev \
+    py3-pip \
+    py3-elftools \
+    openssl-dev \
+    libcap-ng-dev \
+    linux-headers \
+    numactl-dev \
+    libpcap-dev \
+    jansson-dev \
+    meson \
+    ninja \
+    rdma-core-dev \
+    pciutils-dev \
+    libbpf-dev \
+    elfutils-dev \
+    zlib-dev \
+    libbsd-dev \
+    libxdp-dev
+
+WORKDIR /build
+
+# 编译 DPDK
+RUN git clone --depth 1 --branch ${DPDK_BRANCH} https://github.com/DPDK/dpdk.git && \
+    cd dpdk && \
+    meson setup build \
+        --prefix=/usr \
+        --libdir=/usr/lib \
+        -Dplatform=generic \
+        -Ddisable_drivers=raw/*,crypto/*,baseband/*,dma/*,regex/*,ml/*,gpu/*,net/mlx*,common/mlx* \
+        -Dtests=false \
+        -Denable_docs=false && \
+    ninja -C build && \
+    ninja -C build install
+
+# 克隆 OVS
+RUN git clone --depth 1 --branch ${OVS_BRANCH} https://github.com/openvswitch/ovs.git
+
+# 编译 OVS with DPDK
+WORKDIR /build/ovs
+RUN ./boot.sh && \
+    ./configure \
+        --prefix=/usr \
+        --localstatedir=/var \
+        --sysconfdir=/etc \
+        --enable-ssl \
+        --enable-shared \
+        --with-dpdk=static && \
+    make -j$(nproc) && \
+    make DESTDIR=/install install
+
+# 复制 DPDK 库
+RUN mkdir -p /install/usr/lib && \
+    cp -a /usr/lib/librte_*.so* /install/usr/lib/ 2>/dev/null || true && \
+    cp -a /usr/lib/libdpdk*.so* /install/usr/lib/ 2>/dev/null || true
+
+# 清理不需要的文件
+RUN cd /install && \
+    find . -name "*.a" -delete && \
+    find . -name "*.la" -delete && \
+    rm -rf usr/include && \
+    rm -rf usr/share/man && \
+    strip usr/bin/* usr/sbin/* 2>/dev/null || true
+
+# -----------------------------------------------------------------------------
+# 阶段 2: 运行时镜像
+# -----------------------------------------------------------------------------
+FROM alpine:${ALPINE_VERSION}
+
+LABEL maintainer="OpenStack-Helm"
+LABEL description="Open vSwitch with DPDK runtime image for OpenStack-Helm"
+
+# Add Tini
+ENV TINI_VERSION=v0.19.0
+ADD https://github.com/krallin/tini/releases/download/${TINI_VERSION}/tini-static /tini
+RUN chmod +x /tini
+
+RUN apk add --no-cache \
+    # 运行时库
+    libssl3 \
+    libcap-ng \
+    numactl \
+    numactl-tools \
+    jansson \
+    libpcap \
+    rdma-core \
+    libbpf \
+    elfutils \
+    zlib \
+    libbsd \
+    libxdp \
+    libatomic \
+    # 脚本依赖
+    bash \
+    ca-certificates \
+    coreutils \
+    # 网络和 PCI 工具
+    iproute2 \
+    iptables \
+    pciutils \
+    jq \
+    tcpdump
+
+# 复制 OVS 和 DPDK
+COPY --from=builder /install/usr/bin/ /usr/bin/
+COPY --from=builder /install/usr/sbin/ /usr/sbin/
+COPY --from=builder /install/usr/lib/ /usr/lib/
+COPY --from=builder /install/usr/share/openvswitch/ /usr/share/openvswitch/
+
+# 创建必要目录和用户
+RUN mkdir -p /var/run/openvswitch /var/log/openvswitch /etc/openvswitch /var/lib/openvswitch && \
+    mkdir -p /dev/hugepages && \
+    adduser -D -u 42424 -s /sbin/nologin openvswitch && \
+    chown -R openvswitch:openvswitch /var/lib/openvswitch /etc/openvswitch
+
+# 验证安装 (ovs-vswitchd 需要 DPDK 运行时环境，跳过)
+RUN ovsdb-server --version && \
+    ovs-vsctl --version && \
+    ovs-appctl --version && \
+    echo "ovs-vswitchd installed: $(which ovs-vswitchd)"
+
+ENTRYPOINT ["/tini", "--"]
+CMD ["/bin/sh"]
