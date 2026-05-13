@@ -22,10 +22,14 @@ RUN if [ -s /etc/image_info/bindep_build.txt ]; then \
         && rm -rf /var/lib/apt/lists/*; \
     fi
 
+# NOTE: --no-build-isolation removed (vs upstream). tempest packages via
+# pbr (setup.cfg [files] section, no pyproject.toml). Without isolation
+# the build runs in the venv_builder venv which has no pbr, so setuptools
+# falls back to auto-discovery and fails on multiple top-level dirs
+# (etc/, tempest/, doc/, ...). Build isolation costs ~30s but is correct.
 RUN sed -i '/^tempest===/d' /upper-constraints.txt \
     && git clone --filter=blob:none -b ${TEMPEST_REF} ${TEMPEST_REPO} /tmp/tempest \
     && uv pip install \
-         --no-build-isolation \
          --build-constraint /upper-constraints.txt \
          -c /upper-constraints.txt \
          /tmp/tempest \
