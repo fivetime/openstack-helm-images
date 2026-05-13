@@ -1,0 +1,25 @@
+---
+features:
+  - |
+    The build workflow now generates a per-release ``pydep.txt`` overlay
+    via ``.github/scripts/generate_pydep.py`` before the service tier
+    builds. The generator scans each backing OpenStack project's upstream
+    ``requirements.txt`` at the matching release ref and emits two
+    additional bindep entries:
+
+    * ``psycopg2-binary`` -- for every service whose project declares
+      ``oslo.db`` or ``SQLAlchemy``
+    * ``confluent-kafka`` -- for every service whose project declares
+      ``oslo.messaging``
+
+    This replaces the previous in-Dockerfile auto-detect (which lived in
+    ``scripts/build_venv.sh`` and was removed by upstream when the
+    container layout was flattened). The two driver lists are now
+    delivered as workflow artifacts and overlaid onto ``pydep.txt`` per
+    cell, so the upstream Dockerfiles, ``pydep.txt``, and ``bindep.txt``
+    are consumed verbatim with zero local divergence.
+
+    The generator fails fast if any service's ``requirements.txt`` cannot
+    be fetched -- the daily cron retries automatically, and no fallback
+    list is maintained so the build either reflects current upstream
+    reality or fails visibly.

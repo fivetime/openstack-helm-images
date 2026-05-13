@@ -41,6 +41,7 @@ jobs:
       service_matrix:    ${{ steps.gen.outputs.service_matrix }}
       foundation_count:  ${{ steps.gen.outputs.foundation_count }}
       service_count:     ${{ steps.gen.outputs.service_count }}
+      releases:          ${{ steps.gen.outputs.releases }}
     steps:
       - uses: actions/checkout@v6
 
@@ -111,15 +112,63 @@ jobs:
             | sed 's/^matrix=/service_matrix=/' >> "$GITHUB_OUTPUT"
           echo "service_count=${scount}" >> "$GITHUB_OUTPUT"
 
+          # Distinct release codes that appear in the service matrix --
+          # used by the next step to decide which pydep files to generate.
+          releases=$(python -c "import json; \
+            print(','.join(sorted({r['release'] for r in json.load(open('/tmp/service.json'))})))")
+          echo "releases=${releases}" >> "$GITHUB_OUTPUT"
+
           {
             echo "## Build matrix"
             echo ""
             echo "- Foundation tier: ${fcount} entries"
             echo "- Service tier:    ${scount} entries"
+            echo "- Releases:        ${releases}"
             echo ""
             python .github/scripts/format_matrix_summary.py /tmp/foundation.json --title Foundation
             python .github/scripts/format_matrix_summary.py /tmp/service.json --title Service
           } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Generate per-release pydep.txt
+        run: |
+          set -euo pipefail
+          mkdir -p /tmp/pydep
+          {
+            echo ""
+            echo "## Augmented pydep.txt"
+            echo ""
+            echo "Generated per-release driver lists (psycopg2-binary / confluent-kafka)"
+            echo "by scanning each service's upstream requirements.txt."
+            echo ""
+          } >> "$GITHUB_STEP_SUMMARY"
+
+          IFS=',' read -ra releases <<<"${{ steps.gen.outputs.releases }}"
+          for rel in "${releases[@]}"; do
+            case "${rel}" in
+              master|rolling) ref="master" ;;
+              *)              ref="stable/${rel}" ;;
+            esac
+            echo "::group::Generate pydep for ${rel} (ref=${ref})"
+            python .github/scripts/generate_pydep.py \
+              --release "${ref}" \
+              --output "/tmp/pydep/pydep-${rel}.txt"
+            echo "::endgroup::"
+            {
+              echo "<details><summary><code>pydep-${rel}.txt</code> (ref ${ref})</summary>"
+              echo ""
+              echo '```'
+              tail -5 "/tmp/pydep/pydep-${rel}.txt"
+              echo '```'
+              echo "</details>"
+            } >> "$GITHUB_STEP_SUMMARY"
+          done
+
+      - name: Upload pydep artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: pydep-files
+          path: /tmp/pydep/
+          retention-days: 7
 
   build-foundation:
     needs: discover
@@ -197,6 +246,24 @@ jobs:
         uses: docker/setup-buildx-action@v4
         with:
           driver-opts: image=local/buildkit-harbor:latest
+
+      - name: Download per-release pydep.txt
+        uses: actions/download-artifact@v4
+        with:
+          name: pydep-files
+          path: /tmp/pydep/
+
+      - name: Overlay generated pydep.txt for this release
+        run: |
+          set -euo pipefail
+          src="/tmp/pydep/pydep-${{ matrix.release }}.txt"
+          if [ ! -f "${src}" ]; then
+            echo "ERROR: ${src} not found -- discover step did not generate it" >&2
+            exit 1
+          fi
+          cp "${src}" pydep.txt
+          echo "Overlayed pydep.txt with generator output for ${{ matrix.release }}:"
+          tail -5 pydep.txt
 
       - name: Log in to GHCR
         uses: docker/login-action@v4
