@@ -225,11 +225,13 @@ jobs:
     if: ${{ !cancelled() && !inputs.dry_run && needs.discover.outputs.service_count != '0' }}
     runs-on: self-hosted
     #runs-on: ubuntu-latest
-    # 180 instead of 90 because QEMU arm64 emulation of heavy services
-    # (horizon's libsass + xstatic-*, nova/neutron's Python C extensions)
-    # can comfortably exceed 90 min. The amd64 build typically finishes
-    # in 10-15 min; arm64 emulation can be 6-10x slower per cell.
-    timeout-minutes: 180
+    # 240 because horizon's libsass build under QEMU arm64 emulation
+    # consistently hit 180 min (skyline used to too, but skyline now
+    # cross-builds its JS bundle natively on $BUILDPLATFORM). horizon's
+    # libsass is bundled inside the main `uv pip install /tmp/horizon`
+    # step so we cannot easily split it out -- so we just give it more
+    # wall clock. amd64 horizon finishes in ~15 min; arm64 needs ~3h15m.
+    timeout-minutes: 240
     strategy:
       fail-fast: false
       max-parallel: 20

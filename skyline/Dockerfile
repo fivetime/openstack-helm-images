@@ -11,8 +11,14 @@ ARG NODE_IMAGE=docker.io/library/node:24-trixie-slim
 # Upstream's flattened Dockerfile relies on `uv pip install /tmp/skyline-console`
 # producing the bundles via pbr -- which does not run yarn -- so we rebuild
 # them explicitly here and inject the result before the python install step.
+#
+# --platform=$BUILDPLATFORM pins this stage to the buildx host arch (amd64
+# in our self-hosted runners). JS bundles are architecture-independent, so
+# running yarn natively on amd64 and COPYing the output into both amd64 and
+# arm64 final images is correct -- and ~10x faster than letting QEMU emulate
+# arm64 yarn (which previously took ~3 hours and hit the 180-minute timeout).
 # -----------------------------------------------------------------------------
-FROM ${NODE_IMAGE} AS console-build
+FROM --platform=$BUILDPLATFORM ${NODE_IMAGE} AS console-build
 
 ARG SKYLINE_CONSOLE_REPO=https://github.com/openstack/skyline-console
 ARG SKYLINE_CONSOLE_REF=stable/2026.1
