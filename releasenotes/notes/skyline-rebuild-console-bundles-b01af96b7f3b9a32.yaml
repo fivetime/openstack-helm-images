@@ -1,0 +1,21 @@
+---
+fixes:
+  - |
+    The skyline image now rebuilds the skyline-console JavaScript bundles
+    with ``yarn`` during the docker build, instead of relying on the
+    stale prebuilt ``static/`` directory committed to the upstream
+    skyline-console git tree. That directory is not refreshed on every
+    commit, so previously produced images shipped JS bundles that were
+    years out of date relative to the React sources of the same release.
+    The mismatch caused the login page to call API endpoints (e.g.
+    ``/api/v1/contrib/domains``) that newer skyline-apiserver releases
+    no longer expose, leaving the domain dropdown empty and breaking
+    login.
+
+    A new ``console-build`` stage based on ``node:24-trixie-slim``
+    clones skyline-console at the same ref as the apiserver, runs
+    ``yarn install`` + ``yarn run build``, and passes the freshly-built
+    source tree to the venv-builder stage. The override knob
+    ``SKYLINE_CONSOLE_REF`` lets callers pin the console ref
+    independently when needed. The ``NODE_IMAGE`` build arg lets
+    callers swap the Node base image without editing the Dockerfile.

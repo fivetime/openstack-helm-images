@@ -1,0 +1,20 @@
+# Force LF line endings for files that are executed inside Linux containers
+# during docker builds. Without this, Windows clones with core.autocrlf=true
+# write CRLF terminators that make /bin/sh fail with "/path/script.sh: not
+# found" because the shebang line ends in '\r'.
+
+*.sh             text eol=lf
+Dockerfile*      text eol=lf
+*.dockerfile     text eol=lf
+
+# YAML and Python source for build tooling should also be LF for portability.
+*.yml            text eol=lf
+*.yaml           text eol=lf
+*.py             text eol=lf
+
+# Binary types -- never CRLF-translate.
+*.png            binary
+*.jpg            binary
+*.gz             binary
+*.tgz            binary
+*.zip            binary

@@ -1,0 +1,51 @@
+---
+features:
+  - |
+    GitHub Actions now mirror the upstream Zuul build pipeline. A single
+    ``.github/workflows/build-all-images.yml`` workflow drives the build of
+    every image, with a Python parser (``.github/scripts/zuul_to_matrix.py``)
+    flattening the upstream ``zuul.d/*.yaml`` and fork-specific
+    ``build-local.d/*.yaml`` files into a GitHub Actions matrix. Adding a new
+    image therefore only needs a Zuul-style YAML entry -- no workflow code
+    change.
+
+    Per upstream Zuul convention, each container_images entry maps to one
+    matrix cell. Every cell runs ``docker buildx build --push`` with the
+    same ``--build-arg`` / ``--platform`` / ``--tag`` values the Zuul role
+    would pass, so behaviour stays aligned with upstream.
+  - |
+    A companion workflow ``.github/workflows/sync-upstream.yml`` pulls the
+    latest changes from
+    https://github.com/openstack/openstack-helm-images.git every day at
+    01:00 UTC and fast-forwards/merges them into the fork's ``master``.
+    ``build-all-images.yml`` then runs at 03:00 UTC, picking up whatever
+    new ``zuul.d/`` content has been merged in.
+  - |
+    The build matrix supports synthesizing ``master``-tagged image variants
+    from each 2026.1 entry, so ``ghcr.io/<owner>/openstackhelm/<svc>:master-ubuntu_noble``
+    is produced alongside the stable releases on every daily run.
+upgrade:
+  - |
+    Several legacy GitHub Actions workflows are removed because their
+    responsibilities are now fully covered by the unified build pipeline:
+
+    * ``.github/workflows/release-build.yml`` -- matrix referenced 10
+      directories that do not exist in this repository; the workflow has
+      been non-functional since the repository was created.
+    * ``.github/workflows/openvswitch.yml`` -- replaced by
+      ``zuul.d/openvswitch.yaml`` (upstream ubuntu variants) plus
+      ``build-local.d/openvswitch.yaml`` (fork alpine + ubuntu-fork-tag
+      variants).
+    * ``.github/workflows/ovn.yml`` -- replaced by ``zuul.d/ovn.yaml``
+      (upstream ubuntu variants) plus ``build-local.d/ovn.yaml`` (fork
+      alpine + centos variants).
+    * ``.github/workflows/ovn-bgp-agent.yml`` -- replaced by
+      ``build-local.d/ovn-bgp-agent.yaml`` (image is not in upstream).
+
+    Image tags previously produced by these workflows are preserved by
+    the new pipeline (verified against the deleted matrices) so downstream
+    Helm overrides should not need to change.
+
+    ``.github/workflows/package-tsdb.yml`` is retained -- it produces RPM
+    artifacts, not OCI images, so it does not fit the container-image
+    matrix model.
