@@ -1,14 +1,52 @@
 # syntax=docker/dockerfile:1
 ARG BASE_VENV_BUILDER=quay.io/airshipit/venv_builder:2025.2-ubuntu_noble
 ARG BASE_RUNTIME=quay.io/airshipit/base:2025.2-ubuntu_noble
+ARG NODE_IMAGE=docker.io/library/node:24-trixie-slim
+
+# -----------------------------------------------------------------------------
+# Fork-only console-build stage: yarn build skyline-console's JS bundles.
+#
+# skyline-console ships only a Python wrapper in its sdist; the JS/CSS bundles
+# under skyline_console/static/ are produced by `yarn build` from src/.
+# Upstream's flattened Dockerfile relies on `uv pip install /tmp/skyline-console`
+# producing the bundles via pbr -- which does not run yarn -- so we rebuild
+# them explicitly here and inject the result before the python install step.
+# -----------------------------------------------------------------------------
+FROM ${NODE_IMAGE} AS console-build
+
+ARG SKYLINE_CONSOLE_REPO=https://github.com/openstack/skyline-console
+ARG SKYLINE_CONSOLE_REF=stable/2026.1
+
+RUN apt-get update \
+    && DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
+        git ca-certificates \
+    && rm -rf /var/lib/apt/lists/*
+
+WORKDIR /src/skyline-console
+RUN git clone --depth 1 --branch "${SKYLINE_CONSOLE_REF}" \
+        "${SKYLINE_CONSOLE_REPO}" . \
+    || (git clone "${SKYLINE_CONSOLE_REPO}" . \
+        && git checkout "${SKYLINE_CONSOLE_REF}")
+
+RUN corepack enable \
+    && yarn install --frozen-lockfile --network-timeout 600000 \
+    && NODE_OPTIONS=--max-old-space-size=2048 yarn run build
+
+RUN test -d /src/skyline-console/skyline_console/static \
+    && ls /src/skyline-console/skyline_console/static/*.bundle.*.js >/dev/null \
+    || (echo "ERROR: yarn build did not produce skyline_console/static bundles" >&2; exit 1)
+
+# -----------------------------------------------------------------------------
+# Upstream build stage: install Python packages.
+# Diverges from upstream by replacing the skyline-console git clone with
+# the pre-built tree from console-build above.
+# -----------------------------------------------------------------------------
 FROM ${BASE_VENV_BUILDER} AS build
 
 ENV PATH=/var/lib/openstack/bin:$PATH
 
 ARG SKYLINE_APISERVER_REPO=https://opendev.org/openstack/skyline-apiserver
 ARG SKYLINE_APISERVER_REF=stable/2026.1
-ARG SKYLINE_CONSOLE_REPO=https://github.com/openstack/skyline-console
-ARG SKYLINE_CONSOLE_REF=stable/2026.1
 ARG PROFILES=""
 
 # Use bindep to determine packages needed for this profile set
@@ -24,9 +62,11 @@ RUN if [ -s /etc/image_info/bindep_build.txt ]; then \
         && rm -rf /var/lib/apt/lists/*; \
     fi
 
+# skyline-console source tree with bundles already built
+COPY --from=console-build /src/skyline-console /tmp/skyline-console
+
 RUN sed -i '/^skyline-apiserver===/d' /upper-constraints.txt \
     && git clone --filter=blob:none -b ${SKYLINE_APISERVER_REF} ${SKYLINE_APISERVER_REPO} /tmp/skyline-apiserver \
-    && git clone --filter=blob:none -b ${SKYLINE_CONSOLE_REF} ${SKYLINE_CONSOLE_REPO} /tmp/skyline-console \
     && uv pip install \
          --build-constraint /upper-constraints.txt \
          -c /upper-constraints.txt \
