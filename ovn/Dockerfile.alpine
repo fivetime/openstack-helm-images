@@ -29,8 +29,12 @@ RUN apk add --no-cache git
 
 WORKDIR /src
 
-# 克隆 ovn-kubernetes 到指定 commit
-RUN git clone https://github.com/ovn-org/ovn-kubernetes.git . && \
+# 克隆 ovn-kubernetes 到指定 commit。
+# 用 --filter=blob:none 做 partial clone：只拉树结构和提交对象，blob 按需获取。
+# 全量 clone 在 QEMU arm64 模拟下会触发 "cannot pread pack file: Bad address"
+# (git 大量 pread() 调用 + QEMU 对 mmap 大文件的 syscall 模拟存在 race)。
+# partial clone 把数据量降到 ~10%，对 pread 的压力大幅减小，稳定通过。
+RUN git clone --filter=blob:none https://github.com/ovn-org/ovn-kubernetes.git . && \
     git checkout ${OVN_KUBERNETES_REF}
 
 # 复制并应用 patches
