@@ -1,0 +1,56 @@
+---
+# Fork-only ovn-bgp-agent image. Not present in upstream zuul.d/. Replaces
+# what .github/workflows/ovn-bgp-agent.yml used to build via its build.sh
+# wrapper. Each (distro x variant) is one container_images entry. The
+# INCLUDE_OVN build arg switches between the slim "standard" image and the
+# fatter "-ovn" image that bundles OVN client tools.
+
+- job:
+    name: build-local-ovn-bgp-agent
+    description: Build fork-only ovn-bgp-agent images (standard + ovn variants).
+    vars:
+      container_images:
+        - context: ovn-bgp-agent
+          repository: openstackhelm/ovn-bgp-agent
+          container_filename: Dockerfile.ubuntu_noble
+          arch:
+            - linux/amd64
+            - linux/arm64
+          tags:
+            - master-ubuntu_noble
+          build_args:
+            - INCLUDE_OVN=false
+            - PROJECT_REF=master
+        - context: ovn-bgp-agent
+          repository: openstackhelm/ovn-bgp-agent
+          container_filename: Dockerfile.ubuntu_noble
+          arch:
+            - linux/amd64
+            - linux/arm64
+          tags:
+            - master-ubuntu_noble-ovn
+          build_args:
+            - INCLUDE_OVN=true
+            - PROJECT_REF=master
+        - context: ovn-bgp-agent
+          repository: openstackhelm/ovn-bgp-agent
+          container_filename: Dockerfile.ubuntu_jammy
+          arch:
+            - linux/amd64
+            - linux/arm64
+          tags:
+            - master-ubuntu_jammy
+          build_args:
+            - INCLUDE_OVN=false
+            - PROJECT_REF=master
+        - context: ovn-bgp-agent
+          repository: openstackhelm/ovn-bgp-agent
+          container_filename: Dockerfile.ubuntu_jammy
+          arch:
+            - linux/amd64
+            - linux/arm64
+          tags:
+            - master-ubuntu_jammy-ovn
+          build_args:
+            - INCLUDE_OVN=true
+            - PROJECT_REF=master

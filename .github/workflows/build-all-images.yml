@@ -1,0 +1,235 @@
+name: Build All Images
+
+on:
+  schedule:
+    # Daily at 03:00 UTC -- 2h after the sync-upstream cron so any pulled-in
+    # zuul.d/ changes are already on master before we build.
+    - cron: "0 3 * * *"
+  workflow_dispatch:
+    inputs:
+      releases:
+        description: "Release filter (comma-separated, empty = default 2026.1+master+rolling). Available: 2025.1,2025.2,2026.1,master,rolling"
+        default: ""
+      platforms:
+        description: "Platform filter (comma-separated, empty = all). Available: linux/amd64,linux/arm64"
+        default: ""
+      services:
+        description: "Service name substring filter (comma-separated, empty = all). E.g. 'keystone,neutron'"
+        default: ""
+      include_master:
+        description: "Synthesize master variants from 2026.1 entries"
+        type: boolean
+        default: true
+      dry_run:
+        description: "Print the matrix and exit (no builds)"
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+  packages: write
+
+env:
+  REGISTRY: ghcr.io
+
+jobs:
+  discover:
+    runs-on: self-hosted
+    #runs-on: ubuntu-latest
+    outputs:
+      foundation_matrix: ${{ steps.gen.outputs.foundation_matrix }}
+      service_matrix:    ${{ steps.gen.outputs.service_matrix }}
+      foundation_count:  ${{ steps.gen.outputs.foundation_count }}
+      service_count:     ${{ steps.gen.outputs.service_count }}
+    steps:
+      - uses: actions/checkout@v6
+
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+
+      - run: pip install --root-user-action=ignore pyyaml
+
+      - id: gen
+        name: Generate foundation + service matrices from zuul.d/ + build-local.d/
+        run: |
+          set -euo pipefail
+          common_args=( --owner "${{ github.repository_owner }}" )
+
+          # Cron-triggered runs default to master + rolling only. Stable
+          # release branches (2026.1) rarely change in content -- rebuild
+          # them on demand via workflow_dispatch when a backport merge or
+          # CVE refresh needs it. workflow_dispatch with a non-empty
+          # releases input takes precedence and can build any subset
+          # (including the older 2025.1 / 2025.2 stable branches).
+          # workflow_dispatch with an empty releases input defaults to
+          # 2026.1 + master + rolling -- 2025.x are intentionally excluded
+          # from the default since they're frozen and need explicit opt-in.
+          if [ "${{ github.event_name }}" = "schedule" ]; then
+            common_args+=( --releases "master,rolling" )
+          elif [ -n "${{ inputs.releases }}" ]; then
+            common_args+=( --releases "${{ inputs.releases }}" )
+          else
+            common_args+=( --releases "2026.1,master,rolling" )
+          fi
+
+          if [ -n "${{ inputs.platforms }}" ]; then
+            common_args+=( --platforms "${{ inputs.platforms }}" )
+          fi
+
+          if [ -n "${{ inputs.services }}" ]; then
+            common_args+=( --services "${{ inputs.services }}" )
+          fi
+
+          # include_master defaults to true (the input default). An explicit
+          # workflow_dispatch with include_master=false is the only way to
+          # turn off master synthesis.
+          if [ "${{ inputs.include_master }}" != "false" ]; then
+            common_args+=( --include-master )
+          fi
+
+          echo "Effective parser args: ${common_args[*]}"
+
+          # Foundation tier (base, venv_builder) builds first.
+          python .github/scripts/zuul_to_matrix.py "${common_args[@]}" \
+            --tier foundation --format json > /tmp/foundation.json
+          fcount=$(python -c "import json; print(len(json.load(open('/tmp/foundation.json'))))")
+          echo "Foundation cells discovered: ${fcount}"
+          python -c "import json; data=json.load(open('/tmp/foundation.json')); print('  -', '\n  - '.join(r['primary_tag'] for r in data)) if data else print('  (empty)')"
+          python .github/scripts/zuul_to_matrix.py "${common_args[@]}" \
+            --tier foundation --format github \
+            | sed 's/^matrix=/foundation_matrix=/' >> "$GITHUB_OUTPUT"
+          echo "foundation_count=${fcount}" >> "$GITHUB_OUTPUT"
+
+          # Service tier (everything else) builds after foundation.
+          python .github/scripts/zuul_to_matrix.py "${common_args[@]}" \
+            --tier service --format json > /tmp/service.json
+          scount=$(python -c "import json; print(len(json.load(open('/tmp/service.json'))))")
+          echo "Service cells discovered: ${scount}"
+          python .github/scripts/zuul_to_matrix.py "${common_args[@]}" \
+            --tier service --format github \
+            | sed 's/^matrix=/service_matrix=/' >> "$GITHUB_OUTPUT"
+          echo "service_count=${scount}" >> "$GITHUB_OUTPUT"
+
+          {
+            echo "## Build matrix"
+            echo ""
+            echo "- Foundation tier: ${fcount} entries"
+            echo "- Service tier:    ${scount} entries"
+            echo ""
+            python .github/scripts/format_matrix_summary.py /tmp/foundation.json --title Foundation
+            python .github/scripts/format_matrix_summary.py /tmp/service.json --title Service
+          } >> "$GITHUB_STEP_SUMMARY"
+
+  build-foundation:
+    needs: discover
+    if: ${{ !inputs.dry_run && needs.discover.outputs.foundation_count != '0' }}
+    runs-on: self-hosted
+    #runs-on: ubuntu-latest
+    timeout-minutes: 60
+    strategy:
+      fail-fast: false
+      max-parallel: 8
+      matrix: ${{ fromJson(needs.discover.outputs.foundation_matrix) }}
+    name: "foundation | ${{ matrix.job }} | ${{ matrix.release }} | ${{ matrix.platforms }}"
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Set up QEMU
+        if: contains(matrix.platforms, 'arm64')
+        uses: docker/setup-qemu-action@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v4
+        with:
+          driver-opts: image=local/buildkit-harbor:latest
+
+      - name: Log in to GHCR
+        uses: docker/login-action@v4
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build and push
+        run: |
+          set -euo pipefail
+          cd "${{ matrix.context }}"
+          docker buildx build . \
+            -f "${{ matrix.container_filename }}" \
+            --platform "${{ matrix.platforms }}" \
+            ${{ matrix.tags_cli }} \
+            ${{ matrix.build_args_cli }} \
+            --label "org.opencontainers.image.source=https://github.com/${{ github.repository }}" \
+            --label "org.opencontainers.image.revision=${{ github.sha }}" \
+            --provenance=false \
+            --push
+
+  build-services:
+    needs: [discover, build-foundation]
+    # Wait for foundation to finish (any result) before starting services.
+    # We do NOT gate on foundation success -- 2025.x services FROM quay.io
+    # upstream and don't actually need our self-built foundation. Only
+    # master-tagged services reference our ghcr.io foundation; if their
+    # specific foundation cell failed, that service cell will fail at
+    # docker pull and the failure is self-evident in the run log.
+    if: ${{ !cancelled() && !inputs.dry_run && needs.discover.outputs.service_count != '0' }}
+    runs-on: self-hosted
+    #runs-on: ubuntu-latest
+    # 180 instead of 90 because QEMU arm64 emulation of heavy services
+    # (horizon's libsass + xstatic-*, nova/neutron's Python C extensions)
+    # can comfortably exceed 90 min. The amd64 build typically finishes
+    # in 10-15 min; arm64 emulation can be 6-10x slower per cell.
+    timeout-minutes: 180
+    strategy:
+      fail-fast: false
+      max-parallel: 20
+      matrix: ${{ fromJson(needs.discover.outputs.service_matrix) }}
+    name: "service | ${{ matrix.job }} | ${{ matrix.release }} | ${{ matrix.platforms }}"
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Set up QEMU
+        if: contains(matrix.platforms, 'arm64')
+        uses: docker/setup-qemu-action@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v4
+        with:
+          driver-opts: image=local/buildkit-harbor:latest
+
+      - name: Log in to GHCR
+        uses: docker/login-action@v4
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build and push
+        run: |
+          set -euo pipefail
+          cd "${{ matrix.context }}"
+          docker buildx build . \
+            -f "${{ matrix.container_filename }}" \
+            --platform "${{ matrix.platforms }}" \
+            ${{ matrix.tags_cli }} \
+            ${{ matrix.build_args_cli }} \
+            --label "org.opencontainers.image.source=https://github.com/${{ github.repository }}" \
+            --label "org.opencontainers.image.revision=${{ github.sha }}" \
+            --provenance=false \
+            --push
+
+  summary:
+    needs: [discover, build-foundation, build-services]
+    if: ${{ !cancelled() && !inputs.dry_run }}
+    runs-on: self-hosted
+    #runs-on: ubuntu-latest
+    steps:
+      - name: Aggregate result
+        run: |
+          {
+            echo "## Build summary"
+            echo ""
+            echo "- Foundation entries: ${{ needs.discover.outputs.foundation_count }} (result: ${{ needs.build-foundation.result }})"
+            echo "- Service entries:    ${{ needs.discover.outputs.service_count }} (result: ${{ needs.build-services.result }})"
+          } >> "$GITHUB_STEP_SUMMARY"

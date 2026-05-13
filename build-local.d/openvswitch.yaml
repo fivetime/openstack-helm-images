@@ -1,0 +1,78 @@
+---
+# Fork-only openvswitch variants.
+#
+# Alpine variants are unique to this fork (no upstream equivalent).
+#
+# Ubuntu variants are duplicated here for tag-format backwards compatibility:
+# upstream zuul.d/openvswitch.yaml tags as "latest-ubuntu_noble", while the
+# fork's old openvswitch.yml workflow produced "ubuntu_noble" (no prefix),
+# and downstream Helm overrides reference the fork tag style. Same Dockerfile,
+# tiny FROM= difference (raw docker.io vs quay.io/airshipit).
+
+- job:
+    name: build-local-openvswitch-alpine
+    description: Build fork-only openvswitch Alpine variants.
+    vars:
+      container_images:
+        - context: openvswitch
+          repository: openstackhelm/openvswitch
+          container_filename: Dockerfile.alpine
+          arch:
+            - linux/amd64
+            - linux/arm64
+          tags:
+            - alpine_latest
+        - context: openvswitch
+          repository: openstackhelm/openvswitch
+          container_filename: Dockerfile.alpine-dpdk
+          arch:
+            - linux/amd64
+            - linux/arm64
+          tags:
+            - alpine_latest-dpdk
+
+- job:
+    name: build-local-openvswitch-ubuntu
+    description: Build openvswitch ubuntu_{jammy,noble}[-dpdk] tags for backward compat with the old openvswitch.yml workflow output.
+    vars:
+      container_images:
+        - context: openvswitch
+          repository: openstackhelm/openvswitch
+          container_filename: Dockerfile.ubuntu
+          arch:
+            - linux/amd64
+            - linux/arm64
+          tags:
+            - ubuntu_jammy
+          build_args:
+            - FROM=ubuntu:jammy
+        - context: openvswitch
+          repository: openstackhelm/openvswitch
+          container_filename: Dockerfile.ubuntu
+          arch:
+            - linux/amd64
+            - linux/arm64
+          tags:
+            - ubuntu_noble
+          build_args:
+            - FROM=ubuntu:noble
+        - context: openvswitch
+          repository: openstackhelm/openvswitch
+          container_filename: Dockerfile.ubuntu-dpdk
+          arch:
+            - linux/amd64
+            - linux/arm64
+          tags:
+            - ubuntu_jammy-dpdk
+          build_args:
+            - FROM=ubuntu:jammy
+        - context: openvswitch
+          repository: openstackhelm/openvswitch
+          container_filename: Dockerfile.ubuntu-dpdk
+          arch:
+            - linux/amd64
+            - linux/arm64
+          tags:
+            - ubuntu_noble-dpdk
+          build_args:
+            - FROM=ubuntu:noble

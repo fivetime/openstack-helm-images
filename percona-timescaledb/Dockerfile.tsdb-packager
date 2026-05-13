@@ -1,0 +1,129 @@
+# ========================================
+# Dockerfile.tsdb-packager
+# 为 Percona PGO Custom Extensions 机制打包 TimescaleDB
+# ========================================
+# 用法:
+#   docker build \
+#     --build-arg PG_MAJOR=18 \
+#     --build-arg TSDB_VERSION=2.26.4 \
+#     -t tue-cloud/tsdb-packager:pg18-2.26.4 \
+#     -f Dockerfile.tsdb-packager .
+#
+# 提取产物 (最终镜像是 scratch, 无默认 CMD, docker create 需要占位命令 /x):
+#   cid=$(docker create tue-cloud/tsdb-packager:pg18-2.26.4 /x)
+#   docker cp "$cid:/timescaledb-pg18-2.26.4.tar.gz" ./
+#   docker rm "$cid"
+#
+# 注意 1: 必须用 RHEL/UBI9 系（rockylinux:9）作为 packager 基镜像,
+#   让 .so 只链 glibc 2.34 符号, 与 Percona PGO 的 UBI9 运行环境 ABI 兼容。
+#   用 ubuntu:24.04 (glibc 2.39) 打出来的包会在 Percona 容器里报
+#   `GLIBC_2.38 not found`。
+#
+# 注意 2: Timescale 在 EL9 yum 仓里只发统一的 community/TSL 包
+#   (timescaledb-2-postgresql-N), 不像 apt 仓那样有独立的 -oss- 变体。
+#   这里只做 TSL 路径; 对开源分发使用而言 TSL 仍然免费 (限制只针对
+#   "as a managed service to third parties" 场景)。
+
+FROM rockylinux:9 AS packager
+
+ARG PG_MAJOR=18
+ARG TSDB_VERSION=2.26.4
+
+# 1. 安装基础工具
+RUN dnf install -y dnf-plugins-core dnf-utils tar gzip cpio rpm binutils && \
+    dnf clean all
+
+# 2. 手写 Timescale 的 RHEL/EL9 yum repo (绕过 packagecloud 的 script.rpm.sh,
+#    它在 Rocky9 上常因缺 pygpgme 等而退出非零)
+RUN cat > /etc/yum.repos.d/timescaledb.repo <<'EOF'
+[timescale_timescaledb]
+name=timescale_timescaledb
+baseurl=https://packagecloud.io/timescale/timescaledb/el/9/$basearch
+repo_gpgcheck=0
+gpgcheck=0
+enabled=1
+sslverify=1
+sslcacert=/etc/pki/tls/certs/ca-bundle.crt
+metadata_expire=300
+EOF
+
+RUN dnf makecache && \
+    echo "=== timescaledb packages available ===" && \
+    dnf list available 'timescaledb-*' 2>&1 | head -60
+
+# 3. 仅下载 .rpm 不安装（避免 scriptlet 副作用）
+#    RPM NVR 形式: <name>-<version>, 例如 timescaledb-2-postgresql-18-2.26.4
+WORKDIR /work
+RUN set -eux; \
+    dnf download --destdir=. "timescaledb-2-loader-postgresql-${PG_MAJOR}-${TSDB_VERSION}"; \
+    dnf download --destdir=. "timescaledb-2-postgresql-${PG_MAJOR}-${TSDB_VERSION}"; \
+    ls -la *.rpm
+
+# 3.5. 调试: 打印两个 RPM 的内部文件清单 (将来版本变化时可参照)
+RUN set -eux; \
+    echo "=== Loader RPM contents ==="; \
+    rpm -qlp ./timescaledb-2-loader-postgresql-${PG_MAJOR}-${TSDB_VERSION}-*.rpm; \
+    echo "=== Version RPM contents ==="; \
+    rpm -qlp ./timescaledb-2-postgresql-${PG_MAJOR}-${TSDB_VERSION}-*.rpm
+
+# 4. 解开 RPM 并把 Timescale EL9 的自定义路径重映射到 PGDG 风格,
+#    Percona PGO 的 Postgres 二进制 LIBDIR=/usr/pgsql-N/lib,
+#    SHAREDIR=/usr/pgsql-N/share/extension。Timescale EL9 RPM 实际放在:
+#      Loader: /usr/lib64/timescaledb-loader-pg${N}/timescaledb.{so,control}
+#      Version: /usr/lib64/pgsql/timescaledb-${VER}.so
+#               /usr/share/pgsql/extension/timescaledb--*.sql
+RUN set -eux; \
+    mkdir -p loader-ex version-ex; \
+    mkdir -p "out/usr/pgsql-${PG_MAJOR}/lib" \
+             "out/usr/pgsql-${PG_MAJOR}/share/extension"; \
+    \
+    rpm2cpio timescaledb-2-loader-postgresql-${PG_MAJOR}-${TSDB_VERSION}-*.rpm \
+      | (cd loader-ex && cpio -idmv); \
+    rpm2cpio timescaledb-2-postgresql-${PG_MAJOR}-${TSDB_VERSION}-*.rpm \
+      | (cd version-ex && cpio -idmv); \
+    \
+    # Loader → Percona LIBDIR + SHAREDIR/extension
+    find loader-ex -type f -name 'timescaledb.so' \
+      -exec cp {} "out/usr/pgsql-${PG_MAJOR}/lib/" \; ; \
+    find loader-ex -type f -name 'timescaledb.control' \
+      -exec cp {} "out/usr/pgsql-${PG_MAJOR}/share/extension/" \; ; \
+    \
+    # Version → 同样路径; 注意排除 loader 子目录里可能重复的非版本化 .so
+    find version-ex -type f -name 'timescaledb-*.so' \
+      -exec cp {} "out/usr/pgsql-${PG_MAJOR}/lib/" \; ; \
+    find version-ex -type f -name 'timescaledb--*.sql' \
+      -exec cp {} "out/usr/pgsql-${PG_MAJOR}/share/extension/" \; ; \
+    \
+    echo "=== Final out/ tree ==="; \
+    ls -la "out/usr/pgsql-${PG_MAJOR}/lib/"; \
+    ls -la "out/usr/pgsql-${PG_MAJOR}/share/extension/"
+
+# 4. 校验完整性
+RUN set -eux; \
+    test -f "out/usr/pgsql-${PG_MAJOR}/share/extension/timescaledb.control"; \
+    test -f "out/usr/pgsql-${PG_MAJOR}/share/extension/timescaledb--${TSDB_VERSION}.sql"; \
+    test -f "out/usr/pgsql-${PG_MAJOR}/lib/timescaledb.so"; \
+    test -f "out/usr/pgsql-${PG_MAJOR}/lib/timescaledb-${TSDB_VERSION}.so"; \
+    grep -q "default_version = '${TSDB_VERSION}'" \
+      "out/usr/pgsql-${PG_MAJOR}/share/extension/timescaledb.control"; \
+    # ABI 检查: 不应出现 > GLIBC_2.34 的符号
+    max_glibc=$(objdump -T "out/usr/pgsql-${PG_MAJOR}/lib/timescaledb-${TSDB_VERSION}.so" \
+      | grep -oE 'GLIBC_[0-9]+\.[0-9]+' | sort -V | tail -1); \
+    echo "Highest GLIBC symbol referenced: ${max_glibc}"; \
+    case "${max_glibc}" in \
+      GLIBC_2.0|GLIBC_2.1*|GLIBC_2.2*|GLIBC_2.3|GLIBC_2.30|GLIBC_2.31|GLIBC_2.32|GLIBC_2.33|GLIBC_2.34) \
+        echo "✓ ABI compatible with UBI9 (glibc 2.34)" ;; \
+      *) \
+        echo "✗ ABI INCOMPATIBLE: requires ${max_glibc}, but UBI9 only has GLIBC_2.34" >&2; \
+        exit 1 ;; \
+    esac; \
+    echo "✓ all integrity checks passed"
+
+# 5. 打包：cd 到 out 下避免前导 /
+RUN cd out && \
+    tar czf "/timescaledb-pg${PG_MAJOR}-${TSDB_VERSION}.tar.gz" usr/ && \
+    ls -lh "/timescaledb-pg${PG_MAJOR}-${TSDB_VERSION}.tar.gz"
+
+# 产物镜像
+FROM scratch
+COPY --from=packager /timescaledb-pg*.tar.gz /

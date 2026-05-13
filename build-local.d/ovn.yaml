@@ -1,0 +1,67 @@
+---
+# Fork-only ovn variants. Upstream zuul.d/ovn.yaml already builds the
+# Dockerfile.ubuntu variants tagged ubuntu_jammy / ubuntu_noble. The entries
+# below add the Alpine and CentOS Stream 9 variants, which upstream does
+# not provide.
+#
+# Why we pin OVN_BRANCH and OVN_KUBERNETES_REF:
+# The Dockerfile defaults are OVN_BRANCH=main and OVN_KUBERNETES_REF=<some
+# old commit>. The ovn-kubernetes commit ships /root/ovnkube.sh and
+# /root/ovndb-raft-functions.sh into the final image -- those scripts wrap
+# ovsdb-server / ovn-northd / ovn-controller calls and depend on the
+# OVN version's CLI/schema. If OVN core drifts away from what ovnkube.sh
+# expects, the container fails at runtime. So we pin both to a known-
+# compatible pair as published by the upstream ovn-kubernetes project
+# (see dist/images/Dockerfile.fedora "ovnver=" line of each release tag).
+
+- job:
+    name: build-local-ovn-alpine
+    description: Build fork-only ovn Alpine variant.
+    vars:
+      container_images:
+        - context: ovn
+          repository: openstackhelm/ovn
+          container_filename: Dockerfile.alpine
+          arch:
+            - linux/amd64
+            - linux/arm64
+          tags:
+            - alpine_latest
+          # OVN_KUBERNETES_REF matches upstream openstack-helm-images' own
+          # pin (2024-01 era). Patches in patches/ovn-kubernetes/ are written
+          # against that exact commit; bumping the REF without rebasing the
+          # patches breaks the build (verified empirically -- v1.3.0 has
+          # context drift in ovnkube.sh and ovndb-raft-functions.sh that
+          # 0001/0002 can't apply against). The 2024-01 ovnkube.sh runs fine
+          # against OVN 25.09 because the CLIs it wraps (ovs-appctl,
+          # ovn-appctl, ovsdb-tool) have stable interfaces across OVN majors.
+          build_args:
+            - OVN_BRANCH=branch-25.09
+            - OVN_KUBERNETES_REF=5359e7d7f872058b6e5bf884c9f19d1922451f29
+
+- job:
+    name: build-local-ovn-centos
+    description: Build fork-only ovn CentOS Stream 9 variant.
+    vars:
+      container_images:
+        - context: ovn
+          repository: openstackhelm/ovn
+          container_filename: Dockerfile.centos
+          arch:
+            - linux/amd64
+            - linux/arm64
+          tags:
+            - centos_stream9
+          # Override the Dockerfile defaults (OVN_SERIES=24.03 / OVS_SERIES=3.2)
+          # to the matching 25.09 RPMs from the CentOS NFV SIG repo. To bump
+          # in the future, query: `dnf list available ovn25.XX-host` and
+          # `dnf list available openvswitch3.X` against centos-nfv-openvswitch.
+          # OVN_KUBERNETES_REF matches upstream's pin -- see alpine block
+          # comment above for why we don't bump to v1.3.0.
+          build_args:
+            - FROM=quay.io/centos/centos:stream9
+            - OVS_SERIES=3.5
+            - OVS_VERSION=3.5.3-6
+            - OVN_SERIES=25.09
+            - OVN_VERSION=25.09.2-115
+            - OVN_KUBERNETES_REF=5359e7d7f872058b6e5bf884c9f19d1922451f29

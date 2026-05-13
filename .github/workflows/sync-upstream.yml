@@ -1,0 +1,94 @@
+name: Sync from upstream
+
+on:
+  schedule:
+    # Daily at 01:00 UTC. Two hours before the build cron so any pulled-in
+    # changes are visible to the daily build run.
+    - cron: "0 1 * * *"
+  workflow_dispatch:
+
+# Only one sync allowed at a time across the whole repo -- protects against
+# two runners trying to git-push master concurrently (one would fail with
+# non-fast-forward and leave operator confused).
+concurrency:
+  group: sync-upstream
+  cancel-in-progress: false
+
+permissions:
+  contents: write
+
+jobs:
+  sync:
+    runs-on: self-hosted
+    #runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Configure git identity
+        run: |
+          git config user.name  "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+
+      - name: Fetch upstream
+        id: fetch
+        run: |
+          git remote add upstream https://github.com/openstack/openstack-helm-images.git
+          git fetch upstream master
+
+          # Are we already at or ahead of upstream?
+          if git merge-base --is-ancestor upstream/master HEAD; then
+            echo "Already up to date with upstream/master, nothing to merge."
+            echo "skip=true" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          echo "skip=false" >> "$GITHUB_OUTPUT"
+
+          upstream_head=$(git rev-parse upstream/master)
+          fork_head=$(git rev-parse HEAD)
+          echo "upstream_head=${upstream_head}" >> "$GITHUB_OUTPUT"
+          echo "fork_head=${fork_head}"         >> "$GITHUB_OUTPUT"
+
+      - name: Merge upstream/master
+        id: merge
+        if: steps.fetch.outputs.skip != 'true'
+        run: |
+          set -e
+          if git merge --no-edit --no-ff upstream/master; then
+            echo "merged=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "merged=false" >> "$GITHUB_OUTPUT"
+            git merge --abort || true
+            exit 1
+          fi
+
+      - name: Push to origin
+        if: steps.merge.outputs.merged == 'true'
+        run: git push origin HEAD:master
+
+      - name: Summary
+        if: ${{ !cancelled() }}
+        run: |
+          {
+            echo "## Upstream sync"
+            echo ""
+            if [ "${{ steps.fetch.outputs.skip }}" = "true" ]; then
+              echo "Already up to date. No changes pulled in."
+            elif [ "${{ steps.merge.outputs.merged }}" = "true" ]; then
+              echo "Merged upstream/master into master."
+              echo ""
+              echo "- Upstream head: \`${{ steps.fetch.outputs.upstream_head }}\`"
+              echo "- Fork head was: \`${{ steps.fetch.outputs.fork_head }}\`"
+            else
+              echo ":warning: Merge conflict with upstream/master. Manual resolution required."
+              echo ""
+              echo "Run locally:"
+              echo "\`\`\`bash"
+              echo "git fetch https://github.com/openstack/openstack-helm-images.git master"
+              echo "git merge --no-ff FETCH_HEAD"
+              echo "# resolve conflicts, commit, push"
+              echo "\`\`\`"
+            fi
+          } >> "$GITHUB_STEP_SUMMARY"
