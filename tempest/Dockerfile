@@ -32,6 +32,7 @@ RUN sed -i '/^tempest===/d' /upper-constraints.txt \
     && uv pip install \
          --build-constraint /upper-constraints.txt \
          -c /upper-constraints.txt \
+         -r /etc/image_info/python_packages.txt \
          /tmp/tempest \
          barbican-tempest-plugin \
          cinder-tempest-plugin \
