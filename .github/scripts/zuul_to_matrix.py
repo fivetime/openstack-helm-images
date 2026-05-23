@@ -201,6 +201,83 @@ def classify_tier(job_name: str) -> str:
     return "service"
 
 
+# Tier filter values that select the merge matrix for the underlying tier.
+# A merge cell takes per-arch tags pushed by build cells and combines them
+# into a single OCI manifest list at the canonical (un-suffixed) tag.
+MERGE_TIER_MAP = {
+    "foundation_merge": "foundation",
+    "service_merge":    "service",
+}
+
+
+def expand_per_platform(rows: list[dict]) -> list[dict]:
+    """Expand each row into one row per platform, with arch-suffixed tags.
+
+    A multi-arch row with platforms=``linux/amd64,linux/arm64`` becomes two
+    rows: one with platform=``linux/amd64`` arch=``amd64`` and all tags
+    suffixed with ``-amd64``, and the symmetric arm64 row. The corresponding
+    merge cell then stitches the per-arch tags into a manifest list at the
+    canonical (un-suffixed) tag.
+
+    Single-arch rows pass through unsplit and **without** the arch suffix:
+    they push directly to the canonical tag because there is nothing for a
+    merge cell to combine. Without this carve-out we'd produce only
+    ``:tag-amd64`` for upstream entries like ceph-daemon (amd64-only), and
+    consumers pulling ``:tag`` would 404.
+    """
+    out: list[dict] = []
+    for r in rows:
+        archs = [a for a in r["platforms"].split(",") if a]
+        if len(archs) == 1:
+            arch_short = archs[0].split("/")[-1]
+            new_row = dict(r)
+            new_row["platform"] = archs[0]
+            new_row["platforms"] = archs[0]
+            new_row["arch"] = arch_short
+            # Keep tags_cli / primary_tag intact -- no -<arch> suffix.
+            out.append(new_row)
+            continue
+        tag_bases = re.findall(r"--tag\s+(\S+)", r["tags_cli"])
+        for a in archs:
+            arch_short = a.split("/")[-1]  # linux/amd64 -> amd64
+            new_tags = [f"{t}-{arch_short}" for t in tag_bases]
+            new_row = dict(r)
+            new_row["platform"] = a
+            new_row["platforms"] = a
+            new_row["arch"] = arch_short
+            new_row["tags_cli"] = " ".join(f"--tag {t}" for t in new_tags)
+            new_row["primary_tag"] = new_tags[0]
+            out.append(new_row)
+    return out
+
+
+def to_merge_rows(rows: list[dict]) -> list[dict]:
+    """Generate one merge entry per row that has more than one arch.
+
+    Each merge entry carries the canonical (un-suffixed) tag bases plus the
+    arch short names as space-separated strings. The workflow merge step
+    iterates them with plain shell ``for`` loops -- no jq/python required --
+    and calls ``docker buildx imagetools create -t <base> <base>-<arch> ...``
+    to produce the final manifest list. Tag bases come from trusted
+    zuul.d/build-local.d YAML so there is no shell-injection concern.
+    """
+    out: list[dict] = []
+    for r in rows:
+        archs = [a.split("/")[-1] for a in r["platforms"].split(",") if a]
+        if len(archs) < 2:
+            continue
+        tag_bases = re.findall(r"--tag\s+(\S+)", r["tags_cli"])
+        out.append({
+            "job":         r["job"],
+            "release":     r["release"],
+            "tier":        r["tier"],
+            "tag_bases":   " ".join(tag_bases),
+            "archs":       " ".join(archs),
+            "primary_tag": tag_bases[0],
+        })
+    return out
+
+
 def main() -> int:
     ap = argparse.ArgumentParser()
     ap.add_argument("--owner", required=True)
@@ -224,7 +301,18 @@ def main() -> int:
     )
     ap.add_argument(
         "--tier", default="",
-        help="Comma-separated tier filter ('foundation' or 'service'). Empty = all.",
+        help=(
+            "Comma-separated tier filter. Build tiers: 'foundation' or 'service'. "
+            "Merge tiers: 'foundation_merge' or 'service_merge' (emit manifest-list "
+            "merge entries for the underlying build tier). Empty = all build tiers."
+        ),
+    )
+    ap.add_argument(
+        "--split-platforms", action="store_true",
+        help=(
+            "Expand each row into one row per platform (per-arch tags suffixed "
+            "with -<arch>). Required if you intend to consume merge tiers."
+        ),
     )
     ap.add_argument(
         "--format", choices=["json", "github"], default="json",
@@ -273,9 +361,23 @@ def main() -> int:
     if release_filter:
         rows = [r for r in rows if r["release"] in release_filter]
 
-    tier_filter = {t for t in args.tier.split(",") if t}
-    if tier_filter:
-        rows = [r for r in rows if r["tier"] in tier_filter]
+    raw_tiers = {t for t in args.tier.split(",") if t}
+    merge_tiers = raw_tiers & set(MERGE_TIER_MAP.keys())
+    build_tiers = raw_tiers - merge_tiers
+
+    if merge_tiers and build_tiers:
+        sys.stderr.write(
+            "ERROR: cannot mix merge tiers and build tiers in a single --tier "
+            "call (run them in separate invocations).\n"
+        )
+        return 2
+
+    if merge_tiers:
+        # Filter rows to the underlying build tiers, then emit merge entries.
+        underlying = {MERGE_TIER_MAP[t] for t in merge_tiers}
+        rows = [r for r in rows if r["tier"] in underlying]
+    elif build_tiers:
+        rows = [r for r in rows if r["tier"] in build_tiers]
 
     if platform_filter:
         kept = []
@@ -287,6 +389,13 @@ def main() -> int:
             r2["platforms"] = ",".join(archs)
             kept.append(r2)
         rows = kept
+
+    if merge_tiers:
+        # Merge entries are computed from the pre-split row shape so we still
+        # have ``platforms`` as a comma-list to derive archs from.
+        rows = to_merge_rows(rows)
+    elif args.split_platforms:
+        rows = expand_per_platform(rows)
 
     if args.format == "github":
         sys.stdout.write(f"matrix={json.dumps({'include': rows})}\n")

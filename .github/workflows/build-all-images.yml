@@ -37,11 +37,15 @@ jobs:
     runs-on: self-hosted
     #runs-on: ubuntu-latest
     outputs:
-      foundation_matrix: ${{ steps.gen.outputs.foundation_matrix }}
-      service_matrix:    ${{ steps.gen.outputs.service_matrix }}
-      foundation_count:  ${{ steps.gen.outputs.foundation_count }}
-      service_count:     ${{ steps.gen.outputs.service_count }}
-      releases:          ${{ steps.gen.outputs.releases }}
+      foundation_matrix:       ${{ steps.gen.outputs.foundation_matrix }}
+      foundation_merge_matrix: ${{ steps.gen.outputs.foundation_merge_matrix }}
+      service_matrix:          ${{ steps.gen.outputs.service_matrix }}
+      service_merge_matrix:    ${{ steps.gen.outputs.service_merge_matrix }}
+      foundation_count:        ${{ steps.gen.outputs.foundation_count }}
+      foundation_merge_count:  ${{ steps.gen.outputs.foundation_merge_count }}
+      service_count:           ${{ steps.gen.outputs.service_count }}
+      service_merge_count:     ${{ steps.gen.outputs.service_merge_count }}
+      releases:                ${{ steps.gen.outputs.releases }}
     steps:
       - uses: actions/checkout@v6
 
@@ -91,26 +95,53 @@ jobs:
 
           echo "Effective parser args: ${common_args[*]}"
 
-          # Foundation tier (base, venv_builder) builds first.
+          # Foundation tier (base, venv_builder) builds first. --split-platforms
+          # expands each multi-arch row into one cell per arch so the matrix UI
+          # shows whether amd64 or arm64 specifically failed; the merge tier
+          # then stitches the per-arch tags into a manifest list at the
+          # canonical (un-suffixed) tag.
           python .github/scripts/zuul_to_matrix.py "${common_args[@]}" \
-            --tier foundation --format json > /tmp/foundation.json
+            --tier foundation --split-platforms --format json > /tmp/foundation.json
           fcount=$(python -c "import json; print(len(json.load(open('/tmp/foundation.json'))))")
           echo "Foundation cells discovered: ${fcount}"
           python -c "import json; data=json.load(open('/tmp/foundation.json')); print('  -', '\n  - '.join(r['primary_tag'] for r in data)) if data else print('  (empty)')"
           python .github/scripts/zuul_to_matrix.py "${common_args[@]}" \
-            --tier foundation --format github \
+            --tier foundation --split-platforms --format github \
             | sed 's/^matrix=/foundation_matrix=/' >> "$GITHUB_OUTPUT"
           echo "foundation_count=${fcount}" >> "$GITHUB_OUTPUT"
 
-          # Service tier (everything else) builds after foundation.
+          # Foundation merge tier: one cell per multi-arch foundation row that
+          # combines :tag-amd64 + :tag-arm64 into :tag manifest list.
           python .github/scripts/zuul_to_matrix.py "${common_args[@]}" \
-            --tier service --format json > /tmp/service.json
+            --tier foundation_merge --format json > /tmp/foundation_merge.json
+          fmcount=$(python -c "import json; print(len(json.load(open('/tmp/foundation_merge.json'))))")
+          echo "Foundation merge cells discovered: ${fmcount}"
+          python .github/scripts/zuul_to_matrix.py "${common_args[@]}" \
+            --tier foundation_merge --format github \
+            | sed 's/^matrix=/foundation_merge_matrix=/' >> "$GITHUB_OUTPUT"
+          echo "foundation_merge_count=${fmcount}" >> "$GITHUB_OUTPUT"
+
+          # Service tier (everything else) builds after foundation merge --
+          # master service Dockerfiles FROM the canonical (merged) foundation
+          # tag, so the manifest list must exist before service builds start.
+          python .github/scripts/zuul_to_matrix.py "${common_args[@]}" \
+            --tier service --split-platforms --format json > /tmp/service.json
           scount=$(python -c "import json; print(len(json.load(open('/tmp/service.json'))))")
           echo "Service cells discovered: ${scount}"
           python .github/scripts/zuul_to_matrix.py "${common_args[@]}" \
-            --tier service --format github \
+            --tier service --split-platforms --format github \
             | sed 's/^matrix=/service_matrix=/' >> "$GITHUB_OUTPUT"
           echo "service_count=${scount}" >> "$GITHUB_OUTPUT"
+
+          # Service merge tier: combines per-arch service tags into manifest lists.
+          python .github/scripts/zuul_to_matrix.py "${common_args[@]}" \
+            --tier service_merge --format json > /tmp/service_merge.json
+          smcount=$(python -c "import json; print(len(json.load(open('/tmp/service_merge.json'))))")
+          echo "Service merge cells discovered: ${smcount}"
+          python .github/scripts/zuul_to_matrix.py "${common_args[@]}" \
+            --tier service_merge --format github \
+            | sed 's/^matrix=/service_merge_matrix=/' >> "$GITHUB_OUTPUT"
+          echo "service_merge_count=${smcount}" >> "$GITHUB_OUTPUT"
 
           # Distinct release codes that appear in the service matrix --
           # used by the next step to decide which pydep files to generate.
@@ -121,9 +152,9 @@ jobs:
           {
             echo "## Build matrix"
             echo ""
-            echo "- Foundation tier: ${fcount} entries"
-            echo "- Service tier:    ${scount} entries"
-            echo "- Releases:        ${releases}"
+            echo "- Foundation tier:       ${fcount} build + ${fmcount} merge entries"
+            echo "- Service tier:          ${scount} build + ${smcount} merge entries"
+            echo "- Releases:              ${releases}"
             echo ""
             python .github/scripts/format_matrix_summary.py /tmp/foundation.json --title Foundation
             python .github/scripts/format_matrix_summary.py /tmp/service.json --title Service
@@ -180,12 +211,12 @@ jobs:
       fail-fast: false
       max-parallel: 8
       matrix: ${{ fromJson(needs.discover.outputs.foundation_matrix) }}
-    name: "foundation | ${{ matrix.job }} | ${{ matrix.release }} | ${{ matrix.platforms }}"
+    name: "foundation | ${{ matrix.job }} | ${{ matrix.release }} | ${{ matrix.arch }}"
     steps:
       - uses: actions/checkout@v6
 
       - name: Set up QEMU
-        if: contains(matrix.platforms, 'arm64')
+        if: matrix.arch != 'amd64'
         uses: docker/setup-qemu-action@v4
 
       - name: Set up Docker Buildx
@@ -206,7 +237,7 @@ jobs:
           cd "${{ matrix.context }}"
           docker buildx build . \
             -f "${{ matrix.container_filename }}" \
-            --platform "${{ matrix.platforms }}" \
+            --platform "${{ matrix.platform }}" \
             ${{ matrix.tags_cli }} \
             ${{ matrix.build_args_cli }} \
             --label "org.opencontainers.image.source=https://github.com/${{ github.repository }}" \
@@ -214,12 +245,52 @@ jobs:
             --provenance=false \
             --push
 
-  build-services:
+  merge-foundation:
     needs: [discover, build-foundation]
-    # Wait for foundation to finish (any result) before starting services.
-    # We do NOT gate on foundation success -- 2025.x services FROM quay.io
-    # upstream and don't actually need our self-built foundation. Only
-    # master-tagged services reference our ghcr.io foundation; if their
+    # Run merge as long as at least one per-arch build succeeded; if some
+    # archs failed, imagetools create will fail at the missing-source step
+    # and the merge cell turns red, surfacing the issue. Skipping the entire
+    # merge tier when build-foundation has any failure would hide successful
+    # per-arch artifacts that could still be useful for debugging.
+    if: ${{ !cancelled() && !inputs.dry_run && needs.discover.outputs.foundation_merge_count != '0' && needs.build-foundation.result != 'skipped' }}
+    runs-on: self-hosted
+    timeout-minutes: 10
+    strategy:
+      fail-fast: false
+      max-parallel: 8
+      matrix: ${{ fromJson(needs.discover.outputs.foundation_merge_matrix) }}
+    name: "foundation-merge | ${{ matrix.job }} | ${{ matrix.release }}"
+    steps:
+      - name: Log in to GHCR
+        uses: docker/login-action@v4
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Create manifest list
+        run: |
+          set -euo pipefail
+          # tag_bases and archs are space-separated lists from the matrix.
+          # Tag/arch values come from trusted zuul.d YAML so unquoted
+          # word-splitting in the for loops is safe here.
+          for tag_base in ${{ matrix.tag_bases }}; do
+            srcs=""
+            for a in ${{ matrix.archs }}; do
+              srcs="${srcs} ${tag_base}-${a}"
+            done
+            echo "::group::Merge ${tag_base}"
+            echo "  sources:${srcs}"
+            docker buildx imagetools create -t "${tag_base}" ${srcs}
+            echo "::endgroup::"
+          done
+
+  build-services:
+    needs: [discover, merge-foundation]
+    # Wait for foundation merge so the canonical foundation tag exists --
+    # master service Dockerfiles FROM ghcr.../base:master-ubuntu_noble
+    # (not the per-arch -amd64/-arm64 form). 2025.x services FROM quay.io
+    # upstream and don't actually need our self-built foundation; if their
     # specific foundation cell failed, that service cell will fail at
     # docker pull and the failure is self-evident in the run log.
     if: ${{ !cancelled() && !inputs.dry_run && needs.discover.outputs.service_count != '0' }}
@@ -236,12 +307,12 @@ jobs:
       fail-fast: false
       max-parallel: 20
       matrix: ${{ fromJson(needs.discover.outputs.service_matrix) }}
-    name: "service | ${{ matrix.job }} | ${{ matrix.release }} | ${{ matrix.platforms }}"
+    name: "service | ${{ matrix.job }} | ${{ matrix.release }} | ${{ matrix.arch }}"
     steps:
       - uses: actions/checkout@v6
 
       - name: Set up QEMU
-        if: contains(matrix.platforms, 'arm64')
+        if: matrix.arch != 'amd64'
         uses: docker/setup-qemu-action@v4
 
       - name: Set up Docker Buildx
@@ -280,7 +351,7 @@ jobs:
           cd "${{ matrix.context }}"
           docker buildx build . \
             -f "${{ matrix.container_filename }}" \
-            --platform "${{ matrix.platforms }}" \
+            --platform "${{ matrix.platform }}" \
             ${{ matrix.tags_cli }} \
             ${{ matrix.build_args_cli }} \
             --label "org.opencontainers.image.source=https://github.com/${{ github.repository }}" \
@@ -288,8 +359,40 @@ jobs:
             --provenance=false \
             --push
 
+  merge-services:
+    needs: [discover, build-services]
+    if: ${{ !cancelled() && !inputs.dry_run && needs.discover.outputs.service_merge_count != '0' && needs.build-services.result != 'skipped' }}
+    runs-on: self-hosted
+    timeout-minutes: 10
+    strategy:
+      fail-fast: false
+      max-parallel: 20
+      matrix: ${{ fromJson(needs.discover.outputs.service_merge_matrix) }}
+    name: "service-merge | ${{ matrix.job }} | ${{ matrix.release }}"
+    steps:
+      - name: Log in to GHCR
+        uses: docker/login-action@v4
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Create manifest list
+        run: |
+          set -euo pipefail
+          for tag_base in ${{ matrix.tag_bases }}; do
+            srcs=""
+            for a in ${{ matrix.archs }}; do
+              srcs="${srcs} ${tag_base}-${a}"
+            done
+            echo "::group::Merge ${tag_base}"
+            echo "  sources:${srcs}"
+            docker buildx imagetools create -t "${tag_base}" ${srcs}
+            echo "::endgroup::"
+          done
+
   summary:
-    needs: [discover, build-foundation, build-services]
+    needs: [discover, build-foundation, merge-foundation, build-services, merge-services]
     if: ${{ !cancelled() && !inputs.dry_run }}
     runs-on: self-hosted
     #runs-on: ubuntu-latest
@@ -299,6 +402,8 @@ jobs:
           {
             echo "## Build summary"
             echo ""
-            echo "- Foundation entries: ${{ needs.discover.outputs.foundation_count }} (result: ${{ needs.build-foundation.result }})"
-            echo "- Service entries:    ${{ needs.discover.outputs.service_count }} (result: ${{ needs.build-services.result }})"
+            echo "- Foundation build entries: ${{ needs.discover.outputs.foundation_count }} (result: ${{ needs.build-foundation.result }})"
+            echo "- Foundation merge entries: ${{ needs.discover.outputs.foundation_merge_count }} (result: ${{ needs.merge-foundation.result }})"
+            echo "- Service build entries:    ${{ needs.discover.outputs.service_count }} (result: ${{ needs.build-services.result }})"
+            echo "- Service merge entries:    ${{ needs.discover.outputs.service_merge_count }} (result: ${{ needs.merge-services.result }})"
           } >> "$GITHUB_STEP_SUMMARY"
