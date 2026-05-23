@@ -31,6 +31,11 @@ permissions:
 
 env:
   REGISTRY: ghcr.io
+  # Force all JS actions (download-artifact, etc.) onto Node 24 instead of
+  # the deprecated Node 20. GitHub will make this the default on 2026-06-02
+  # and remove Node 20 entirely on 2026-09-16.
+  # https://github.blog/changelog/2025-09-19-deprecation-of-node-20-on-github-actions-runners/
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: "true"
 
 jobs:
   discover:
