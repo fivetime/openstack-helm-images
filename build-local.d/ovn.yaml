@@ -4,19 +4,19 @@
 # below add the Alpine and CentOS Stream 9 variants, which upstream does
 # not provide.
 #
-# Why we pin OVN_BRANCH and OVN_KUBERNETES_REF:
-# The Dockerfile defaults are OVN_BRANCH=main and OVN_KUBERNETES_REF=<some
-# old commit>. The ovn-kubernetes commit ships /root/ovnkube.sh and
-# /root/ovndb-raft-functions.sh into the final image -- those scripts wrap
-# ovsdb-server / ovn-northd / ovn-controller calls and depend on the
-# OVN version's CLI/schema. If OVN core drifts away from what ovnkube.sh
-# expects, the container fails at runtime. So we pin both to a known-
-# compatible pair as published by the upstream ovn-kubernetes project
-# (see dist/images/Dockerfile.fedora "ovnver=" line of each release tag).
+# Alpine (source build) is decoupled from ovn-kubernetes: its runtime scripts
+# (ovnkube.sh / ovndb-raft-functions.sh) are VENDORED in ovn/scripts/ (see
+# ovn/scripts/README.md), so it no longer clones ovn-kubernetes and OVN can be
+# built from main (latest -- includes Transit Router / OVN-IC >= 26.03).
+#
+# CentOS still clones ovn-kubernetes at a pinned OVN_KUBERNETES_REF (it also
+# builds the Go ovn-kube-util from it) and uses distro RPMs for OVN; the
+# patches in patches/ovn-kubernetes/ are written against that exact 2024-01
+# commit, so bumping the REF without rebasing the patches breaks that build.
 
 - job:
     name: build-local-ovn-alpine
-    description: Build fork-only ovn Alpine variant.
+    description: Build fork-only ovn Alpine variant (OVN from source, main).
     vars:
       container_images:
         - context: ovn
@@ -27,17 +27,13 @@
             - linux/arm64
           tags:
             - alpine_latest
-          # OVN_KUBERNETES_REF matches upstream openstack-helm-images' own
-          # pin (2024-01 era). Patches in patches/ovn-kubernetes/ are written
-          # against that exact commit; bumping the REF without rebasing the
-          # patches breaks the build (verified empirically -- v1.3.0 has
-          # context drift in ovnkube.sh and ovndb-raft-functions.sh that
-          # 0001/0002 can't apply against). The 2024-01 ovnkube.sh runs fine
-          # against OVN 25.09 because the CLIs it wraps (ovs-appctl,
-          # ovn-appctl, ovsdb-tool) have stable interfaces across OVN majors.
+          # OVN built from main = the latest code each daily build (Transit
+          # Router / OVN-IC >= 26.03). The ovn-kubernetes scripts are vendored
+          # (ovn/scripts/), so OVN_KUBERNETES_REF is not used here. For a
+          # reproducible/stable image, pin OVN_BRANCH to a release tag
+          # (e.g. branch-26.03) instead of the moving main branch.
           build_args:
-            - OVN_BRANCH=branch-25.09
-            - OVN_KUBERNETES_REF=5359e7d7f872058b6e5bf884c9f19d1922451f29
+            - OVN_BRANCH=main
 
 - job:
     name: build-local-ovn-centos
@@ -56,8 +52,8 @@
           # to the matching 25.09 RPMs from the CentOS NFV SIG repo. To bump
           # in the future, query: `dnf list available ovn25.XX-host` and
           # `dnf list available openvswitch3.X` against centos-nfv-openvswitch.
-          # OVN_KUBERNETES_REF matches upstream's pin -- see alpine block
-          # comment above for why we don't bump to v1.3.0.
+          # OVN_KUBERNETES_REF is pinned to the 2024-01 commit the patches
+          # target (see header); CentOS still clones ovn-kubernetes.
           build_args:
             - FROM=quay.io/centos/centos:stream9
             - OVS_SERIES=3.5

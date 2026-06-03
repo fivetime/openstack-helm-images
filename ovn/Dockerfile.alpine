@@ -18,31 +18,13 @@
 
 ARG ALPINE_VERSION=3.23
 
-# -----------------------------------------------------------------------------
-# 阶段 1: 下载并 patch ovn-kubernetes 脚本
-# -----------------------------------------------------------------------------
-FROM alpine:${ALPINE_VERSION} AS kube-patcher
-
-ARG OVN_KUBERNETES_REF=5359e7d7f872058b6e5bf884c9f19d1922451f29
-
-RUN apk add --no-cache git
-
-WORKDIR /src
-
-# 克隆 ovn-kubernetes 到指定 commit。
-# 用 --filter=blob:none 做 partial clone：只拉树结构和提交对象，blob 按需获取。
-# 全量 clone 在 QEMU arm64 模拟下会触发 "cannot pread pack file: Bad address"
-# (git 大量 pread() 调用 + QEMU 对 mmap 大文件的 syscall 模拟存在 race)。
-# partial clone 把数据量降到 ~10%，对 pread 的压力大幅减小，稳定通过。
-RUN git clone --filter=blob:none https://github.com/ovn-org/ovn-kubernetes.git . && \
-    git checkout ${OVN_KUBERNETES_REF}
-
-# 复制并应用 patches
-COPY patches/ovn-kubernetes /patches/ovn-kubernetes
-RUN git apply --verbose /patches/ovn-kubernetes/*
+# ovn-kubernetes 的运行时脚本 (ovnkube.sh / ovndb-raft-functions.sh) 已 vendored
+# 到本目录 scripts/ 下 (见 scripts/README.md)，不再在构建期 clone ovn-kubernetes。
+# 这样 OVN 版本与 ovn-kubernetes 版本解耦：本镜像可从 OVN main(含 Transit Router /
+# OVN-IC >= 26.03)源码编译，而不被 vendored 脚本对应的旧 ovn-kubernetes commit 拖住。
 
 # -----------------------------------------------------------------------------
-# 阶段 2: 编译 OVS 和 OVN
+# 阶段 1: 编译 OVS 和 OVN (默认 OVN main 分支 -> 最新代码)
 # -----------------------------------------------------------------------------
 FROM alpine:${ALPINE_VERSION} AS builder
 
@@ -122,7 +104,7 @@ RUN cd /install && \
     strip usr/bin/* usr/sbin/* 2>/dev/null || true
 
 # -----------------------------------------------------------------------------
-# 阶段 3: 运行时镜像
+# 阶段 2: 运行时镜像
 # -----------------------------------------------------------------------------
 FROM alpine:${ALPINE_VERSION}
 
@@ -168,9 +150,9 @@ COPY --from=builder /install/usr/share/openvswitch/ /usr/share/openvswitch/
 # 复制 ovn-kube-util 替代脚本
 COPY ovn-kube-util.sh /usr/bin/ovn-kube-util
 
-# 复制 patched 的 ovn-kubernetes 脚本
-COPY --from=kube-patcher /src/dist/images/ovnkube.sh /root/ovnkube.sh
-COPY --from=kube-patcher /src/dist/images/ovndb-raft-functions.sh /root/ovndb-raft-functions.sh
+# 复制 vendored 的 ovn-kubernetes 运行时脚本 (见 scripts/README.md)
+COPY scripts/ovnkube.sh /root/ovnkube.sh
+COPY scripts/ovndb-raft-functions.sh /root/ovndb-raft-functions.sh
 
 # 创建必要目录和用户
 RUN mkdir -p /var/run/ovn /var/log/ovn /var/run/openvswitch /etc/ovn && \
