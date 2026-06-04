@@ -41,14 +41,20 @@ ARG CONSTRAINTS=https://opendev.org/openstack/requirements/raw/branch/stable/202
 #  - iptables/.../keepalived/dnsmasq: L3/安全组/HA/DHCP 兜底
 #  - libffi/libxml2/libxslt/pcre2/librdkafka/libpq: 各扩展的运行期动态库
 #  - sudo: 非 root(uid 42424)进程经 sudo 提权跑 rootwrap/privsep
-# neutron 及 uwsgi/驱动全部装进 /var/lib/openstack venv。confluent-kafka 在 musl 上
+#  - lshw: 官方 neutron-core 自带的硬件清单工具(诊断用,非 OVN 专属)
+# neutron(+tap-as-a-service 端口镜像扩展)及 uwsgi/驱动全装进 /var/lib/openstack venv。confluent-kafka 在 musl 上
 # 无 wheel,需对 alpine 的 librdkafka 2.12.x 编译(故钉 2.12 线);build 依赖(含
 # py3-virtualenv 用于建 venv)用 --virtual 装完即删。
+# 装完写 /etc/image_info/pip.txt(pip freeze,git 装的 neutron 会带 @<sha>,便于对版
+# 排障),并在本层内删 *.pyc/__pycache__ 与 /etc/machine-id —— 对齐官方 runtime 清理。
+# 清理必须与生成在同一 RUN 层:跨层删只加 whiteout、旧层字节码仍占体积,镜像反而更大。
+# 后续自检 RUN 用 PYTHONDONTWRITEBYTECODE=1,避免 import 把字节码又写回新层。
 RUN apk add --no-cache \
         python3 \
         haproxy \
         iptables ip6tables conntrack-tools keepalived dnsmasq \
         sudo \
+        lshw \
         libffi libxml2 libxslt pcre2 librdkafka libpq \
  && apk add --no-cache --virtual .build-deps \
         py3-virtualenv \
@@ -64,16 +70,23 @@ RUN apk add --no-cache \
         uwsgi \
         PyMySQL python-memcached pymemcache \
         "neutron @ git+${NEUTRON_REPO}@${NEUTRON_REF}" \
+        tap-as-a-service \
  && /var/lib/openstack/bin/pip install --no-cache-dir \
         psycopg2-binary 'confluent-kafka>=2.12,<2.13' \
+ && mkdir -p /etc/image_info \
+ && /var/lib/openstack/bin/pip freeze > /etc/image_info/pip.txt \
  && apk del .build-deps \
- && rm -rf /root/.cargo /root/.cache /tmp/* /var/cache/apk/*
+ && find /var/lib/openstack -name '*.pyc' -delete \
+ && find /var/lib/openstack -type d -name '__pycache__' -delete \
+ && rm -rf /root/.cargo /root/.cache /tmp/* /var/cache/apk/* /etc/machine-id
 
 # DNS 修复：把 ovs.dns_resolve.resolve 换成同步 getaddrinfo。.pth 放进 venv 的
 # site-packages，对 venv 里所有进程(neutron-server/ovn-agent/db-manage)生效，
 # 不改上游 neutron 代码。
-COPY ovsdb_dns_patch.py /tmp/ovsdb_dns_patch.py
-RUN SP=$(/var/lib/openstack/bin/python3 -c "import sysconfig; print(sysconfig.get_paths()['purelib'])") \
+COPY patches/ovsdb_dns.py /tmp/ovsdb_dns_patch.py
+# PYTHONDONTWRITEBYTECODE: venv 启动期的 .pth(_virtualenv/distutils-precedence)会在这次
+# python 调用里写回 _virtualenv/_distutils_hack 的字节码,设此变量避免污染本层。
+RUN SP=$(PYTHONDONTWRITEBYTECODE=1 /var/lib/openstack/bin/python3 -c "import sysconfig; print(sysconfig.get_paths()['purelib'])") \
  && cp /tmp/ovsdb_dns_patch.py "${SP}/ovsdb_dns_patch.py" \
  && printf 'import ovsdb_dns_patch\n' > "${SP}/zzz_ovsdb_dns_patch.pth" \
  && rm /tmp/ovsdb_dns_patch.py
@@ -108,10 +121,12 @@ RUN printf '%s\n' \
 # 自检:neutron 确实在 venv 布局(/var/lib/openstack/bin)、WSGI 模块在(用 find_spec
 # 不执行,避免 import 期 boot_server 读不存在的配置)、uwsgi/入口/工具/驱动/补丁/
 # hostname 全部正常。
-RUN test "$(command -v neutron-ovn-agent)" = "/var/lib/openstack/bin/neutron-ovn-agent" \
+RUN export PYTHONDONTWRITEBYTECODE=1 \
+ && test "$(command -v neutron-ovn-agent)" = "/var/lib/openstack/bin/neutron-ovn-agent" \
  && python3 -c "import neutron; import importlib.util as u; assert u.find_spec('neutron.wsgi.api'), 'wsgi app module missing'" \
- && for c in uwsgi neutron-db-manage neutron-rpc-server neutron-rootwrap ovs-vsctl haproxy; do command -v "$c" >/dev/null || { echo "MISSING $c"; exit 1; }; done \
+ && for c in uwsgi neutron-db-manage neutron-rpc-server neutron-rootwrap ovs-vsctl haproxy lshw; do command -v "$c" >/dev/null || { echo "MISSING $c"; exit 1; }; done \
  && test -n "$(hostname --fqdn)" && echo "hostname --fqdn -> $(hostname --fqdn)" \
+ && python3 -c "import neutron_taas; print('tap-as-a-service OK')" \
  && python3 -c "import psycopg2, confluent_kafka, pymysql; print('db+kafka drivers OK')" \
  && python3 -c "import ovs.dns_resolve as d; assert getattr(d, '_ovnic_dns_patched', False); print('DNS patch active')" \
  && echo "venv layout OK (neutron in /var/lib/openstack)"
