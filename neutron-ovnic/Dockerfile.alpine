@@ -1,0 +1,38 @@
+# syntax=docker/dockerfile:1
+# =============================================================================
+# neutron-ovnic 镜像 —— 外部编排器,在 OVN-IC 之下为 Neutron 驱动跨 AZ 互联。
+#
+# FROM 现成的 OVN 镜像(已含 26.03 的 ovn-ic-nbctl/ovn-ic-sbctl/ovn-nbctl 等
+# 客户端 —— neutron-ovnic 通过它们建 Transit Router/Switch、读 IC-SB);只需再
+# 叠加 python3 + neutron-ovnic 包(及其 oslo/ovsdbapp/tooz 依赖)。
+# ovn-ic 守护进程不在本镜像里跑(由 ovn-ic chart 跑);本镜像只跑
+# neutron-ovnic-agent。
+#
+# 构建:
+#   docker build -f Dockerfile.alpine -t neutron-ovnic:latest .
+#   # 本地用自建 ovn 镜像做基底:
+#   docker build -f Dockerfile.alpine --build-arg OVN_IMAGE=ovn:alpine-test -t neutron-ovnic:test .
+# =============================================================================
+
+ARG OVN_IMAGE=ghcr.io/fivetime/openstackhelm/ovn:alpine_latest
+FROM ${OVN_IMAGE}
+
+ARG NEUTRON_OVNIC_REPO=https://github.com/fivetime/neutron-ovnic.git
+ARG NEUTRON_OVNIC_REF=master
+
+# python3 + pip 是运行期需要的;build 依赖(编译 cffi/cryptography 等 musl 轮子
+# 兜底)用 --virtual 装完即删,不留在最终层。PBR_VERSION 让 pbr 免去 git tag。
+RUN apk add --no-cache python3 py3-pip \
+ && apk add --no-cache --virtual .build-deps \
+      git build-base python3-dev libffi-dev openssl-dev cargo rust \
+ && PBR_VERSION=0.1.0 pip install --no-cache-dir --break-system-packages \
+      "neutron-ovnic @ git+${NEUTRON_OVNIC_REPO}@${NEUTRON_OVNIC_REF}" \
+ && apk del .build-deps \
+ && rm -rf /root/.cargo /root/.cache /tmp/*
+
+# 自检:包可导入、入口脚本在、依赖的 OVN-IC 客户端在。
+RUN python3 -c "import neutron_ovnic, neutron_ovnic.ovnic.agent" \
+ && command -v neutron-ovnic-agent \
+ && command -v ovn-ic-nbctl ovn-ic-sbctl ovn-nbctl
+
+CMD ["neutron-ovnic-agent"]

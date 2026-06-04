@@ -1,0 +1,40 @@
+---
+# Fork-only neutron-ovnic image: the external orchestrator that drives native
+# OVN-IC (Transit Switch / Transit Router) beneath Neutron. There is no
+# upstream openstack-helm-images build for it.
+#
+# It is layered ON TOP of the fork's ovn Alpine image: that base already ships
+# the 26.03 OVN-IC clients (ovn-ic-nbctl/ovn-ic-sbctl) the orchestrator shells
+# out to -- distro packages (< 26.03) lack `tr-add`, so they cannot create
+# Transit Routers. On top of the base we add python3 + the neutron-ovnic
+# package (installed from its git repo). The ovn-ic DAEMON is NOT run here (the
+# ovn-ic chart runs it); this image only runs neutron-ovnic-agent.
+#
+# ORDERING: this is a service-tier job, same as build-local-ovn-alpine (only
+# *-build-base / *-build-venv-builder are foundation tier), and the matrix has
+# no intra-tier ordering. So OVN_IMAGE resolves to the PREVIOUSLY PUBLISHED
+# ovn:alpine_latest, not the one building in the same run (a one-build lag).
+# The ovn Alpine image must therefore have been published at least once before
+# the first neutron-ovnic build; thereafter each build tracks the prior day's
+# OVN. To pin instead, set OVN_IMAGE to a digest below.
+
+- job:
+    name: build-local-neutron-ovnic-alpine
+    description: Build the neutron-ovnic orchestrator image (on the ovn Alpine base).
+    vars:
+      container_images:
+        - context: neutron-ovnic
+          repository: openstackhelm/neutron-ovnic
+          container_filename: Dockerfile.alpine
+          arch:
+            - linux/amd64
+            - linux/arm64
+          tags:
+            - alpine_latest
+          # OVN_IMAGE defaults to ghcr.io/.../ovn:alpine_latest and the package
+          # ref defaults to master (the daily latest), mirroring the ovn Alpine
+          # job's OVN_BRANCH=main. For a reproducible image, pin OVN_IMAGE to a
+          # digest and NEUTRON_OVNIC_REF to a tag/sha instead of the moving
+          # branch.
+          build_args:
+            - NEUTRON_OVNIC_REF=master
