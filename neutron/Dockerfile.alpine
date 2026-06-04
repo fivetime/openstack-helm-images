@@ -1,98 +1,90 @@
 # syntax=docker/dockerfile:1
 # =============================================================================
-# neutron 镜像 (Alpine 变体) —— 与官方 ubuntu 镜像同源 (opendev stable/2026.1)，
-# 唯一区别：注入同步 DNS 解析补丁 (ovsdb_dns_patch)。
+# neutron 镜像 (Alpine 变体) —— 与官方 ubuntu 镜像同源 (opendev stable/2026.1)。
 #
-# 为什么需要：官方 ubuntu 镜像里 python 版 ovs 库只能靠 unbound 库 *异步* 解析 DNS，
-# 一次性调用 (idlutils.fetch_schema_json) 拿不到结果 -> 连接失败。所以
-# ovn_nb_connection 只能写裸 IP (单 VIP/ClusterIP)，而单 VIP 把 RAFT 成员藏在一个
-# 地址后面，客户端落到 follower 上就来回 "not cluster leader" 抖动。
-# 本补丁把 ovs.dns_resolve.resolve 换成 *同步* getaddrinfo，于是
-# ovn_nb_connection 可用 per-pod RAFT 成员列表 (DNS 名) -> 跟随 leader、不抖、
-# pod 迁移 (IP 变) 也能靠 Service FQDN 重解析存活。
+# 布局对齐官方：官方 neutron/Dockerfile 把 neutron 装进 /var/lib/openstack 的 venv
+# (ENV PATH=/var/lib/openstack/bin)，chart 的 root_helper、各路径都按此写。本镜像
+# 照搬该布局 —— neutron 装进 /var/lib/openstack venv —— 成为真正的 drop-in，不再用
+# 符号链接补路径。官方的 sudoers/privsep 在其 BASE_RUNTIME(airshipit/base)基底里，
+# 而 alpine 基底没有，故由本镜像补 /etc/sudoers.d/neutron。
+#
+# 相对官方的“我方增量”仅三样：
+#   1. ovsdb_dns_patch —— 把 ovs.dns_resolve.resolve 换成同步 getaddrinfo。python 版
+#      ovs 库只靠 unbound 异步解析 DNS，一次性 OVSDB 连接拿不到结果 -> ovn_nb_connection
+#      只能写裸 IP(单 VIP -> RAFT 抖动)。补丁后可用 per-pod RAFT 成员列表(DNS)跟随
+#      leader、扛 pod 迁移。
+#   2. PostgreSQL(psycopg2-binary) + Kafka(confluent-kafka) 驱动 —— 镜像 generate_pydep
+#      的意图;让 oslo_messaging_notifications.driver=kafka(redpanda)可用。
+#   3. sudoers + GNU 兼容 hostname wrapper —— 补 alpine 基底相对 airshipit/base 缺的两样。
 #
 # FROM ovn alpine 镜像 (= alpine 3.23 + ovs-vsctl/ovsdb 工具，neutron-ovn-agent 需要)。
-# 官方上游只有 ubuntu 变体；alpine 变体由我方维护，只多这一个 DNS 补丁。
 #
 # 构建 (context = neutron/，与 build-local.d/neutron.yaml 一致)：
 #   cd neutron && docker build -f Dockerfile.alpine -t neutron:alpine-test .
-#   # 本地用自建 ovn 镜像做基底：
 #   cd neutron && docker build -f Dockerfile.alpine --build-arg OVN_IMAGE=ovn:alpine-test -t neutron:alpine-test .
 # =============================================================================
 
 ARG OVN_IMAGE=ghcr.io/fivetime/openstackhelm/ovn:alpine_latest
 FROM ${OVN_IMAGE}
 
+# 对齐官方布局：venv 在 /var/lib/openstack，PATH 优先指向它(再到基底的 /usr/bin)。
+ENV PATH=/var/lib/openstack/bin:$PATH
+
 ARG NEUTRON_REPO=https://opendev.org/openstack/neutron
 ARG NEUTRON_REF=stable/2026.1
 ARG CONSTRAINTS=https://opendev.org/openstack/requirements/raw/branch/stable/2026.1/upper-constraints.txt
 
 # 运行期：
-#  - ovs-vsctl / ovsdb 工具由 OVN 基底提供 (neutron-ovn-agent 管理本地 OVS 要用)
+#  - ovs-vsctl / ovsdb 工具由 OVN 基底提供
+#  - python3: venv 解释器(venv 的 bin/python 指向系统 python3)
 #  - haproxy: neutron-ovn-agent 的 metadata 代理
-#  - iptables/ip6tables/conntrack-tools/keepalived/dnsmasq: L3/安全组/HA/DHCP 兜底
-#  - libffi/libxml2/libxslt/pcre2: cffi/cryptography/lxml/uwsgi 的运行期动态库
-# neutron-server 由 chart 经 uwsgi 启 (module=neutron.wsgi.api:application，ini 不带
-# plugin 行)，所以装 *python 内嵌* 的 pip uwsgi (与官方 ubuntu 镜像一致)，而非
-# apk 的 plugin 版。
-# PyMySQL/python-memcached/pymemcache：neutron 核心 install 不含 DB/缓存驱动，官方
-# 镜像由 loci 的 pydep.txt 补 (pymysql []、python-memcached [])；这里照补，否则
-# neutron-server 起不来 (mysql+pymysql 方言找不到驱动)。
-# build 依赖用 --virtual 装完即删，兜底 musl 下需从源码编译的 wheel。
+#  - iptables/.../keepalived/dnsmasq: L3/安全组/HA/DHCP 兜底
+#  - libffi/libxml2/libxslt/pcre2/librdkafka/libpq: 各扩展的运行期动态库
+#  - sudo: 非 root(uid 42424)进程经 sudo 提权跑 rootwrap/privsep
+# neutron 及 uwsgi/驱动全部装进 /var/lib/openstack venv。confluent-kafka 在 musl 上
+# 无 wheel,需对 alpine 的 librdkafka 2.12.x 编译(故钉 2.12 线);build 依赖(含
+# py3-virtualenv 用于建 venv)用 --virtual 装完即删。
 RUN apk add --no-cache \
-        python3 py3-pip \
+        python3 \
         haproxy \
         iptables ip6tables conntrack-tools keepalived dnsmasq \
         sudo \
-        libffi libxml2 libxslt pcre2 \
+        libffi libxml2 libxslt pcre2 librdkafka libpq \
  && apk add --no-cache --virtual .build-deps \
+        py3-virtualenv \
         git build-base python3-dev \
         libffi-dev openssl-dev libxml2-dev libxslt-dev pcre2-dev \
+        librdkafka-dev postgresql-dev \
         linux-headers cargo rust \
+ && virtualenv /var/lib/openstack \
  && wget -qO /tmp/uc.txt "${CONSTRAINTS}" \
  && sed -i '/^neutron===/d' /tmp/uc.txt \
- && pip install --no-cache-dir --break-system-packages \
+ && /var/lib/openstack/bin/pip install --no-cache-dir \
         -c /tmp/uc.txt \
         uwsgi \
         PyMySQL python-memcached pymemcache \
         "neutron @ git+${NEUTRON_REPO}@${NEUTRON_REF}" \
+ && /var/lib/openstack/bin/pip install --no-cache-dir \
+        psycopg2-binary 'confluent-kafka>=2.12,<2.13' \
  && apk del .build-deps \
  && rm -rf /root/.cargo /root/.cache /tmp/* /var/cache/apk/*
 
-# 额外数据库/消息驱动 —— 与官方 generate_pydep.py 的意图一致：neutron 同时用
-# oslo.db 和 oslo.messaging，所以补 PostgreSQL 驱动 (psycopg2-binary) 和 Kafka 驱动
-# (confluent-kafka，让 oslo_messaging_notifications.driver=kafka 能指向
-# redpanda/strimzi-kafka)。confluent-kafka 在 musl 上无 wheel(仅 sdist)，需对系统
-# librdkafka 从源码编译；故本层自带一套 build 依赖 (装完即删)，运行期保留
-# librdkafka/libpq。alpine 3.23 的 librdkafka 是 2.12.1，而最新 confluent-kafka 要求
-# >=2.14，故钉到 2.12.x 线 (要求 librdkafka>=2.12.0，正好满足)。
-# 单独成层 -> neutron 重层保持缓存。
-RUN apk add --no-cache librdkafka libpq \
- && apk add --no-cache --virtual .drv-build \
-        build-base python3-dev librdkafka-dev postgresql-dev \
- && pip install --no-cache-dir --break-system-packages \
-        psycopg2-binary 'confluent-kafka>=2.12,<2.13' \
- && apk del .drv-build \
- && rm -rf /root/.cache /var/cache/apk/*
-
-# DNS 修复：通过 .pth 在解释器启动时自动应用，对 neutron-server /
-# neutron-ovn-agent / neutron-db-manage 等所有进程生效，不改上游 neutron 代码。
+# DNS 修复：把 ovs.dns_resolve.resolve 换成同步 getaddrinfo。.pth 放进 venv 的
+# site-packages，对 venv 里所有进程(neutron-server/ovn-agent/db-manage)生效，
+# 不改上游 neutron 代码。
 COPY ovsdb_dns_patch.py /tmp/ovsdb_dns_patch.py
-RUN SP=$(python3 -c "import sysconfig; print(sysconfig.get_paths()['purelib'])") \
+RUN SP=$(/var/lib/openstack/bin/python3 -c "import sysconfig; print(sysconfig.get_paths()['purelib'])") \
  && cp /tmp/ovsdb_dns_patch.py "${SP}/ovsdb_dns_patch.py" \
  && printf 'import ovsdb_dns_patch\n' > "${SP}/zzz_ovsdb_dns_patch.pth" \
  && rm /tmp/ovsdb_dns_patch.py
 
-# neutron 运行目录 + 属主 (uid 42424 已由 OVN 基底建为 openvswitch；neutron chart
-# 以 42424 运行容器，名字无所谓，权限对即可)。
+# neutron 运行目录 + 属主 (chart 以 uid 42424 运行容器)。
 RUN mkdir -p /etc/neutron /var/log/neutron /var/lib/neutron /var/cache/neutron \
  && chown -R 42424:42424 /etc/neutron /var/log/neutron /var/lib/neutron /var/cache/neutron
 
-# GNU 兼容的 hostname wrapper：官方 openstack-helm 的 agent init 脚本用
-# `hostname --fqdn`(GNU 长选项)写 [DEFAULT] host，busybox 不认该选项 -> host 为空
-# -> neutron-ovn-agent 启动即崩。这里加一个 wrapper(--fqdn/-f 走 python
-# socket.getfqdn()，语义与 GNU 一致；其余参数透传 busybox)，让官方 chart 脚本
-# 无需改动即可在 alpine 跑。/usr/local/bin 在 PATH 中先于 /bin。
+# GNU 兼容 hostname wrapper：官方 chart 的 agent-init 用 `hostname --fqdn`(GNU 长选项)
+# 写 [DEFAULT] host，busybox 不认 -> host 为空 -> neutron-ovn-agent 崩。--fqdn/-f 走
+# python socket.getfqdn()(语义同 GNU)，其余透传 busybox。/usr/local/bin 在 PATH 前。
 RUN printf '%s\n' \
       '#!/bin/sh' \
       'case "$1" in' \
@@ -101,36 +93,27 @@ RUN printf '%s\n' \
       'esac' > /usr/local/bin/hostname \
  && chmod +x /usr/local/bin/hostname
 
-# privsep/rootwrap 提权 + airship 路径兼容：
-#  - chart 的 neutron.conf 把 root_helper 硬编码成 airship venv 路径
-#    `sudo /var/lib/openstack/bin/neutron-rootwrap ...`,而本 alpine 镜像 neutron
-#    装在系统 /usr/bin。建目录符号链接 /var/lib/openstack/bin -> /usr/bin,让该
-#    路径(rootwrap、privsep-helper、各 neutron-* 入口)可解析,成为真正的 drop-in。
-#  - 以非 root(chart 用 uid 42424)运行的 neutron 进程(netns-cleanup/dhcp/l3 等)
-#    经 sudo 提权跑 rootwrap -> privsep-helper;官方 ubuntu 镜像配了 sudoers,alpine
-#    漏了 -> sudo 要密码 -> privsep 崩。补 NOPASSWD + !requiretty(uid 42424 在本镜像
-#    名为 openvswitch,用 #uid 语法与名字解耦;两种路径都授权以防万一)。
-RUN mkdir -p /var/lib/openstack \
- && ln -sfn /usr/bin /var/lib/openstack/bin \
- && printf '%s\n' \
+# privsep/rootwrap 提权 sudoers：chart 以非 root(uid 42424)运行,oslo.privsep 经
+# `sudo /var/lib/openstack/bin/neutron-rootwrap ... privsep-helper` 提权。官方的
+# sudoers 在 airshipit/base 基底里,alpine 基底没有,故补 NOPASSWD + !requiretty
+# (uid 42424 在本镜像名为 openvswitch,用 #uid 语法与名字解耦)。venv 布局后这些是
+# 真路径,无需符号链接。
+RUN printf '%s\n' \
       'Defaults:#42424 !requiretty' \
-      '#42424 ALL=(root) NOPASSWD: /var/lib/openstack/bin/neutron-rootwrap, /var/lib/openstack/bin/neutron-rootwrap-daemon, /usr/bin/neutron-rootwrap, /usr/bin/neutron-rootwrap-daemon' \
+      '#42424 ALL=(root) NOPASSWD: /var/lib/openstack/bin/neutron-rootwrap, /var/lib/openstack/bin/neutron-rootwrap-daemon' \
       > /etc/sudoers.d/neutron \
  && chmod 0440 /etc/sudoers.d/neutron \
  && visudo -cf /etc/sudoers.d/neutron
 
-# 自检：WSGI 应用可导入(neutron-server 经 uwsgi 跑它)、uwsgi 在、入口脚本在、
-# 运行期工具在、DNS 补丁确实生效。现代 neutron(2026.1)已无 neutron-server 命令，
-# server 由 uwsgi 启 neutron.wsgi.api:application。
-# 注意：不能直接 import neutron.wsgi.api —— 它在 import 期就 boot_server()，会去读
-# /etc/neutron/*.conf(运行期才由 chart 提供)。用 find_spec 只校验模块存在、不执行。
-RUN python3 -c "import neutron; import importlib.util as u; assert u.find_spec('neutron.wsgi.api'), 'wsgi app module missing'" \
- && uwsgi --version \
- && command -v neutron-ovn-agent neutron-db-manage neutron-rpc-server \
- && command -v ovs-vsctl haproxy \
+# 自检:neutron 确实在 venv 布局(/var/lib/openstack/bin)、WSGI 模块在(用 find_spec
+# 不执行,避免 import 期 boot_server 读不存在的配置)、uwsgi/入口/工具/驱动/补丁/
+# hostname 全部正常。
+RUN test "$(command -v neutron-ovn-agent)" = "/var/lib/openstack/bin/neutron-ovn-agent" \
+ && python3 -c "import neutron; import importlib.util as u; assert u.find_spec('neutron.wsgi.api'), 'wsgi app module missing'" \
+ && for c in uwsgi neutron-db-manage neutron-rpc-server neutron-rootwrap ovs-vsctl haproxy; do command -v "$c" >/dev/null || { echo "MISSING $c"; exit 1; }; done \
  && test -n "$(hostname --fqdn)" && echo "hostname --fqdn -> $(hostname --fqdn)" \
  && python3 -c "import psycopg2, confluent_kafka, pymysql; print('db+kafka drivers OK')" \
- && python3 -c "import ovs.dns_resolve as d; assert getattr(d, '_ovnic_dns_patched', False); print('DNS patch active')"
+ && python3 -c "import ovs.dns_resolve as d; assert getattr(d, '_ovnic_dns_patched', False); print('DNS patch active')" \
+ && echo "venv layout OK (neutron in /var/lib/openstack)"
 
-# 默认跑 OVN 统一代理；neutron-server 由 chart 经 uwsgi 启动(见上)。
 CMD ["neutron-ovn-agent"]
