@@ -148,7 +148,7 @@ COPY --from=builder /install/usr/share/ovn/ /usr/share/ovn/
 COPY --from=builder /install/usr/share/openvswitch/ /usr/share/openvswitch/
 
 # 复制 ovn-kube-util 替代脚本
-COPY ovn-kube-util.sh /usr/bin/ovn-kube-util
+COPY scripts/ovn-kube-util.sh /usr/bin/ovn-kube-util
 
 # 复制 vendored 的 ovn-kubernetes 运行时脚本 (见 scripts/README.md)
 COPY scripts/ovnkube.sh /root/ovnkube.sh
