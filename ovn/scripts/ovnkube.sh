@@ -323,6 +323,18 @@ else
   OVN_ETCDIR=/etc/openvswitch
 fi
 
+# Persist the clustered OVSDB on a mounted volume. ovn-ctl reads OVN_DBDIR (see
+# ovn-lib) for the db file location; without it the db lands in OVN_ETCDIR
+# (/etc/ovn), which is the ephemeral container filesystem -- so every pod
+# restart loses the db, forces a fresh re-bootstrap, and the cluster only
+# survives as long as quorum is never lost. Pointing the db at the PVC mount
+# means a restart finds its clustered db on disk and re-joins the RAFT cluster
+# (the safe path) instead of re-bootstrapping. Default to the conventional PVC
+# mount; the chart may override OVN_DBDIR. If the dir is not volume-backed the
+# behaviour is unchanged (ephemeral), just under a different path.
+export OVN_DBDIR=${OVN_DBDIR:-/var/lib/ovn}
+mkdir -p "${OVN_DBDIR}"
+
 OVS_RUNDIR=/var/run/openvswitch
 OVS_LOGDIR=/var/log/openvswitch
 
@@ -334,6 +346,7 @@ setup_ovs_permissions() {
     chown -R ${ovs_user_id} ${OVS_RUNDIR}
     chown -R ${ovs_user_id} ${OVS_LOGDIR}
     chown -R ${ovs_user_id} ${OVN_ETCDIR}
+    chown -R ${ovs_user_id} ${OVN_DBDIR}
     chown -R ${ovs_user_id} ${OVN_RUNDIR}
     chown -R ${ovs_user_id} ${OVN_LOGDIR}
   fi

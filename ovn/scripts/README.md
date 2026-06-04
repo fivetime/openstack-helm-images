@@ -10,9 +10,38 @@ can build OVN from `main` (latest, includes Transit Router / OVN-IC >= 26.03)
 without being held back by the old `OVN_KUBERNETES_REF` the in-tree patches
 were written against.
 
+## Local robustness modifications (RAFT) -- 2026-06
+
+The vendored RAFT bring-up had two compounding bugs that made a multi-replica
+NB/SB cluster fragile (a single member restart could cascade into a wedged,
+quorum-less cluster -- the reason single-replica was used as a workaround):
+
+1. **The clustered db was not persisted.** ovn-ctl writes the db under
+   `OVN_DBDIR` (see ovn-lib), which was unset -> defaulted to `/etc/ovn` (the
+   ephemeral container fs), while the PVC sat unused at `/var/lib/ovn`. So every
+   pod restart lost the db and re-bootstrapped instead of re-joining.
+   **Fix:** `ovnkube.sh` now `export OVN_DBDIR=${OVN_DBDIR:-/var/lib/ovn}` (and
+   `ovndb-raft-functions.sh` derives `ovn_db_file` from it), so the db lives on
+   the volume and a restart finds its clustered db on disk -> takes the safe
+   `initialize=false` re-join path. The chart must mount the data PVC at
+   `OVN_DBDIR` (default `/var/lib/ovn`).
+2. **Bootstrap detection was leader-gated and gave up.** A non-pod-0 member
+   joined only after `wait_for_event cluster_exists`, which probes the *client*
+   port (6641) -- served only once a leader exists. During a no-leader window
+   it never succeeded; after 80 attempts the pod `exit 1`ed and restarted,
+   looping forever and denying the cluster the members it needed to elect.
+   **Fix:** `ovndb-raft-functions.sh` now waits a *bounded* time and then JOINs
+   pod-0 regardless (RAFT tolerates the remote not being up yet and forms the
+   cluster on the RAFT port 6643), instead of giving up and restarting.
+
+These are the only intentional divergences from the upstream-derived files
+below; everything else is unchanged. Re-vendoring upstream means re-applying
+these two changes.
+
 ## Provenance (reproducible)
 
-These files are byte-identical to:
+Apart from the **Local robustness modifications** above, these files are
+derived from:
 
     ovn-kubernetes @ 5359e7d7f872058b6e5bf884c9f19d1922451f29
       + patches/ovn-kubernetes/0001-*.patch   (OVN_KUBERNETES_STATEFULSET)

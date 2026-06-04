@@ -243,7 +243,10 @@ ovsdb-raft() {
 
   ovn_db_pidfile=${OVN_RUNDIR}/ovn${db}_db.pid
   eval ovn_loglevel_db=\$ovn_loglevel_${db}
-  ovn_db_file=${OVN_ETCDIR}/ovn${db}_db.db
+  # The db lives under OVN_DBDIR (the persistent volume), matching where ovn-ctl
+  # writes it; so on a restart this finds the clustered db on disk -> initialize
+  # stays false -> the member re-joins from disk instead of re-bootstrapping.
+  ovn_db_file=${OVN_DBDIR:-${OVN_ETCDIR}}/ovn${db}_db.db
 
   trap 'ovsdb_cleanup ${db}' TERM
   rm -f ${ovn_db_pidfile}
@@ -317,9 +320,31 @@ ovsdb-raft() {
         ${db_ssl_opts} \
         --ovn-${db}-log="${ovn_loglevel_db}" &
       else
-        echo "Cluster does not exist for DB: ${db}, waiting for ${ovn_kubernetes_statefulset}-0 pod to create it"
-        # all non pod-0 pods will be blocked here till connection is set
-        wait_for_event cluster_exists ${db} ${port}
+        # Wait (BOUNDED) for ${ovn_kubernetes_statefulset}-0 to create the
+        # cluster, then JOIN. The old code did `wait_for_event cluster_exists`
+        # which blocks FOREVER: cluster_exists probes the client port (${port},
+        # e.g. 6641), which is only served once a leader exists -- so during any
+        # no-leader window (several members bootstrapping at once) it never
+        # returns true and the pod deadlocks (and, by not starting ovsdb-server,
+        # denies the cluster the quorum it needs to elect a leader -> permanent
+        # wedge). Instead retry for a bounded time and then join pod-0 anyway:
+        # RAFT tolerates the remote not being reachable yet (ovsdb-server keeps
+        # retrying the remote addr), so the members can form the cluster on the
+        # RAFT port (${raft_port}) without a leader-gated barrier on ${port}.
+        echo "Cluster does not exist for DB: ${db}, waiting (bounded) for ${ovn_kubernetes_statefulset}-0 to create it"
+        counter=0
+        while [ ${counter} -lt 60 ]; do
+          if cluster_exists ${db} ${port}; then
+            break
+          fi
+          sleep 2
+          counter=$((counter + 1))
+        done
+        # cluster_exists sets init_ip to a live member when found, otherwise to
+        # ${ovn_kubernetes_statefulset}-0 (its fallback) -- either way init_ip is
+        # the remote we join. Proceeding (rather than blocking) lets RAFT form
+        # the cluster even if pod-0's client port is not up yet.
+        echo "Joining DB: ${db} via remote ${init_ip}"
         run_as_ovs_user_if_needed \
         ${OVNCTL_PATH} run_${db}_ovsdb --no-monitor \
         --db-${db}-cluster-local-addr=$(bracketify ${ovn_db_host}) --db-${db}-cluster-remote-addr=${init_ip} \
