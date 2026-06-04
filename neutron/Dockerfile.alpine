@@ -101,6 +101,24 @@ RUN printf '%s\n' \
       'esac' > /usr/local/bin/hostname \
  && chmod +x /usr/local/bin/hostname
 
+# privsep/rootwrap 提权 + airship 路径兼容：
+#  - chart 的 neutron.conf 把 root_helper 硬编码成 airship venv 路径
+#    `sudo /var/lib/openstack/bin/neutron-rootwrap ...`,而本 alpine 镜像 neutron
+#    装在系统 /usr/bin。建目录符号链接 /var/lib/openstack/bin -> /usr/bin,让该
+#    路径(rootwrap、privsep-helper、各 neutron-* 入口)可解析,成为真正的 drop-in。
+#  - 以非 root(chart 用 uid 42424)运行的 neutron 进程(netns-cleanup/dhcp/l3 等)
+#    经 sudo 提权跑 rootwrap -> privsep-helper;官方 ubuntu 镜像配了 sudoers,alpine
+#    漏了 -> sudo 要密码 -> privsep 崩。补 NOPASSWD + !requiretty(uid 42424 在本镜像
+#    名为 openvswitch,用 #uid 语法与名字解耦;两种路径都授权以防万一)。
+RUN mkdir -p /var/lib/openstack \
+ && ln -sfn /usr/bin /var/lib/openstack/bin \
+ && printf '%s\n' \
+      'Defaults:#42424 !requiretty' \
+      '#42424 ALL=(root) NOPASSWD: /var/lib/openstack/bin/neutron-rootwrap, /var/lib/openstack/bin/neutron-rootwrap-daemon, /usr/bin/neutron-rootwrap, /usr/bin/neutron-rootwrap-daemon' \
+      > /etc/sudoers.d/neutron \
+ && chmod 0440 /etc/sudoers.d/neutron \
+ && visudo -cf /etc/sudoers.d/neutron
+
 # 自检：WSGI 应用可导入(neutron-server 经 uwsgi 跑它)、uwsgi 在、入口脚本在、
 # 运行期工具在、DNS 补丁确实生效。现代 neutron(2026.1)已无 neutron-server 命令，
 # server 由 uwsgi 启 neutron.wsgi.api:application。
