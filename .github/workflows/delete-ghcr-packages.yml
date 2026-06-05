@@ -1,0 +1,56 @@
+name: Delete GHCR packages (manual)
+
+# MANUAL ONLY, destructive. Wipes ghcr.io/<owner>/<namespace_prefix>* so the
+# next daily build republishes everything fresh -- this stops stale tags from
+# lingering and masking problems. There is deliberately NO schedule trigger:
+# this must always be invoked by hand.
+#
+# Safety rails:
+#   * dry_run defaults to true -> first run only LISTS what would be deleted.
+#   * to actually delete you must set dry_run=false AND type DELETE in confirm.
+#   * only packages whose name starts with namespace_prefix are ever touched.
+#
+# The token comes from the CR_PAT repo secret (must carry read:packages +
+# delete:packages, and repo for private packages). Never hard-code a token.
+
+on:
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        description: "List only, no deletion. Uncheck to actually delete."
+        type: boolean
+        default: true
+      confirm:
+        description: "Type DELETE to confirm real deletion (required when dry_run is off)."
+        type: string
+        default: ""
+      namespace_prefix:
+        description: "Only packages whose name starts with this are deleted."
+        type: string
+        default: "openstackhelm/"
+
+# Never let two deletion runs race.
+concurrency:
+  group: delete-ghcr-packages
+  cancel-in-progress: false
+
+permissions:
+  contents: read   # just for actions/checkout; package deletion uses CR_PAT
+
+jobs:
+  delete:
+    runs-on: self-hosted
+    #runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Delete matching GHCR packages
+        env:
+          GH_TOKEN: ${{ secrets.CR_PAT }}
+          OWNER: fivetime
+          PACKAGE_TYPE: container
+          NAMESPACE_PREFIX: ${{ inputs.namespace_prefix }}
+          DRY_RUN: ${{ inputs.dry_run }}
+          CONFIRM: ${{ inputs.confirm }}
+        run: python .github/scripts/delete_ghcr_packages.py
