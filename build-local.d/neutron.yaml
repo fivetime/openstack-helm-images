@@ -15,7 +15,7 @@
 #
 # It is layered ON TOP of the fork's ovn Alpine image (OVN_IMAGE defaults to
 # ghcr.io/.../ovn:alpine_latest) so it inherits ovs-vsctl / ovsdb tooling that
-# neutron-ovn-agent needs. Same one-build-lag ordering caveat as neutron-ovnic:
+# neutron-ovn-agent needs. Same one-build-lag ordering caveat as ovn-ic-central:
 # OVN_IMAGE resolves to the PREVIOUSLY published ovn:alpine_latest. To pin, set
 # OVN_IMAGE to a digest below.
 

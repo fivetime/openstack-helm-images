@@ -12,8 +12,8 @@
 
 """Make ovsdbapp/ovs connect to OVSDB by a DNS hostname (Alpine image patch).
 
-This is the Alpine neutron image's counterpart to neutron-ovnic's
-``neutron_ovnic.ovnic.ovsdb_dns`` -- shipped here as a standalone module + a
+This is the Alpine neutron image's counterpart to ovn-ic-central's
+``ovn_ic_central.ovnic.ovsdb_dns`` -- shipped here as a standalone module + a
 ``.pth`` so it applies to *every* python process in the image (neutron-server,
 neutron-ovn-agent, db-sync, ...) without touching upstream neutron code.
 
