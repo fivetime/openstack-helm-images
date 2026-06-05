@@ -24,7 +24,7 @@ ARG OVN_IC_CENTRAL_REF=master
 # 兜底)用 --virtual 装完即删,不留在最终层。PBR_VERSION 让 pbr 免去 git tag。
 #
 # 源码仓库 fivetime/ovn-ic-central 是私有的:匿名 git clone 会失败。CI 经
-# BuildKit secret(id=src_repo_token,来自仓库 secret SRC_REPO_TOKEN 里的 PAT)
+# BuildKit secret(id=src_repo_token,来自仓库 secret CR_PAT 里的 PAT)
 # 注入一个 token,仅在本 RUN 期间存在于 /run/secrets,绝不写进任何镜像层
 # (git config 的 url.insteadOf 与 .gitconfig 在同层 set→rm)。secret 缺省时
 # (本地构建/仓库改 public)走匿名 clone,故用 `-s` 判空、缺省即跳过。

@@ -352,13 +352,14 @@ jobs:
 
       - name: Build and push
         env:
-          # Fine-grained PAT (Contents:Read on the private fivetime/ovn-ic-central),
+          # PAT used to clone the private fivetime/ovn-ic-central source repo,
           # consumed ONLY by ovn-ic-central/Dockerfile.alpine through a BuildKit
-          # secret (--mount=type=secret,id=src_repo_token) to clone the private
-          # source repo. Always defined here (empty string if the repo secret is
-          # unset); buildx simply ignores the unused secret for every other image,
-          # and the Dockerfile falls back to anonymous clone when it is empty.
-          SRC_REPO_TOKEN: ${{ secrets.SRC_REPO_TOKEN }}
+          # secret (--mount=type=secret,id=src_repo_token). Reuses the existing
+          # CR_PAT secret (already used for GHCR auth in package-tsdb.yml; needs
+          # `repo` read scope on the private repo). Always defined here (empty
+          # string if unset); buildx ignores the unused secret for every other
+          # image, and the Dockerfile falls back to anonymous clone when empty.
+          SRC_REPO_TOKEN: ${{ secrets.CR_PAT }}
         run: |
           set -euo pipefail
           cd "${{ matrix.context }}"
