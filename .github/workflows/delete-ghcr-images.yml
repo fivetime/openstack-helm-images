@@ -1,4 +1,4 @@
-name: Delete GHCR images (manual)
+name: Delete GHCR images
 
 # MANUAL ONLY, destructive. Wipes the ghcr.io/<owner>/<namespace_prefix>*
 # container images so the next daily build republishes everything fresh --
@@ -51,6 +51,12 @@ jobs:
     timeout-minutes: 15
     steps:
       - uses: actions/checkout@v6
+
+      # Self-hosted runners don't all have `python` on PATH (only python3, if
+      # any); setup-python guarantees it, matching build-all-images.yml.
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
 
       - name: Delete matching GHCR images
         env:
