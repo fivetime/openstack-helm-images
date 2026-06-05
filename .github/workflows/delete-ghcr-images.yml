@@ -1,17 +1,20 @@
-name: Delete GHCR packages (manual)
+name: Delete GHCR images (manual)
 
-# MANUAL ONLY, destructive. Wipes ghcr.io/<owner>/<namespace_prefix>* so the
-# next daily build republishes everything fresh -- this stops stale tags from
-# lingering and masking problems. There is deliberately NO schedule trigger:
-# this must always be invoked by hand.
+# MANUAL ONLY, destructive. Wipes the ghcr.io/<owner>/<namespace_prefix>*
+# container images so the next daily build republishes everything fresh --
+# this stops stale tags from lingering and masking problems. There is
+# deliberately NO schedule trigger: this must always be invoked by hand.
+#
+# (GHCR stores container images as "packages" of type=container in the API, so
+# under the hood the script talks to the GitHub packages API.)
 #
 # Safety rails:
 #   * dry_run defaults to true -> first run only LISTS what would be deleted.
 #   * to actually delete you must set dry_run=false AND type DELETE in confirm.
-#   * only packages whose name starts with namespace_prefix are ever touched.
+#   * only images whose name starts with namespace_prefix are ever touched.
 #
 # The token comes from the CR_PAT repo secret (must carry read:packages +
-# delete:packages, and repo for private packages). Never hard-code a token.
+# delete:packages, and repo for private images). Never hard-code a token.
 
 on:
   workflow_dispatch:
@@ -25,17 +28,17 @@ on:
         type: string
         default: ""
       namespace_prefix:
-        description: "Only packages whose name starts with this are deleted."
+        description: "Only images whose name starts with this are deleted."
         type: string
         default: "openstackhelm/"
 
 # Never let two deletion runs race.
 concurrency:
-  group: delete-ghcr-packages
+  group: delete-ghcr-images
   cancel-in-progress: false
 
 permissions:
-  contents: read   # just for actions/checkout; package deletion uses CR_PAT
+  contents: read   # just for actions/checkout; image deletion uses CR_PAT
 
 jobs:
   delete:
@@ -45,7 +48,7 @@ jobs:
     steps:
       - uses: actions/checkout@v6
 
-      - name: Delete matching GHCR packages
+      - name: Delete matching GHCR images
         env:
           GH_TOKEN: ${{ secrets.CR_PAT }}
           OWNER: fivetime
@@ -53,4 +56,4 @@ jobs:
           NAMESPACE_PREFIX: ${{ inputs.namespace_prefix }}
           DRY_RUN: ${{ inputs.dry_run }}
           CONFIRM: ${{ inputs.confirm }}
-        run: python .github/scripts/delete_ghcr_packages.py
+        run: python .github/scripts/delete_ghcr_images.py

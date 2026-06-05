@@ -1,26 +1,30 @@
 #!/usr/bin/env python3
-"""Delete GHCR container packages under a namespace prefix for a GitHub user.
+"""Delete GHCR container images under a namespace prefix for a GitHub user.
 
 Manual cleanup tool: wipes ``ghcr.io/<OWNER>/<NAMESPACE_PREFIX>*`` so the next
 daily build republishes fresh images and stale tags can't silently linger and
 hide problems.
 
+GHCR stores each container image as a "package" of type=container, so this
+talks to the GitHub *packages* API even though we think of them as images;
+PACKAGE_TYPE/package terms below are the literal API vocabulary.
+
 Everything is driven by env vars; the calling workflow injects the token from
 a repo secret. NEVER hard-code a token here.
 
   GH_TOKEN          (required) token with `read:packages` + `delete:packages`
-                    (and `repo` for private packages). The workflow passes
+                    (and `repo` for private images). The workflow passes
                     secrets.CR_PAT.
   OWNER             default 'fivetime'
   PACKAGE_TYPE      default 'container'
-  NAMESPACE_PREFIX  default 'openstackhelm/' -- ONLY packages whose name starts
+  NAMESPACE_PREFIX  default 'openstackhelm/' -- ONLY images whose name starts
                     with this are ever touched; everything else is listed and
                     left alone.
   DRY_RUN           '1'/'true' (default) = list only; '0'/'false' = delete
   CONFIRM           must equal 'DELETE' when DRY_RUN is false, else abort
 
-Deletes the whole package in one call (which removes all its versions). Exits
-non-zero on a hard error or if any deletion failed.
+Deletes the whole image (package) in one call, which removes all its versions
+(tags). Exits non-zero on a hard error or if any deletion failed.
 """
 import json
 import os
@@ -110,7 +114,7 @@ def main():
     others = sorted(p["name"] for p in all_pkgs
                     if not p["name"].startswith(prefix))
 
-    print(f"\nTotal {ptype} packages found: {len(all_pkgs)}")
+    print(f"\nTotal {ptype} images found: {len(all_pkgs)}")
     print(f"Matching prefix '{prefix}': {len(targets)}")
     for n in targets:
         print(f"  [TARGET] {n}")
@@ -132,7 +136,7 @@ def main():
         sys.exit("\nABORT: dry_run=false but confirm != 'DELETE'. "
                  "Refusing to delete without explicit confirmation.")
 
-    print(f"\nDeleting {len(targets)} package(s)...")
+    print(f"\nDeleting {len(targets)} image(s)...")
     failed = []
     for n in targets:
         try:
@@ -146,7 +150,7 @@ def main():
     ok = len(targets) - len(failed)
     print(f"\nDone. deleted={ok} failed={len(failed)}")
     if failed:
-        print("Failed packages:")
+        print("Failed images:")
         for n in failed:
             print(f"  {n}")
         sys.exit(1)
