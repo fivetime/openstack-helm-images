@@ -31,6 +31,10 @@ on:
         description: "Only images whose name starts with this are deleted."
         type: string
         default: "openstackhelm/"
+      exclude:
+        description: "Images under the prefix to PROTECT (not republished by the daily build)."
+        type: string
+        default: "openstackhelm/tsdb-packager"
 
 # Never let two deletion runs race.
 concurrency:
@@ -54,6 +58,7 @@ jobs:
           OWNER: fivetime
           PACKAGE_TYPE: container
           NAMESPACE_PREFIX: ${{ inputs.namespace_prefix }}
+          EXCLUDE: ${{ inputs.exclude }}
           DRY_RUN: ${{ inputs.dry_run }}
           CONFIRM: ${{ inputs.confirm }}
         run: python .github/scripts/delete_ghcr_images.py

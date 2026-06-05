@@ -20,6 +20,10 @@ a repo secret. NEVER hard-code a token here.
   NAMESPACE_PREFIX  default 'openstackhelm/' -- ONLY images whose name starts
                     with this are ever touched; everything else is listed and
                     left alone.
+  EXCLUDE           comma/space separated image names under the prefix to
+                    PROTECT (default 'openstackhelm/tsdb-packager', which the
+                    daily build does NOT republish -- it is built by the
+                    separate package-tsdb workflow).
   DRY_RUN           '1'/'true' (default) = list only; '0'/'false' = delete
   CONFIRM           must equal 'DELETE' when DRY_RUN is false, else abort
 
@@ -103,25 +107,37 @@ def main():
 
     ptype = os.environ.get("PACKAGE_TYPE", "container")
     prefix = os.environ.get("NAMESPACE_PREFIX", "openstackhelm/")
+    # Images that live under the prefix but are NOT republished by the daily
+    # build (so deleting them is a real loss) -- e.g. openstackhelm/tsdb-packager
+    # is built by the separate package-tsdb workflow. Comma/space separated.
+    exclude = set(os.environ.get("EXCLUDE",
+                                 "openstackhelm/tsdb-packager").replace(
+                                     ",", " ").split())
     dry = env_bool("DRY_RUN", True)
     confirm = os.environ.get("CONFIRM", "")
 
     print(f"package_type={ptype}  prefix='{prefix}'  dry_run={dry}")
+    if exclude:
+        print(f"exclude={sorted(exclude)}")
 
     all_pkgs = list_packages(token, ptype)
-    targets = sorted(p["name"] for p in all_pkgs
-                     if p["name"].startswith(prefix))
+    matched = [p["name"] for p in all_pkgs if p["name"].startswith(prefix)]
+    targets = sorted(n for n in matched if n not in exclude)
+    excluded = sorted(n for n in matched if n in exclude)
     others = sorted(p["name"] for p in all_pkgs
                     if not p["name"].startswith(prefix))
 
     print(f"\nTotal {ptype} images found: {len(all_pkgs)}")
-    print(f"Matching prefix '{prefix}': {len(targets)}")
+    print(f"Matching prefix '{prefix}': {len(matched)} "
+          f"(delete {len(targets)}, protected {len(excluded)})")
     for n in targets:
-        print(f"  [TARGET] {n}")
+        print(f"  [DELETE]   {n}")
+    for n in excluded:
+        print(f"  [excluded] {n}  (protected -- not republished by daily build)")
     if others:
-        print(f"Not matching (left untouched): {len(others)}")
+        print(f"Outside prefix (left untouched): {len(others)}")
         for n in others:
-            print(f"  [keep]   {n}")
+            print(f"  [keep]     {n}")
 
     if not targets:
         print("\nNothing to delete.")
