@@ -22,11 +22,24 @@ ARG OVN_IC_CENTRAL_REF=master
 
 # python3 + pip 是运行期需要的;build 依赖(编译 cffi/cryptography 等 musl 轮子
 # 兜底)用 --virtual 装完即删,不留在最终层。PBR_VERSION 让 pbr 免去 git tag。
-RUN apk add --no-cache python3 py3-pip \
+#
+# 源码仓库 fivetime/ovn-ic-central 是私有的:匿名 git clone 会失败。CI 经
+# BuildKit secret(id=src_repo_token,来自仓库 secret SRC_REPO_TOKEN 里的 PAT)
+# 注入一个 token,仅在本 RUN 期间存在于 /run/secrets,绝不写进任何镜像层
+# (git config 的 url.insteadOf 与 .gitconfig 在同层 set→rm)。secret 缺省时
+# (本地构建/仓库改 public)走匿名 clone,故用 `-s` 判空、缺省即跳过。
+RUN --mount=type=secret,id=src_repo_token \
+    apk add --no-cache python3 py3-pip \
  && apk add --no-cache --virtual .build-deps \
       git build-base python3-dev libffi-dev openssl-dev cargo rust \
+ && if [ -s /run/secrets/src_repo_token ]; then \
+        TOK="$(cat /run/secrets/src_repo_token)"; \
+        git config --global \
+          url."https://x-access-token:${TOK}@github.com/".insteadOf "https://github.com/"; \
+    fi \
  && PBR_VERSION=0.1.0 pip install --no-cache-dir --break-system-packages \
       "ovn-ic-central @ git+${OVN_IC_CENTRAL_REPO}@${OVN_IC_CENTRAL_REF}" \
+ && rm -f /root/.gitconfig \
  && apk del .build-deps \
  && rm -rf /root/.cargo /root/.cache /tmp/*
 

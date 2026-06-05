@@ -351,6 +351,14 @@ jobs:
           password: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Build and push
+        env:
+          # Fine-grained PAT (Contents:Read on the private fivetime/ovn-ic-central),
+          # consumed ONLY by ovn-ic-central/Dockerfile.alpine through a BuildKit
+          # secret (--mount=type=secret,id=src_repo_token) to clone the private
+          # source repo. Always defined here (empty string if the repo secret is
+          # unset); buildx simply ignores the unused secret for every other image,
+          # and the Dockerfile falls back to anonymous clone when it is empty.
+          SRC_REPO_TOKEN: ${{ secrets.SRC_REPO_TOKEN }}
         run: |
           set -euo pipefail
           cd "${{ matrix.context }}"
@@ -359,6 +367,7 @@ jobs:
             --platform "${{ matrix.platform }}" \
             ${{ matrix.tags_cli }} \
             ${{ matrix.build_args_cli }} \
+            --secret id=src_repo_token,env=SRC_REPO_TOKEN \
             --label "org.opencontainers.image.source=https://github.com/${{ github.repository }}" \
             --label "org.opencontainers.image.revision=${{ github.sha }}" \
             --provenance=false \
