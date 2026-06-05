@@ -35,6 +35,12 @@ jobs:
       - name: Fetch upstream
         id: fetch
         run: |
+          # Self-hosted runners reuse the workspace, so an `upstream` remote
+          # from a previous run persists (actions/checkout only manages
+          # `origin`) -- a plain `git remote add` then fails with
+          # "remote upstream already exists". Remove any stale one first so
+          # this is idempotent (also self-heals a changed URL).
+          git remote remove upstream 2>/dev/null || true
           git remote add upstream https://github.com/openstack/openstack-helm-images.git
           git fetch upstream master
 
