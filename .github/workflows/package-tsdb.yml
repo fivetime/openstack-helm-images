@@ -1,4 +1,4 @@
-name: Package TimescaleDB for Percona PGO
+name: Package TimescaleDB
 
 on:
   workflow_dispatch:
