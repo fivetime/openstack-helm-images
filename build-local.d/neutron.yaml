@@ -45,5 +45,13 @@
           # Same source as the upstream ubuntu image (opendev stable/2026.1); the
           # only delta is the DNS patch + db/kafka drivers. For a reproducible
           # image, pin NEUTRON_REF to a tag/sha and OVN_IMAGE to a digest.
+          #
+          # CONSTRAINTS is surfaced as a build_arg (not left to the Dockerfile
+          # default) specifically so synthesize_master's blanket
+          # `stable/2026.1`->`master` rewrite flips BOTH the source ref and the
+          # upper-constraints branch together. Otherwise the master cell builds
+          # neutron@master (needs neutron-lib>=4.0.0) against stable/2026.1
+          # constraints (neutron-lib===3.24.0) -> ResolutionImpossible.
           build_args:
             - NEUTRON_REF=stable/2026.1
+            - CONSTRAINTS=https://opendev.org/openstack/requirements/raw/branch/stable/2026.1/upper-constraints.txt
