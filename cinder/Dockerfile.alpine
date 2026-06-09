@@ -1,0 +1,138 @@
+# syntax=docker/dockerfile:1
+# =============================================================================
+# cinder 镜像 (Alpine 变体) —— 与官方 ubuntu 镜像同源 (opendev stable/2026.1)。
+#
+# 布局对齐官方：官方 cinder/Dockerfile 用 loci/venv_builder 把 cinder 装进
+# /var/lib/openstack 的 venv (ENV PATH=/var/lib/openstack/bin)，chart 的 root_helper、
+# rootwrap、各路径都按此写。本镜像照搬该布局 —— cinder 装进 /var/lib/openstack venv ——
+# 成为真正的 drop-in。官方的 sudoers/privsep 在其 BASE_RUNTIME(airshipit/base)基底里，
+# alpine 基底没有，故由本镜像补 /etc/sudoers.d/cinder。
+#
+# 与 neutron 的 Alpine 变体不同：neutron 必须 FROM 我方 OVN base(它要 ovs-vsctl 给
+# neutron-ovn-agent 的 metadata 角色)。cinder 是块存储服务，**不碰 OVS/OVN**，因此直接
+# FROM alpine:3.23 —— 没有 base 镜像依赖，也没有"一轮滞后"的构建顺序问题。详见
+# README.alpine.md。
+#
+# 存储后端工具(对齐官方 PROFILES="fluent lvm ceph qemu apache")：
+#   - lvm:   lvm2/device-mapper        —— LVM 卷驱动
+#   - ceph:  ceph-common/py3-rados/py3-rbd —— RBD 卷/备份驱动(rados/rbd 是 C 扩展，
+#            PyPI 在 musl 上无 wheel，只能用 apk 的 py3-rados19/py3-rbd19，见下)
+#   - qemu:  qemu-img                  —— image<->volume 格式转换
+#   - iscsi: open-iscsi/multipath-tools/targetcli —— iSCSI initiator/多路径/LIO target
+#   - 通用:  cryptsetup/util-linux/e2fsprogs/xfsprogs/parted/lsscsi/sg3_utils/nvme-cli
+#
+# 相对官方的"我方增量"：在镜像里追加三类可选驱动(generate_pydep 的意图)：
+#   1. etcd (etcd3gw)        —— tooz 协调后端，cinder-volume active/active 的 DLM。
+#   2. PostgreSQL (psycopg2-binary) —— 让 [database] connection 可用 PG。
+#   3. Kafka (confluent-kafka)      —— oslo_messaging_notifications.driver=kafka(redpanda)。
+#
+# 构建 (context = cinder/，与 build-local.d/cinder.yaml 一致)：
+#   cd cinder && docker build -f Dockerfile.alpine -t cinder:alpine-test .
+#   cd cinder && docker build -f Dockerfile.alpine --build-arg CINDER_REF=master -t cinder:alpine-test .
+#
+# 验证：
+#   docker run --rm cinder:alpine-test cinder-manage --version
+#   docker run --rm cinder:alpine-test python3 -c "import rados, rbd; print('rbd OK')"
+# =============================================================================
+
+ARG ALPINE_VERSION=3.23
+FROM alpine:${ALPINE_VERSION}
+
+# 对齐官方布局：venv 在 /var/lib/openstack，PATH 优先指向它(再到基底的 /usr/bin)。
+ENV PATH=/var/lib/openstack/bin:$PATH
+
+ARG CINDER_REPO=https://opendev.org/openstack/cinder
+ARG CINDER_REF=stable/2026.1
+ARG CONSTRAINTS=https://opendev.org/openstack/requirements/raw/branch/stable/2026.1/upper-constraints.txt
+
+# 运行期工具/库 + 一次性 build 依赖(--virtual 装完即删)。
+#  - python3: venv 解释器(venv 的 bin/python 指向系统 python3，二者同为 3.12)
+#  - 存储后端工具见文件头；os-brick 运行期 shell 出去调 iscsiadm/multipath/lvs 等
+#  - py3-rados/py3-rbd: ceph 的 C 扩展(rados.so/rbd.so)。PyPI 在 musl 无 wheel，
+#    只能用 apk 版；它们装在系统 site-packages，靠下方 include-system-site-packages
+#    让 venv 能 import(venv 自己 pip 装的包仍优先，仅 rados/rbd 走系统回退)
+#  - sudo: 非 root(uid 42424)经 sudo 提权跑 cinder-rootwrap/privsep-helper
+#  - libffi/libpq/librdkafka: 各扩展运行期动态库
+# confluent-kafka 在 musl 上无 wheel，需对 alpine 的 librdkafka 2.12.x 编译(故钉 2.12 线)。
+# 先建**隔离** venv 让 pip 干净地按 upper-constraints 解析依赖，装完再把
+# include-system-site-packages 翻成 true —— 这样 rados/rbd(apk)可被 import，又不污染解析。
+# 清理(pyc/__pycache__/machine-id)必须与生成在同一 RUN 层，跨层删只加 whiteout、徒增体积。
+RUN apk add --no-cache \
+        python3 \
+        lvm2 lvm2-extra device-mapper \
+        ceph-common py3-rados py3-rbd \
+        qemu-img \
+        open-iscsi multipath-tools targetcli \
+        cryptsetup util-linux e2fsprogs xfsprogs parted lsscsi sg3_utils nvme-cli \
+        sudo \
+        libffi libpq librdkafka \
+ && apk add --no-cache --virtual .build-deps \
+        py3-virtualenv \
+        git build-base python3-dev \
+        libffi-dev openssl-dev \
+        librdkafka-dev postgresql-dev \
+        linux-headers cargo rust \
+ && virtualenv /var/lib/openstack \
+ && wget -qO /tmp/uc.txt "${CONSTRAINTS}" \
+ && sed -i '/^cinder===/d' /tmp/uc.txt \
+ && /var/lib/openstack/bin/pip install --no-cache-dir \
+        -c /tmp/uc.txt \
+        uwsgi \
+        PyMySQL python-memcached pymemcache \
+        "cinder @ git+${CINDER_REPO}@${CINDER_REF}" \
+ && /var/lib/openstack/bin/pip install --no-cache-dir \
+        psycopg2-binary 'confluent-kafka>=2.12,<2.13' etcd3gw \
+ && sed -i 's/^include-system-site-packages = false/include-system-site-packages = true/' \
+        /var/lib/openstack/pyvenv.cfg \
+ && mkdir -p /etc/image_info \
+ && /var/lib/openstack/bin/pip freeze --local > /etc/image_info/pip.txt \
+ && grep '^cinder @' /etc/image_info/pip.txt > /etc/image_info/project.txt \
+ && cp /tmp/uc.txt /upper-constraints.txt \
+ && apk del .build-deps \
+ && find /var/lib/openstack -name '*.pyc' -delete \
+ && find /var/lib/openstack -type d -name '__pycache__' -delete \
+ && rm -rf /root/.cargo /root/.cache /tmp/* /var/cache/apk/* /etc/machine-id
+
+# cinder 用户/运行目录 (uid 42424，与官方 ubuntu 镜像一致；chart 以此 uid 运行容器)。
+RUN addgroup -g 42424 cinder \
+ && adduser -D -H -u 42424 -G cinder -h /var/lib/cinder -s /sbin/nologin cinder \
+ && mkdir -p /etc/cinder /var/log/cinder /var/lib/cinder /var/cache/cinder \
+ && chown -R cinder:cinder /etc/cinder /var/log/cinder /var/lib/cinder /var/cache/cinder
+
+# GNU 兼容 hostname wrapper：官方 chart 的 init 用 `hostname --fqdn`(GNU 长选项)写
+# [DEFAULT] host，busybox 不认 -> host 为空。--fqdn/-f 走 python socket.getfqdn()
+# (语义同 GNU)，其余透传 busybox。/usr/local/bin 在 PATH 前。
+RUN printf '%s\n' \
+      '#!/bin/sh' \
+      'case "$1" in' \
+      '  -f|--fqdn) exec python3 -c "import socket; print(socket.getfqdn())" ;;' \
+      '  *) exec /bin/hostname "$@" ;;' \
+      'esac' > /usr/local/bin/hostname \
+ && chmod +x /usr/local/bin/hostname
+
+# privsep/rootwrap 提权 sudoers：chart 以非 root(uid 42424)运行，os-brick/cinder 经
+# `sudo cinder-rootwrap /etc/cinder/rootwrap.conf privsep-helper` 提权跑 lvm/iscsi/
+# multipath 等特权命令。官方的 sudoers 在 airshipit/base 基底里，alpine 没有，故补
+# NOPASSWD + !requiretty。venv 布局后这些是真路径。
+RUN printf '%s\n' \
+      'Defaults:cinder !requiretty' \
+      'cinder ALL=(root) NOPASSWD: /var/lib/openstack/bin/cinder-rootwrap, /var/lib/openstack/bin/cinder-rootwrap-daemon, /var/lib/openstack/bin/privsep-helper' \
+      > /etc/sudoers.d/cinder \
+ && chmod 0440 /etc/sudoers.d/cinder \
+ && visudo -cf /etc/sudoers.d/cinder
+
+# 自检:cinder 确实在 venv 布局、各角色入口/工具/驱动齐全、ceph rbd 绑定能 import、
+# hostname wrapper 正常。用 PYTHONDONTWRITEBYTECODE=1 避免 import 把字节码写回新层。
+RUN export PYTHONDONTWRITEBYTECODE=1 \
+ && test "$(command -v cinder-volume)" = "/var/lib/openstack/bin/cinder-volume" \
+ && for c in uwsgi cinder-api cinder-scheduler cinder-volume cinder-backup cinder-manage cinder-status cinder-rootwrap qemu-img lvs iscsiadm multipath targetcli sudo; do \
+        command -v "$c" >/dev/null || { echo "MISSING $c"; exit 1; }; \
+    done \
+ && python3 -c "import cinder; from cinder import version; print('cinder', version.version_string())" \
+ && python3 -c "import os_brick, importlib.metadata as m; print('os-brick', m.version('os-brick'))" \
+ && python3 -c "import rados, rbd; print('ceph rbd bindings OK')" \
+ && python3 -c "import psycopg2, confluent_kafka, pymysql, etcd3gw; print('db+kafka+etcd drivers OK')" \
+ && test -n "$(hostname --fqdn)" && echo "hostname --fqdn -> $(hostname --fqdn)" \
+ && echo "venv layout OK (cinder in /var/lib/openstack)"
+
+CMD ["cinder-api"]
