@@ -1,0 +1,58 @@
+---
+# Fork-only cinder Alpine variant. Upstream zuul.d/ builds only the official
+# cinder Dockerfile (loci/venv_builder ubuntu_noble). This entry adds an Alpine
+# variant that is SAME-SOURCE as the ubuntu one (opendev cinder stable/2026.1)
+# and installs into the same /var/lib/openstack venv (drop-in layout parity).
+#
+# Why a fork variant: we bake three optional drivers into the image:
+#   * etcd3gw          -- tooz coordination backend (cinder-volume active/active DLM)
+#   * psycopg2-binary  -- PostgreSQL [database] connection
+#   * confluent-kafka  -- oslo_messaging_notifications.driver=kafka (redpanda)
+# These are written directly into cinder/Dockerfile.alpine as explicit pip
+# installs -- they are INDEPENDENT of the workflow's pydep "dynamic
+# substitution". (The build-services job overlays a generated pydep-<rel>.txt
+# into the context to inject drivers for the OFFICIAL ubuntu images, but our
+# Dockerfile.alpine does not COPY pydep.txt, so that overlay is a harmless
+# no-op here.) See cinder/README.alpine.md.
+#
+# Unlike the neutron Alpine variant (which is FROM our ovn:alpine_latest base
+# for ovs-vsctl, with a one-build-lag ordering caveat), cinder touches no
+# OVS/OVN and is FROM alpine:3.23 directly: NO base-image dependency, NO
+# one-build-lag, no special build ordering.
+
+- job:
+    name: build-local-cinder-alpine
+    description: Build fork-only cinder Alpine variant (adds etcd/PostgreSQL/Kafka drivers).
+    vars:
+      container_images:
+        # Tagged as a 2026.1 *release* entry (not a rolling `alpine_latest`) so it
+        # mirrors the ubuntu image pair exactly:
+        #   * 2026.1-alpine_3.23  -- this entry, source stable/2026.1, DETERMINISTIC,
+        #     built only on dispatch/release (the daily cron's master,rolling set
+        #     excludes 2026.1 -- no point rebuilding pinned code every day).
+        #   * master-alpine_3.23  -- auto-synthesized by --include-master from this
+        #     2026.1 entry (tag 2026.1->master, CINDER_REF + CONSTRAINTS
+        #     stable/2026.1->master), source cinder master, built DAILY by cron.
+        #     This is the moving "latest". (synthesize_master's BASE_VENV_BUILDER /
+        #     BASE_RUNTIME rewrites are no-ops here -- the alpine image is
+        #     FROM alpine:3.23, not the loci venv_builder/base.)
+        - context: cinder
+          repository: openstackhelm/cinder
+          container_filename: Dockerfile.alpine
+          arch:
+            - linux/amd64
+            - linux/arm64
+          tags:
+            - 2026.1-alpine_3.23
+          # Same source as the upstream ubuntu image (opendev stable/2026.1); the
+          # only delta is the three baked-in drivers. For a reproducible image,
+          # pin CINDER_REF to a tag/sha.
+          #
+          # CONSTRAINTS is surfaced as a build_arg (not left to the Dockerfile
+          # default) specifically so synthesize_master's blanket
+          # `stable/2026.1`->`master` rewrite flips BOTH the source ref and the
+          # upper-constraints branch together. Otherwise the master cell builds
+          # cinder@master against stable/2026.1 constraints -> ResolutionImpossible.
+          build_args:
+            - CINDER_REF=stable/2026.1
+            - CONSTRAINTS=https://opendev.org/openstack/requirements/raw/branch/stable/2026.1/upper-constraints.txt
