@@ -39,8 +39,7 @@ env:
 
 jobs:
   discover:
-    runs-on: self-hosted
-    #runs-on: ubuntu-latest
+    runs-on: ubuntu-latest
     outputs:
       foundation_matrix:       ${{ steps.gen.outputs.foundation_matrix }}
       foundation_merge_matrix: ${{ steps.gen.outputs.foundation_merge_matrix }}
@@ -212,8 +211,7 @@ jobs:
   build-foundation:
     needs: discover
     if: ${{ !inputs.dry_run && needs.discover.outputs.foundation_count != '0' }}
-    runs-on: self-hosted
-    #runs-on: ubuntu-latest
+    runs-on: ubuntu-latest
     timeout-minutes: 60
     strategy:
       fail-fast: false
@@ -229,8 +227,6 @@ jobs:
 
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v4
-        with:
-          driver-opts: image=local/buildkit-harbor:latest
 
       - name: Log in to GHCR
         uses: docker/login-action@v4
@@ -261,7 +257,7 @@ jobs:
     # merge tier when build-foundation has any failure would hide successful
     # per-arch artifacts that could still be useful for debugging.
     if: ${{ !cancelled() && !inputs.dry_run && needs.discover.outputs.foundation_merge_count != '0' && needs.build-foundation.result != 'skipped' }}
-    runs-on: self-hosted
+    runs-on: ubuntu-latest
     timeout-minutes: 10
     strategy:
       fail-fast: false
@@ -302,8 +298,7 @@ jobs:
     # specific foundation cell failed, that service cell will fail at
     # docker pull and the failure is self-evident in the run log.
     if: ${{ !cancelled() && !inputs.dry_run && needs.discover.outputs.service_count != '0' }}
-    runs-on: self-hosted
-    #runs-on: ubuntu-latest
+    runs-on: ubuntu-latest
     # 240 because horizon's libsass build under QEMU arm64 emulation
     # consistently hit 180 min (skyline used to too, but skyline now
     # cross-builds its JS bundle natively on $BUILDPLATFORM). horizon's
@@ -325,8 +320,6 @@ jobs:
 
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v4
-        with:
-          driver-opts: image=local/buildkit-harbor:latest
 
       - name: Download per-release pydep.txt
         uses: actions/download-artifact@v4
@@ -355,9 +348,10 @@ jobs:
 
       - name: Build and push
         env:
-          # PAT used to clone the private fivetime/ovn-ic-central source repo,
-          # consumed ONLY by ovn-ic-central/Dockerfile.alpine through a BuildKit
-          # secret (--mount=type=secret,id=src_repo_token). Reuses the existing
+          # PAT used to clone private fork source repositories, currently
+          # consumed by ovn-ic-central/Dockerfile.alpine and
+          # nova/Dockerfile.incus through a BuildKit secret
+          # (--mount=type=secret,id=src_repo_token). Reuses the existing
           # CR_PAT secret (already used for GHCR auth in package-tsdb.yml; needs
           # `repo` read scope on the private repo). Always defined here (empty
           # string if unset); buildx ignores the unused secret for every other
@@ -380,7 +374,7 @@ jobs:
   merge-services:
     needs: [discover, build-services]
     if: ${{ !cancelled() && !inputs.dry_run && needs.discover.outputs.service_merge_count != '0' && needs.build-services.result != 'skipped' }}
-    runs-on: self-hosted
+    runs-on: ubuntu-latest
     timeout-minutes: 10
     strategy:
       fail-fast: false
@@ -412,8 +406,7 @@ jobs:
   summary:
     needs: [discover, build-foundation, merge-foundation, build-services, merge-services]
     if: ${{ !cancelled() && !inputs.dry_run }}
-    runs-on: self-hosted
-    #runs-on: ubuntu-latest
+    runs-on: ubuntu-latest
     steps:
       - name: Aggregate result
         run: |

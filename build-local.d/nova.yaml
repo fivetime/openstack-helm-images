@@ -1,0 +1,23 @@
+---
+# Fork-only Nova compute image for the external Incus system-container driver.
+# The Incus daemon remains a native service on each compute host; this image
+# contains Nova, the driver, its SDK, patches, and runtime integration tools.
+
+- job:
+    name: build-local-nova-incus
+    description: Build the Nova Incus system-container compute image.
+    vars:
+      container_images:
+        - context: nova
+          repository: openstackhelm/nova-incus
+          container_filename: Dockerfile.incus
+          arch:
+            - linux/amd64
+            - linux/arm64
+          tags:
+            - 2026.1-alpine_3.23
+          build_args:
+            - NOVA_REF=stable/2026.1
+            - NOVA_INCUS_REF=master
+            - INCUS_SDK_REF=main
+            - CONSTRAINTS=https://opendev.org/openstack/requirements/raw/branch/stable/2026.1/upper-constraints.txt

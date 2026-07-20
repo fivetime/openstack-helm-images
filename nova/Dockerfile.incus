@@ -1,0 +1,157 @@
+# syntax=docker/dockerfile:1
+# Dedicated Alpine Nova compute image for the external Incus system-container
+# driver. This is not a general Nova or libvirt compute image.
+
+ARG ALPINE_VERSION=3.23
+FROM alpine:${ALPINE_VERSION} AS build
+
+ENV PATH=/var/lib/openstack/bin:$PATH
+
+ARG NOVA_REPO=https://opendev.org/openstack/nova
+ARG NOVA_REF=stable/2026.1
+ARG NOVA_INCUS_REPO=https://github.com/fivetime/openstack-nova-incus.git
+ARG NOVA_INCUS_REF=master
+ARG INCUS_SDK_REPO=https://github.com/fivetime/incus-python-sdk.git
+ARG INCUS_SDK_REF=main
+ARG CONSTRAINTS=https://opendev.org/openstack/requirements/raw/branch/stable/2026.1/upper-constraints.txt
+# The Nova Incus repository is private. CI supplies src_repo_token as a
+# BuildKit secret; the token and temporary git rewrite are removed in this RUN
+# and never persist in an image layer.
+RUN apk add --no-cache \
+        python3 py3-virtualenv git \
+        build-base python3-dev linux-headers \
+        libffi-dev openssl-dev libxml2-dev libxslt-dev \
+        cargo rust \
+ && virtualenv /var/lib/openstack \
+ && wget -qO /tmp/upper-constraints.txt "${CONSTRAINTS}" \
+ && sed -i \
+        -e '/^nova===/d' \
+        -e '/^nova-incus===/d' \
+        -e '/^pylxd===/d' \
+        -e '/^cryptography===/d' \
+        -e '/^pyOpenSSL===/d' \
+        /tmp/upper-constraints.txt
+
+RUN --mount=type=secret,id=src_repo_token \
+    if [ -s /run/secrets/src_repo_token ]; then \
+        token="$(cat /run/secrets/src_repo_token)"; \
+        git config --global \
+          url."https://x-access-token:${token}@github.com/".insteadOf \
+          "https://github.com/"; \
+    fi \
+ && git clone --filter=blob:none -b "${NOVA_REF}" \
+        "${NOVA_REPO}" /tmp/nova \
+ && git clone --filter=blob:none -b "${NOVA_INCUS_REF}" \
+        "${NOVA_INCUS_REPO}" /tmp/nova-incus \
+ && git clone --filter=blob:none -b "${INCUS_SDK_REF}" \
+        "${INCUS_SDK_REPO}" /tmp/incus-python-sdk \
+ && rm -f /root/.gitconfig \
+ && git -C /tmp/nova apply \
+        /tmp/nova-incus/patches/nova/0001-diagnostics-add-incus-driver.patch \
+ && git -C /tmp/nova apply \
+        /tmp/nova-incus/patches/nova/0002-hardware-accept-incus-manila-share-trait.patch \
+ && git -C /tmp/nova apply \
+        /tmp/nova-incus/patches/nova/0003-compute-allow-incus-manila-live-migration.patch \
+ && git -C /tmp/nova apply \
+        /tmp/nova-incus/patches/nova/0003-register-incus-live-migrate-data.patch \
+ && mkdir -p /tmp/nova/nova/virt/incus \
+ && cp -a /tmp/nova-incus/nova/virt/incus/. /tmp/nova/nova/virt/incus/ \
+ && git -C /tmp/nova add -f nova/virt/incus \
+ && /var/lib/openstack/bin/pip install --no-cache-dir \
+        -c /tmp/upper-constraints.txt \
+        'cryptography==46.0.5' 'pyOpenSSL==25.3.0' \
+        /tmp/incus-python-sdk /tmp/nova /tmp/nova-incus \
+ && mkdir -p /opt/nova-incus-runtime/etc/nova/rootwrap.d \
+        /opt/nova-incus-runtime/usr/local/sbin /etc/image_info \
+ && cp /tmp/nova-incus/etc/nova/rootwrap.d/incus.filters \
+        /opt/nova-incus-runtime/etc/nova/rootwrap.d/incus.filters \
+ && cp /tmp/nova-incus/tools/openstack-incus-compute-admission \
+        /tmp/nova-incus/tools/openstack-incus-fence-agent-provider \
+        /opt/nova-incus-runtime/usr/local/sbin/ \
+ && chmod 0755 /opt/nova-incus-runtime/usr/local/sbin/* \
+ && { \
+        printf 'nova '; git -C /tmp/nova log --oneline -1; \
+        printf 'nova-incus '; git -C /tmp/nova-incus log --oneline -1; \
+        printf 'incus-python-sdk '; \
+        git -C /tmp/incus-python-sdk log --oneline -1; \
+    } > /etc/image_info/project.txt \
+ && /var/lib/openstack/bin/pip freeze > /etc/image_info/pip.txt \
+ && cp /tmp/upper-constraints.txt /upper-constraints.txt \
+ && find /var/lib/openstack -name '*.pyc' -delete \
+ && find /var/lib/openstack -type d -name '__pycache__' -delete \
+ && rm -rf /root/.cargo /root/.cache /tmp/*
+
+FROM alpine:${ALPINE_VERSION} AS runtime
+
+ENV PATH=/var/lib/openstack/bin:$PATH
+
+ARG NOVA_INCUS_GROUP=incus-admin
+ARG NOVA_INCUS_GID=42435
+
+# Runtime dependencies for Incus, Neutron/OVS, Cinder RBD, Manila NFS,
+# config-drive, and rootwrap/privsep. The Incus daemon remains a separate host
+# service reached through its mounted socket.
+RUN apk add --no-cache \
+        python3 bash \
+        bridge-utils ceph19-common py3-rados19 py3-rbd19 \
+        cdrkit e2fsprogs iproute2 iptables libffi \
+        lvm2 multipath-tools net-tools nfs-utils nvme-cli \
+        open-iscsi openvswitch \
+        sudo util-linux \
+ && rm -rf /var/cache/apk/* /etc/machine-id
+
+COPY --from=build --link /var/lib/openstack /var/lib/openstack
+COPY --from=build /etc/image_info /etc/image_info
+COPY --from=build /upper-constraints.txt /
+COPY --from=build /opt/nova-incus-runtime/ /
+
+# Allow the venv to import Alpine's musl-native rados/rbd bindings while all
+# pip-installed packages continue to take precedence.
+RUN sed -i \
+        's/^include-system-site-packages = false/include-system-site-packages = true/' \
+        /var/lib/openstack/pyvenv.cfg \
+ && addgroup -g 42424 nova \
+ && addgroup -g "${NOVA_INCUS_GID}" "${NOVA_INCUS_GROUP}" \
+ && adduser -D -H -u 42424 -G nova -h /var/lib/nova -s /bin/bash nova \
+ && addgroup nova "${NOVA_INCUS_GROUP}" \
+ && mkdir -p /etc/nova /var/log/nova /var/lib/nova /var/cache/nova \
+        /run/openstack-incus \
+ && chown nova:nova \
+        /etc/nova /var/log/nova /var/lib/nova /var/cache/nova
+
+# Alpine lacks the sudo policy supplied by airshipit/base. Nova compute uses
+# rootwrap/privsep for networking, mounts, and os-brick operations.
+RUN printf '%s\n' \
+      'Defaults:nova !requiretty' \
+      'nova ALL=(root) NOPASSWD: /var/lib/openstack/bin/nova-rootwrap, /var/lib/openstack/bin/nova-rootwrap-daemon, /var/lib/openstack/bin/privsep-helper' \
+      > /etc/sudoers.d/nova \
+ && chmod 0440 /etc/sudoers.d/nova \
+ && visudo -cf /etc/sudoers.d/nova
+
+# OpenStack Helm init scripts use the GNU long option, which BusyBox hostname
+# does not implement.
+RUN printf '%s\n' \
+      '#!/bin/sh' \
+      'case "$1" in' \
+      '  -f|--fqdn) exec python3 -c "import socket; print(socket.getfqdn())" ;;' \
+      '  *) exec /bin/hostname "$@" ;;' \
+      'esac' > /usr/local/bin/hostname \
+ && chmod 0755 /usr/local/bin/hostname
+
+# Build-time contract checks for the Incus compute layout and its runtime
+# storage, networking, and Manila clients.
+RUN export PYTHONDONTWRITEBYTECODE=1 \
+ && test "$(command -v nova-incus-compute)" = \
+        "/var/lib/openstack/bin/nova-incus-compute" \
+ && for command in nova-compute nova-incus-compute nova-manage \
+        nova-rootwrap ovs-vsctl rbd mount.nfs lscpu; do \
+        command -v "${command}" >/dev/null || \
+          { echo "MISSING ${command}"; exit 1; }; \
+    done \
+ && python3 -c "from nova.virt.incus.driver import IncusDriver; print('Nova Incus driver OK')" \
+ && python3 -c "from nova.objects.fields import HVType; assert HVType.INCUS == 'incus'; print('Nova Incus patches OK')" \
+ && python3 -c "import pylxd, rados, rbd; print('Incus+Ceph bindings OK')" \
+ && test -n "$(hostname --fqdn)" \
+ && echo "venv layout OK (Nova Incus compute in /var/lib/openstack)"
+
+CMD ["nova-incus-compute"]
