@@ -150,7 +150,7 @@ RUN export PYTHONDONTWRITEBYTECODE=1 \
           { echo "MISSING ${command}"; exit 1; }; \
     done \
  && python3 -c "from nova.virt.incus.driver import IncusDriver; print('Nova Incus driver OK')" \
- && python3 -c "from nova.objects.fields import HypervisorDriver, HVType; assert HypervisorDriver.INCUS == 'incus' and HVType.INCUS == 'incus'; print('Nova Incus patches OK')" \
+ && python3 -c "from nova.objects.fields import HypervisorDriver, HVType; assert HypervisorDriver.INCUS == 'incus' and not hasattr(HVType, 'INCUS'); print('Nova Incus patches OK')" \
  && python3 -c "import pylxd, rados, rbd; print('Incus+Ceph bindings OK')" \
  && test -n "$(hostname --fqdn)" \
  && echo "venv layout OK (Nova Incus compute in /var/lib/openstack)"
