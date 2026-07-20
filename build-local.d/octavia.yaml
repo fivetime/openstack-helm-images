@@ -1,0 +1,25 @@
+---
+# Fork-only Octavia Alpine controller image. The Dockerfile installs Octavia
+# and ovn-octavia-provider from matching branches, plus PostgreSQL and Kafka
+# drivers. Those packages are explicit in Dockerfile.alpine, so the generated
+# pydep.txt overlay used by the standard Ubuntu image is intentionally unused.
+
+- job:
+    name: build-local-octavia-alpine
+    description: Build Octavia Alpine with OVN, PostgreSQL, and Kafka drivers.
+    vars:
+      container_images:
+        # --include-master synthesizes master-alpine_3.23 from this row and
+        # rewrites all stable/2026.1 source and constraints arguments together.
+        - context: octavia
+          repository: openstackhelm/octavia
+          container_filename: Dockerfile.alpine
+          arch:
+            - linux/amd64
+            - linux/arm64
+          tags:
+            - 2026.1-alpine_3.23
+          build_args:
+            - OCTAVIA_REF=stable/2026.1
+            - OVN_PROVIDER_REF=stable/2026.1
+            - CONSTRAINTS=https://opendev.org/openstack/requirements/raw/branch/stable/2026.1/upper-constraints.txt

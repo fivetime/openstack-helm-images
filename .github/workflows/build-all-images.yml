@@ -14,7 +14,7 @@ on:
         description: "Platform filter (comma-separated, empty = all). Available: linux/amd64,linux/arm64"
         default: ""
       services:
-        description: "Service name substring filter (comma-separated, empty = all). E.g. 'keystone,neutron'"
+        description: "Service name substring filter (comma-separated, empty = all). E.g. 'keystone,neutron,octavia-alpine'"
         default: ""
       include_master:
         description: "Synthesize master variants from 2026.1 entries"
@@ -49,6 +49,7 @@ jobs:
       foundation_count:        ${{ steps.gen.outputs.foundation_count }}
       foundation_merge_count:  ${{ steps.gen.outputs.foundation_merge_count }}
       service_count:           ${{ steps.gen.outputs.service_count }}
+      alpine_service_count:    ${{ steps.gen.outputs.alpine_service_count }}
       service_merge_count:     ${{ steps.gen.outputs.service_merge_count }}
       releases:                ${{ steps.gen.outputs.releases }}
     steps:
@@ -132,11 +133,13 @@ jobs:
           python .github/scripts/zuul_to_matrix.py "${common_args[@]}" \
             --tier service --split-platforms --format json > /tmp/service.json
           scount=$(python -c "import json; print(len(json.load(open('/tmp/service.json'))))")
-          echo "Service cells discovered: ${scount}"
+          alpine_scount=$(python -c "import json; print(sum(r['container_filename'].endswith('Dockerfile.alpine') for r in json.load(open('/tmp/service.json'))))")
+          echo "Service cells discovered: ${scount} (${alpine_scount} Alpine)"
           python .github/scripts/zuul_to_matrix.py "${common_args[@]}" \
             --tier service --split-platforms --format github \
             | sed 's/^matrix=/service_matrix=/' >> "$GITHUB_OUTPUT"
           echo "service_count=${scount}" >> "$GITHUB_OUTPUT"
+          echo "alpine_service_count=${alpine_scount}" >> "$GITHUB_OUTPUT"
 
           # Service merge tier: combines per-arch service tags into manifest lists.
           python .github/scripts/zuul_to_matrix.py "${common_args[@]}" \
@@ -158,7 +161,7 @@ jobs:
             echo "## Build matrix"
             echo ""
             echo "- Foundation tier:       ${fcount} build + ${fmcount} merge entries"
-            echo "- Service tier:          ${scount} build + ${smcount} merge entries"
+            echo "- Service tier:          ${scount} build (${alpine_scount} Alpine) + ${smcount} merge entries"
             echo "- Releases:              ${releases}"
             echo ""
             python .github/scripts/format_matrix_summary.py /tmp/foundation.json --title Foundation
@@ -420,5 +423,6 @@ jobs:
             echo "- Foundation build entries: ${{ needs.discover.outputs.foundation_count }} (result: ${{ needs.build-foundation.result }})"
             echo "- Foundation merge entries: ${{ needs.discover.outputs.foundation_merge_count }} (result: ${{ needs.merge-foundation.result }})"
             echo "- Service build entries:    ${{ needs.discover.outputs.service_count }} (result: ${{ needs.build-services.result }})"
+            echo "- Alpine service entries:   ${{ needs.discover.outputs.alpine_service_count }}"
             echo "- Service merge entries:    ${{ needs.discover.outputs.service_merge_count }} (result: ${{ needs.merge-services.result }})"
           } >> "$GITHUB_STEP_SUMMARY"

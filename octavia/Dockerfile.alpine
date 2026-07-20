@@ -1,0 +1,77 @@
+# syntax=docker/dockerfile:1
+# Alpine variant of octavia/Dockerfile. It keeps the same source branch,
+# /var/lib/openstack virtualenv layout, runtime user, and service directories.
+
+ARG ALPINE_VERSION=3.23
+FROM alpine:${ALPINE_VERSION}
+
+ENV PATH=/var/lib/openstack/bin:$PATH
+
+ARG OCTAVIA_REPO=https://opendev.org/openstack/octavia
+ARG OCTAVIA_REF=stable/2026.1
+ARG OVN_PROVIDER_REPO=https://opendev.org/openstack/ovn-octavia-provider
+ARG OVN_PROVIDER_REF=stable/2026.1
+ARG CONSTRAINTS=https://opendev.org/openstack/requirements/raw/branch/stable/2026.1/upper-constraints.txt
+
+# Alpine 3.23 no longer packages ISC dhclient. That binary is used inside an
+# amphora agent image, not by the Octavia controller or the OVN provider roles
+# built here. librdkafka and libpq are retained at runtime for the Kafka and
+# PostgreSQL drivers.
+RUN apk add --no-cache \
+        python3 \
+        libffi libpq librdkafka \
+ && apk add --no-cache --virtual .build-deps \
+        py3-virtualenv \
+        git build-base python3-dev \
+        libffi-dev openssl-dev \
+        postgresql-dev librdkafka-dev \
+        linux-headers cargo rust \
+ && virtualenv /var/lib/openstack \
+ && wget -qO /tmp/upper-constraints.txt "${CONSTRAINTS}" \
+ && sed -i \
+        -e '/^octavia===/d' \
+        -e '/^ovn-octavia-provider===/d' \
+        /tmp/upper-constraints.txt \
+ && git clone --filter=blob:none -b "${OCTAVIA_REF}" \
+        "${OCTAVIA_REPO}" /tmp/octavia \
+ && git clone --filter=blob:none -b "${OVN_PROVIDER_REF}" \
+        "${OVN_PROVIDER_REPO}" /tmp/ovn-octavia-provider \
+ && /var/lib/openstack/bin/pip install --no-cache-dir \
+        -c /tmp/upper-constraints.txt \
+        uwsgi PyMySQL python-memcached \
+        /tmp/octavia /tmp/ovn-octavia-provider \
+ && /var/lib/openstack/bin/pip install --no-cache-dir \
+        psycopg2-binary 'confluent-kafka>=2.12,<2.13' \
+ && mkdir -p /etc/image_info \
+ && { \
+        printf 'octavia '; \
+        git -C /tmp/octavia log --oneline -1; \
+        printf 'ovn-octavia-provider '; \
+        git -C /tmp/ovn-octavia-provider log --oneline -1; \
+    } > /etc/image_info/project.txt \
+ && /var/lib/openstack/bin/pip freeze > /etc/image_info/pip.txt \
+ && cp /tmp/upper-constraints.txt /upper-constraints.txt \
+ && apk del .build-deps \
+ && find /var/lib/openstack -name '*.pyc' -delete \
+ && find /var/lib/openstack -type d -name '__pycache__' -delete \
+ && rm -rf /root/.cargo /root/.cache /tmp/* /var/cache/apk/* /etc/machine-id
+
+# Match the uid/gid and filesystem layout of octavia/Dockerfile.
+RUN addgroup -g 42424 octavia \
+ && adduser -D -H -u 42424 -G octavia -h /var/lib/octavia \
+        -s /sbin/nologin octavia \
+ && mkdir -p /etc/octavia /var/log/octavia /var/lib/octavia /var/cache/octavia \
+ && chown octavia:octavia \
+        /etc/octavia /var/log/octavia /var/lib/octavia /var/cache/octavia
+
+# Fail the build if the service, OVN provider entry point, or optional drivers
+# are absent from the final virtualenv.
+RUN export PYTHONDONTWRITEBYTECODE=1 \
+ && test "$(command -v octavia-api)" = "/var/lib/openstack/bin/octavia-api" \
+ && for command in uwsgi octavia-api octavia-worker octavia-health-manager octavia-housekeeping; do \
+        command -v "${command}" >/dev/null || { echo "MISSING ${command}"; exit 1; }; \
+    done \
+ && python3 -c "import octavia; print('octavia OK')" \
+ && python3 -c "import importlib.metadata as m; eps=m.entry_points(group='octavia.api.drivers'); assert any(ep.name == 'ovn' for ep in eps), 'OVN provider entry point missing'; print('ovn-octavia-provider OK')" \
+ && python3 -c "import psycopg2, confluent_kafka, pymysql; print('db+kafka drivers OK')" \
+ && echo "venv layout OK (octavia in /var/lib/openstack)"
