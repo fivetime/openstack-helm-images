@@ -60,6 +60,7 @@ RUN --mount=type=secret,id=src_repo_token \
  && /var/lib/openstack/bin/pip install --no-cache-dir \
         -c /tmp/upper-constraints.txt \
         'cryptography==46.0.5' 'pyOpenSSL==25.3.0' \
+        pyroute2 \
         /tmp/incus-python-sdk /tmp/nova /tmp/nova-incus \
  && mkdir -p /opt/nova-incus-runtime/etc/nova/rootwrap.d \
         /opt/nova-incus-runtime/usr/local/sbin /etc/image_info \
