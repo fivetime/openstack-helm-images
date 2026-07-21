@@ -1,8 +1,7 @@
 ---
 # Fork-only neutron Alpine variant. Upstream zuul.d/neutron.yaml builds only the
 # Dockerfile (venv/loci) ubuntu_noble variants. This entry adds an Alpine variant
-# that is SAME-SOURCE as the ubuntu one (opendev neutron stable/2026.1) and
-# differs by exactly one thing: it ships ovsdb_dns_patch -- a synchronous
+# built from the fivetime Neutron fork and ships ovsdb_dns_patch -- a synchronous
 # getaddrinfo replacement for ovs.dns_resolve.resolve.
 #
 # Why: the stock python `ovs` library only resolves DNS via the (async) unbound
@@ -42,9 +41,9 @@
             - linux/arm64
           tags:
             - 2026.1-alpine_3.23
-          # Same source as the upstream ubuntu image (opendev stable/2026.1); the
-          # only delta is the DNS patch + db/kafka drivers. For a reproducible
-          # image, pin NEUTRON_REF to a tag/sha and OVN_IMAGE to a digest.
+          # The fork tracks upstream stable/master and carries production fixes
+          # needed by this deployment. For a reproducible image, pin NEUTRON_REF
+          # to a tag/sha and OVN_IMAGE to a digest.
           #
           # CONSTRAINTS is surfaced as a build_arg (not left to the Dockerfile
           # default) specifically so synthesize_master's blanket
@@ -53,5 +52,6 @@
           # neutron@master (needs neutron-lib>=4.0.0) against stable/2026.1
           # constraints (neutron-lib===3.24.0) -> ResolutionImpossible.
           build_args:
+            - NEUTRON_REPO=https://github.com/fivetime/openstack-neutron.git
             - NEUTRON_REF=stable/2026.1
             - CONSTRAINTS=https://opendev.org/openstack/requirements/raw/branch/stable/2026.1/upper-constraints.txt
