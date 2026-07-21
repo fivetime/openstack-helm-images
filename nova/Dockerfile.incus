@@ -10,9 +10,9 @@ ENV PATH=/var/lib/openstack/bin:$PATH
 ARG NOVA_REPO=https://opendev.org/openstack/nova
 ARG NOVA_REF=stable/2026.1
 ARG NOVA_INCUS_REPO=https://github.com/fivetime/openstack-nova-incus.git
-ARG NOVA_INCUS_REF=master
+ARG NOVA_INCUS_REF=fe00c3a16f70385b2f47947795246154a8cc383c
 ARG INCUS_SDK_REPO=https://github.com/fivetime/incus-python-sdk.git
-ARG INCUS_SDK_REF=main
+ARG INCUS_SDK_REF=4b492bc1e2a80bc0544200403af36a5d850d7b2e
 ARG CONSTRAINTS=https://opendev.org/openstack/requirements/raw/branch/stable/2026.1/upper-constraints.txt
 # The Nova Incus repository is private. CI supplies src_repo_token as a
 # BuildKit secret; the token and temporary git rewrite are removed in this RUN
