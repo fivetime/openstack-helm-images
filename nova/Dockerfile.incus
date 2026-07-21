@@ -10,7 +10,7 @@ ENV PATH=/var/lib/openstack/bin:$PATH
 ARG NOVA_REPO=https://opendev.org/openstack/nova
 ARG NOVA_REF=stable/2026.1
 ARG NOVA_INCUS_REPO=https://github.com/fivetime/openstack-nova-incus.git
-ARG NOVA_INCUS_REF=611ca3dfb42c527e5f113218e20528072bb7d285
+ARG NOVA_INCUS_REF=e861a3bddba133ba701b83e94d21688d4e15cd85
 ARG INCUS_SDK_REPO=https://github.com/fivetime/incus-python-sdk.git
 ARG INCUS_SDK_REF=4b492bc1e2a80bc0544200403af36a5d850d7b2e
 ARG CONSTRAINTS=https://opendev.org/openstack/requirements/raw/branch/stable/2026.1/upper-constraints.txt
@@ -164,6 +164,7 @@ RUN export PYTHONDONTWRITEBYTECODE=1 \
           { echo "MISSING ${command}"; exit 1; }; \
     done \
  && python3 -c "from nova.virt.incus.driver import IncusDriver; print('Nova Incus driver OK')" \
+ && python3 -c "import inspect; from nova.virt.incus import driver; source = inspect.getsource(driver._detach_volume_id); assert '_volume_device_info_key' in source; print('Nova Incus detach recovery OK')" \
  && python3 -c "from nova.objects.fields import HypervisorDriver, HVType; assert HypervisorDriver.INCUS == 'incus' and not hasattr(HVType, 'INCUS'); print('Nova Incus patches OK')" \
  && python3 -c "import pylxd, rados, rbd; print('Incus+Ceph bindings OK')" \
  && test -n "$(hostname --fqdn)" \
