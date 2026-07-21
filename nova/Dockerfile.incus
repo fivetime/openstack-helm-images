@@ -68,6 +68,10 @@ RUN --mount=type=secret,id=src_repo_token \
         'cryptography==46.0.5' 'pyOpenSSL==25.3.0' \
         pyroute2 \
         /tmp/incus-python-sdk /tmp/nova /tmp/nova-incus \
+ && (cd /var/lib/openstack/lib/python3.12/site-packages \
+        && git apply --no-index \
+            /tmp/nova-incus/patches/python-glanceclient/0001-preserve-seekable-upload-length.patch) \
+ && /var/lib/openstack/bin/python -c "import tempfile, requests; from glanceclient.common import http; f = tempfile.TemporaryFile(); f.write(b'x' * 10); f.seek(0); body = http._BaseHTTPClient._chunk_body(f); headers = requests.Request('PUT', 'http://example.invalid', data=body).prepare().headers; assert headers.get('Content-Length') == '10', headers; assert 'Transfer-Encoding' not in headers, headers" \
  && mkdir -p /opt/nova-incus-runtime/etc/nova/rootwrap.d \
         /opt/nova-incus-runtime/usr/local/sbin /etc/image_info \
  && cp /tmp/nova-incus/etc/nova/rootwrap.d/incus.filters \
