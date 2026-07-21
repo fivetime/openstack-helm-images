@@ -39,12 +39,16 @@ RUN --mount=type=secret,id=src_repo_token \
           url."https://x-access-token:${token}@github.com/".insteadOf \
           "https://github.com/"; \
     fi \
- && git clone --filter=blob:none -b "${NOVA_REF}" \
-        "${NOVA_REPO}" /tmp/nova \
- && git clone --filter=blob:none -b "${NOVA_INCUS_REF}" \
-        "${NOVA_INCUS_REPO}" /tmp/nova-incus \
- && git clone --filter=blob:none -b "${INCUS_SDK_REF}" \
-        "${INCUS_SDK_REPO}" /tmp/incus-python-sdk \
+ && fetch_ref() { \
+        repo="$1"; ref="$2"; destination="$3"; \
+        git init "${destination}"; \
+        git -C "${destination}" remote add origin "${repo}"; \
+        git -C "${destination}" fetch --depth=1 --filter=blob:none origin "${ref}"; \
+        git -C "${destination}" checkout --detach FETCH_HEAD; \
+    } \
+ && fetch_ref "${NOVA_REPO}" "${NOVA_REF}" /tmp/nova \
+ && fetch_ref "${NOVA_INCUS_REPO}" "${NOVA_INCUS_REF}" /tmp/nova-incus \
+ && fetch_ref "${INCUS_SDK_REPO}" "${INCUS_SDK_REF}" /tmp/incus-python-sdk \
  && rm -f /root/.gitconfig \
  && git -C /tmp/nova apply \
         /tmp/nova-incus/patches/nova/0001-diagnostics-add-incus-driver.patch \
