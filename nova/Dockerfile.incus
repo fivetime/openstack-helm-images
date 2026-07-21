@@ -58,6 +58,8 @@ RUN --mount=type=secret,id=src_repo_token \
         /tmp/nova-incus/patches/nova/0003-compute-allow-incus-manila-live-migration.patch \
  && git -C /tmp/nova apply \
         /tmp/nova-incus/patches/nova/0003-register-incus-live-migrate-data.patch \
+ && git -C /tmp/nova apply \
+        /tmp/nova-incus/patches/nova/0004-glance-send-seekable-upload-size.patch \
  && mkdir -p /tmp/nova/nova/virt/incus \
  && cp -a /tmp/nova-incus/nova/virt/incus/. /tmp/nova/nova/virt/incus/ \
  && git -C /tmp/nova add -f nova/virt/incus \
