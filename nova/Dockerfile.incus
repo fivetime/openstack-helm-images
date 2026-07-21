@@ -10,7 +10,7 @@ ENV PATH=/var/lib/openstack/bin:$PATH
 ARG NOVA_REPO=https://opendev.org/openstack/nova
 ARG NOVA_REF=stable/2026.1
 ARG NOVA_INCUS_REPO=https://github.com/fivetime/openstack-nova-incus.git
-ARG NOVA_INCUS_REF=fe00c3a16f70385b2f47947795246154a8cc383c
+ARG NOVA_INCUS_REF=d792f6b5eb30fb4f52186f6e9aae700a183e2902
 ARG INCUS_SDK_REPO=https://github.com/fivetime/incus-python-sdk.git
 ARG INCUS_SDK_REF=4b492bc1e2a80bc0544200403af36a5d850d7b2e
 ARG CONSTRAINTS=https://opendev.org/openstack/requirements/raw/branch/stable/2026.1/upper-constraints.txt
@@ -71,7 +71,11 @@ RUN --mount=type=secret,id=src_repo_token \
  && (cd /var/lib/openstack/lib/python3.12/site-packages \
         && git apply --no-index \
             /tmp/nova-incus/patches/python-glanceclient/0001-preserve-seekable-upload-length.patch) \
+ && (cd /var/lib/openstack/lib/python3.12/site-packages \
+        && git apply --no-index \
+            /tmp/nova-incus/patches/os-brick/0001-rbd-fallback-to-kernel-device-path.patch) \
  && /var/lib/openstack/bin/python -c "import tempfile, requests; from glanceclient.common import http; f = tempfile.TemporaryFile(); f.write(b'x' * 10); f.seek(0); body = http._BaseHTTPClient._chunk_body(f); headers = requests.Request('PUT', 'http://example.invalid', data=body).prepare().headers; assert headers.get('Content-Length') == '10', headers; assert 'Transfer-Encoding' not in headers, headers" \
+ && /var/lib/openstack/bin/python -c "import inspect; from os_brick.initiator.connectors import rbd; source = inspect.getsource(rbd.RBDConnector._local_attach_volume); assert 'root_device = self._find_root_device' in source; print('os-brick RBD device fallback OK')" \
  && mkdir -p /opt/nova-incus-runtime/etc/nova/rootwrap.d \
         /opt/nova-incus-runtime/usr/local/sbin /etc/image_info \
  && cp /tmp/nova-incus/etc/nova/rootwrap.d/incus.filters \
