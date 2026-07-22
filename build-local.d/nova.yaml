@@ -18,6 +18,6 @@
             - 2026.1-alpine_3.23
           build_args:
             - NOVA_REF=stable/2026.1
-            - NOVA_INCUS_REF=35c4244de0a21771a6cd52e9b16f3f0e6a1c0c16
+            - NOVA_INCUS_REF=f95e7fd448ad2e04cfbf062571ff9ca426200f40
             - INCUS_SDK_REF=4b492bc1e2a80bc0544200403af36a5d850d7b2e
             - CONSTRAINTS=https://opendev.org/openstack/requirements/raw/branch/stable/2026.1/upper-constraints.txt
