@@ -10,7 +10,7 @@ ENV PATH=/var/lib/openstack/bin:$PATH
 ARG NOVA_REPO=https://opendev.org/openstack/nova
 ARG NOVA_REF=stable/2026.1
 ARG NOVA_INCUS_REPO=https://github.com/fivetime/openstack-nova-incus.git
-ARG NOVA_INCUS_REF=f95e7fd448ad2e04cfbf062571ff9ca426200f40
+ARG NOVA_INCUS_REF=f99812bf48594df0f753d9d53882b519094b9692
 ARG INCUS_SDK_REPO=https://github.com/fivetime/incus-python-sdk.git
 ARG INCUS_SDK_REF=4b492bc1e2a80bc0544200403af36a5d850d7b2e
 ARG CONSTRAINTS=https://opendev.org/openstack/requirements/raw/branch/stable/2026.1/upper-constraints.txt
@@ -51,8 +51,6 @@ RUN --mount=type=secret,id=src_repo_token \
  && fetch_ref "${INCUS_SDK_REPO}" "${INCUS_SDK_REF}" /tmp/incus-python-sdk \
  && rm -f /root/.gitconfig \
  && git -C /tmp/nova apply \
-        /tmp/nova-incus/patches/nova/0001-diagnostics-add-incus-driver.patch \
- && git -C /tmp/nova apply \
         /tmp/nova-incus/patches/nova/0002-hardware-accept-incus-manila-share-trait.patch \
  && git -C /tmp/nova apply \
         /tmp/nova-incus/patches/nova/0003-compute-allow-incus-manila-live-migration.patch \
@@ -60,6 +58,8 @@ RUN --mount=type=secret,id=src_repo_token \
         /tmp/nova-incus/patches/nova/0003-register-incus-live-migrate-data.patch \
  && git -C /tmp/nova apply \
         /tmp/nova-incus/patches/nova/0004-glance-send-seekable-upload-size.patch \
+ && git -C /tmp/nova apply \
+        /tmp/nova-incus/patches/nova/0005-compute-add-failed-build-allocation-policy.patch \
  && mkdir -p /tmp/nova/nova/virt/incus \
  && cp -a /tmp/nova-incus/nova/virt/incus/. /tmp/nova/nova/virt/incus/ \
  && git -C /tmp/nova add -f nova/virt/incus \
@@ -107,7 +107,7 @@ ARG NOVA_INCUS_GID=42435
 # config-drive, and rootwrap/privsep. The Incus daemon remains a separate host
 # service reached through its mounted socket.
 RUN apk add --no-cache \
-        python3 bash \
+        python3 bash coreutils \
         bridge-utils ceph19-common py3-rados19 py3-rbd19 \
         cdrkit e2fsprogs iproute2 iptables libffi \
         lvm2 multipath-tools net-tools nfs-utils nvme-cli \
@@ -159,13 +159,15 @@ RUN export PYTHONDONTWRITEBYTECODE=1 \
  && test "$(command -v nova-incus-compute)" = \
         "/var/lib/openstack/bin/nova-incus-compute" \
  && for command in nova-compute nova-incus-compute nova-manage \
-        nova-rootwrap ovs-vsctl rbd mount.nfs lscpu; do \
+        nova-rootwrap ovs-vsctl rbd mount.nfs lscpu /usr/bin/timeout; do \
         command -v "${command}" >/dev/null || \
           { echo "MISSING ${command}"; exit 1; }; \
     done \
+ && /usr/bin/timeout --version | grep -q '^timeout (GNU coreutils)' \
  && python3 -c "from nova.virt.incus.driver import IncusDriver; print('Nova Incus driver OK')" \
  && python3 -c "import inspect; from nova.virt.incus import driver; source = inspect.getsource(driver._detach_volume_id); assert '_volume_device_info_key' in source; print('Nova Incus detach recovery OK')" \
- && python3 -c "from nova.objects.fields import HypervisorDriver, HVType; assert HypervisorDriver.INCUS == 'incus' and not hasattr(HVType, 'INCUS'); print('Nova Incus patches OK')" \
+ && python3 -c "from nova.compute import manager; assert callable(getattr(manager.ComputeManager, '_should_delete_allocation_for_failed_build', None)); print('Nova failed-build allocation policy OK')" \
+ && python3 -c "from nova.objects.fields import HVType; assert not hasattr(HVType, 'INCUS'); print('Nova cross-service enum compatibility OK')" \
  && python3 -c "import pylxd, rados, rbd; print('Incus+Ceph bindings OK')" \
  && test -n "$(hostname --fqdn)" \
  && echo "venv layout OK (Nova Incus compute in /var/lib/openstack)"
