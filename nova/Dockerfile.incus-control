@@ -19,7 +19,10 @@ RUN --mount=type=secret,id=src_repo_token \
  && git -C /src checkout --detach FETCH_HEAD \
  && rm -f /root/.gitconfig
 
-FROM quay.io/airshipit/nova:2026.1-ubuntu_noble
+# Keep the control-plane runtime identical to the image already qualified in
+# production. The Airship release tag is mutable and must not silently pull a
+# newer Nova build while this image only adds the Incus RPC object registry.
+FROM quay.io/airshipit/nova@sha256:084ca5611eb34c33d1922e09c4baca079e180971fef509e0a307270ac638e1af
 
 COPY --from=source /src/nova/virt/incus/__init__.py \
     /var/lib/openstack/lib/python3.12/site-packages/nova/virt/incus/__init__.py

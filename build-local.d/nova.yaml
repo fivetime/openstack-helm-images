@@ -32,7 +32,6 @@
           container_filename: Dockerfile.incus-control
           arch:
             - linux/amd64
-            - linux/arm64
           tags:
             - 2026.1-ubuntu_noble
           build_args:
