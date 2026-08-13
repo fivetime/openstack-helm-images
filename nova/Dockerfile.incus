@@ -8,12 +8,13 @@ FROM alpine:${ALPINE_VERSION} AS build
 ENV PATH=/var/lib/openstack/bin:$PATH
 
 ARG NOVA_REPO=https://opendev.org/openstack/nova
-ARG NOVA_REF=stable/2026.1
+ARG NOVA_REF=8595b8eed4d0cabf6a7db04b0d946cf764187965
 ARG NOVA_INCUS_REPO=https://github.com/fivetime/openstack-nova-incus.git
-ARG NOVA_INCUS_REF=f99812bf48594df0f753d9d53882b519094b9692
+ARG NOVA_INCUS_REF=7ea3d2dbeebe7f3ddd23c8d0625f9891ebf5be69
 ARG INCUS_SDK_REPO=https://github.com/fivetime/incus-python-sdk.git
-ARG INCUS_SDK_REF=4b492bc1e2a80bc0544200403af36a5d850d7b2e
-ARG CONSTRAINTS=https://opendev.org/openstack/requirements/raw/branch/stable/2026.1/upper-constraints.txt
+ARG INCUS_SDK_REF=1a26b144316806ffb2dbcb75a523a75e8955695b
+ARG REQUIREMENTS_REPO=https://opendev.org/openstack/requirements
+ARG REQUIREMENTS_REF=06cd4e8523cbade25fb93efc4f8ea77d6d97064f
 # The Nova Incus repository is private. CI supplies src_repo_token as a
 # BuildKit secret; the token and temporary git rewrite are removed in this RUN
 # and never persist in an image layer.
@@ -22,15 +23,7 @@ RUN apk add --no-cache \
         build-base python3-dev linux-headers \
         libffi-dev openssl-dev libxml2-dev libxslt-dev \
         cargo rust \
- && virtualenv /var/lib/openstack \
- && wget -qO /tmp/upper-constraints.txt "${CONSTRAINTS}" \
- && sed -i \
-        -e '/^nova===/d' \
-        -e '/^nova-incus===/d' \
-        -e '/^pylxd===/d' \
-        -e '/^cryptography===/d' \
-        -e '/^pyOpenSSL===/d' \
-        /tmp/upper-constraints.txt
+ && virtualenv /var/lib/openstack
 
 RUN --mount=type=secret,id=src_repo_token \
     if [ -s /run/secrets/src_repo_token ]; then \
@@ -49,7 +42,16 @@ RUN --mount=type=secret,id=src_repo_token \
  && fetch_ref "${NOVA_REPO}" "${NOVA_REF}" /tmp/nova \
  && fetch_ref "${NOVA_INCUS_REPO}" "${NOVA_INCUS_REF}" /tmp/nova-incus \
  && fetch_ref "${INCUS_SDK_REPO}" "${INCUS_SDK_REF}" /tmp/incus-python-sdk \
+ && fetch_ref "${REQUIREMENTS_REPO}" "${REQUIREMENTS_REF}" /tmp/requirements \
  && rm -f /root/.gitconfig \
+ && cp /tmp/requirements/upper-constraints.txt /tmp/upper-constraints.txt \
+ && sed -i \
+        -e '/^nova===/d' \
+        -e '/^nova-incus===/d' \
+        -e '/^pylxd===/d' \
+        -e '/^cryptography===/d' \
+        -e '/^pyOpenSSL===/d' \
+        /tmp/upper-constraints.txt \
  && git -C /tmp/nova apply \
         /tmp/nova-incus/patches/nova/0002-hardware-accept-incus-manila-share-trait.patch \
  && git -C /tmp/nova apply \
@@ -89,6 +91,8 @@ RUN --mount=type=secret,id=src_repo_token \
         printf 'nova-incus '; git -C /tmp/nova-incus log --oneline -1; \
         printf 'incus-python-sdk '; \
         git -C /tmp/incus-python-sdk log --oneline -1; \
+        printf 'requirements '; \
+        git -C /tmp/requirements log --oneline -1; \
     } > /etc/image_info/project.txt \
  && /var/lib/openstack/bin/pip freeze > /etc/image_info/pip.txt \
  && cp /tmp/upper-constraints.txt /upper-constraints.txt \
@@ -101,11 +105,11 @@ FROM alpine:${ALPINE_VERSION} AS runtime
 ENV PATH=/var/lib/openstack/bin:$PATH
 
 ARG NOVA_INCUS_GROUP=incus-admin
-ARG NOVA_INCUS_GID=42435
+ARG NOVA_INCUS_GID=42425
 
 # Runtime dependencies for Incus, Neutron/OVS, Cinder RBD, Manila NFS,
 # config-drive, and rootwrap/privsep. The Incus daemon remains a separate host
-# service reached through its mounted socket.
+# privileged Helm DaemonSet reached through its host-mounted socket.
 RUN apk add --no-cache \
         python3 bash coreutils \
         bridge-utils ceph19-common py3-rados19 py3-rbd19 \
@@ -165,6 +169,8 @@ RUN export PYTHONDONTWRITEBYTECODE=1 \
     done \
  && /usr/bin/timeout --version | grep -q '^timeout (GNU coreutils)' \
  && python3 -c "from nova.virt.incus.driver import IncusDriver; print('Nova Incus driver OK')" \
+ && python3 -c "from nova.virt.incus.manager import IncusComputeManager; assert IncusComputeManager.__module__ == 'nova.virt.incus.manager'; print('Nova Incus compute manager OK')" \
+ && python3 -c "from nova.virt.incus.migrate_data import IncusLiveMigrateData; assert IncusLiveMigrateData.VERSION == '1.6'; print('Nova Incus migrate-data 1.6 OK')" \
  && python3 -c "import inspect; from nova.virt.incus import driver; source = inspect.getsource(driver._detach_volume_id); assert '_volume_device_info_key' in source; print('Nova Incus detach recovery OK')" \
  && python3 -c "from nova.compute import manager; assert callable(getattr(manager.ComputeManager, '_should_delete_allocation_for_failed_build', None)); print('Nova failed-build allocation policy OK')" \
  && python3 -c "from nova.objects.fields import HVType; assert not hasattr(HVType, 'INCUS'); print('Nova cross-service enum compatibility OK')" \
