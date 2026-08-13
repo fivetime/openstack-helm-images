@@ -21,3 +21,19 @@
             - NOVA_INCUS_REF=7ea3d2dbeebe7f3ddd23c8d0625f9891ebf5be69
             - INCUS_SDK_REF=1a26b144316806ffb2dbcb75a523a75e8955695b
             - REQUIREMENTS_REF=06cd4e8523cbade25fb93efc4f8ea77d6d97064f
+
+- job:
+    name: build-local-nova-incus-control
+    description: Add the Incus RPC object registry to the official Nova control image.
+    vars:
+      container_images:
+        - context: nova
+          repository: openstackhelm/nova-incus-control
+          container_filename: Dockerfile.incus-control
+          arch:
+            - linux/amd64
+            - linux/arm64
+          tags:
+            - 2026.1-ubuntu_noble
+          build_args:
+            - NOVA_INCUS_REF=7ea3d2dbeebe7f3ddd23c8d0625f9891ebf5be69

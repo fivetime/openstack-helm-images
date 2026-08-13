@@ -1,0 +1,51 @@
+# syntax=docker/dockerfile:1
+
+FROM alpine:3.23 AS source
+
+ARG NOVA_INCUS_REPO=https://github.com/fivetime/openstack-nova-incus.git
+ARG NOVA_INCUS_REF=7ea3d2dbeebe7f3ddd23c8d0625f9891ebf5be69
+
+RUN apk add --no-cache git
+RUN --mount=type=secret,id=src_repo_token \
+    if [ -s /run/secrets/src_repo_token ]; then \
+        token="$(cat /run/secrets/src_repo_token)"; \
+        git config --global \
+          url."https://x-access-token:${token}@github.com/".insteadOf \
+          "https://github.com/"; \
+    fi \
+ && git init /src \
+ && git -C /src remote add origin "${NOVA_INCUS_REPO}" \
+ && git -C /src fetch --depth=1 --filter=blob:none origin "${NOVA_INCUS_REF}" \
+ && git -C /src checkout --detach FETCH_HEAD \
+ && rm -f /root/.gitconfig
+
+FROM quay.io/airshipit/nova:2026.1-ubuntu_noble
+
+COPY --from=source /src/nova/virt/incus/__init__.py \
+    /var/lib/openstack/lib/python3.12/site-packages/nova/virt/incus/__init__.py
+COPY --from=source /src/nova/virt/incus/migrate_data.py \
+    /var/lib/openstack/lib/python3.12/site-packages/nova/virt/incus/migrate_data.py
+
+RUN python3 - <<'PY'
+from pathlib import Path
+
+path = Path('/var/lib/openstack/lib/python3.12/site-packages/nova/objects/__init__.py')
+source = path.read_text()
+statement = "    __import__('nova.virt.incus.migrate_data')\n"
+anchor = "    __import__('nova.objects.migrate_data')\n"
+if statement not in source:
+    if source.count(anchor) != 1:
+        raise RuntimeError('Nova object registration anchor is not unique')
+    source = source.replace(anchor, statement + anchor)
+    path.write_text(source)
+PY
+
+RUN python3 - <<'PY'
+from nova import objects
+from nova.objects import base
+
+objects.register_all()
+versions = base.NovaObjectRegistry.obj_classes().get('IncusLiveMigrateData', [])
+assert versions and versions[0].VERSION == '1.6', versions
+print('Nova Incus control-plane migrate-data 1.6 OK')
+PY
