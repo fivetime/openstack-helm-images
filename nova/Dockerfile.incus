@@ -115,7 +115,7 @@ ARG NOVA_INCUS_GID=42425
 RUN apk add --no-cache \
         python3 bash coreutils \
         bridge-utils ceph19-common ceph19-mount py3-rados19 py3-rbd19 \
-        cdrkit e2fsprogs iproute2 iptables libffi \
+        cdrkit e2fsprogs iproute2 iptables kmod libffi \
         lvm2 multipath-tools net-tools nfs-utils nvme-cli \
         open-iscsi openvswitch \
         sudo util-linux \
