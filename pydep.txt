@@ -1,3 +1,4 @@
+boto3                  [glance]
 cryptography           [placement]
 fluent-logger          [fluent]
 httplib2               [placement]

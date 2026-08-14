@@ -31,6 +31,7 @@ RUN sed -i '/^glance===/d' /upper-constraints.txt \
          /tmp/glance \
     && git -C /tmp/glance log --oneline -1 > /etc/image_info/project.txt \
     && rm -rf /tmp/glance \
+    && python -c "import boto3, botocore" \
     && uv pip freeze > /etc/image_info/pip.txt
 
 FROM ${BASE_RUNTIME} AS runtime
