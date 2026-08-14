@@ -24,7 +24,7 @@
 
 - job:
     name: build-local-nova-incus-control
-    description: Add the Incus RPC object registry to the official Nova control image.
+    description: Add the Incus RPC and Manila contracts to the Nova control image.
     vars:
       container_images:
         - context: nova

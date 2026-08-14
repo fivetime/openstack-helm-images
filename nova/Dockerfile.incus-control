@@ -28,6 +28,22 @@ COPY --from=source /src/nova/virt/incus/__init__.py \
     /var/lib/openstack/lib/python3.12/site-packages/nova/virt/incus/__init__.py
 COPY --from=source /src/nova/virt/incus/migrate_data.py \
     /var/lib/openstack/lib/python3.12/site-packages/nova/virt/incus/migrate_data.py
+COPY --from=source /src/patches/nova/0002-hardware-accept-incus-manila-share-trait.patch \
+    /tmp/0002-hardware-accept-incus-manila-share-trait.patch
+COPY --from=source /src/patches/nova/0003-compute-allow-incus-manila-live-migration.patch \
+    /tmp/0003-compute-allow-incus-manila-live-migration.patch
+
+RUN cd /var/lib/openstack/lib/python3.12/site-packages \
+ && git apply --no-index \
+      --include=nova/virt/hardware.py \
+      /tmp/0002-hardware-accept-incus-manila-share-trait.patch \
+ && git apply --no-index \
+      --include=nova/api/openstack/compute/server_shares.py \
+      --include=nova/compute/api.py \
+      --include=nova/compute/manager.py \
+      /tmp/0003-compute-allow-incus-manila-live-migration.patch \
+ && rm -f /tmp/0002-hardware-accept-incus-manila-share-trait.patch \
+      /tmp/0003-compute-allow-incus-manila-live-migration.patch
 
 RUN python3 - <<'PY'
 from pathlib import Path
@@ -44,11 +60,23 @@ if statement not in source:
 PY
 
 RUN python3 - <<'PY'
+import inspect
+
+from nova.compute import api
+from nova.compute import manager
 from nova import objects
 from nova.objects import base
+from nova.virt import hardware
 
 objects.register_all()
 versions = base.NovaObjectRegistry.obj_classes().get('IncusLiveMigrateData', [])
 assert versions and versions[0].VERSION == '1.6', versions
+assert 'CUSTOM_INCUS_MANILA_SHARE' in inspect.getsource(
+    hardware.check_shares_supported)
+assert 'CUSTOM_INCUS_MANILA_LIVE_MIGRATION' in inspect.getsource(
+    api.API.live_migrate)
+assert hasattr(manager.ComputeManager, '_prepare_live_migration_check_data')
+assert hasattr(manager.ComputeManager, '_complete_live_migration_rollback')
 print('Nova Incus control-plane migrate-data 1.6 OK')
+print('Nova Incus control-plane Manila migration contract OK')
 PY
