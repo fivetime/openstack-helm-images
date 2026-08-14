@@ -2,8 +2,8 @@
 
 FROM alpine:3.23 AS source
 
-ARG NOVA_INCUS_REPO=https://github.com/fivetime/openstack-nova-incus.git
-ARG NOVA_INCUS_REF=7ea3d2dbeebe7f3ddd23c8d0625f9891ebf5be69
+ARG NOVA_INCUS_REPO=https://github.com/fivetime/nova-incus-driver.git
+ARG NOVA_INCUS_REF=23b4da4c9a27e5eff7ede18bb7d3d2a085e99fd9
 
 RUN apk add --no-cache git
 RUN --mount=type=secret,id=src_repo_token \
@@ -32,6 +32,8 @@ COPY --from=source /src/patches/nova/0002-hardware-accept-incus-manila-share-tra
     /tmp/0002-hardware-accept-incus-manila-share-trait.patch
 COPY --from=source /src/patches/nova/0003-compute-allow-incus-manila-live-migration.patch \
     /tmp/0003-compute-allow-incus-manila-live-migration.patch
+COPY --from=source /src/patches/nova/0006-sdk-user-token-honor-service-config.patch \
+    /tmp/0006-sdk-user-token-honor-service-config.patch
 
 RUN cd /var/lib/openstack/lib/python3.12/site-packages \
  && git apply --no-index \
@@ -42,8 +44,12 @@ RUN cd /var/lib/openstack/lib/python3.12/site-packages \
       --include=nova/compute/api.py \
       --include=nova/compute/manager.py \
       /tmp/0003-compute-allow-incus-manila-live-migration.patch \
+ && git apply --no-index \
+      --include=nova/utils.py \
+      /tmp/0006-sdk-user-token-honor-service-config.patch \
  && rm -f /tmp/0002-hardware-accept-incus-manila-share-trait.patch \
-      /tmp/0003-compute-allow-incus-manila-live-migration.patch
+      /tmp/0003-compute-allow-incus-manila-live-migration.patch \
+      /tmp/0006-sdk-user-token-honor-service-config.patch
 
 RUN python3 - <<'PY'
 from pathlib import Path
@@ -65,6 +71,7 @@ import inspect
 from nova.compute import api
 from nova.compute import manager
 from nova import objects
+from nova import utils
 from nova.objects import base
 from nova.virt import hardware
 
@@ -77,6 +84,8 @@ assert 'CUSTOM_INCUS_MANILA_LIVE_MIGRATION' in inspect.getsource(
     api.API.live_migrate)
 assert hasattr(manager.ComputeManager, '_prepare_live_migration_check_data')
 assert hasattr(manager.ComputeManager, '_complete_live_migration_rollback')
+assert 'oslo_conf=CONF' in inspect.getsource(utils.get_sdk_adapter)
 print('Nova Incus control-plane migrate-data 1.6 OK')
 print('Nova Incus control-plane Manila migration contract OK')
+print('Nova user-token SDK service configuration OK')
 PY
