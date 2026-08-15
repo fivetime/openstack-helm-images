@@ -1,0 +1,23 @@
+---
+# Fork-only Zun (Container service) image. Upstream openstack-helm-images has
+# no zun; we build a loci-style image from stable/2026.1 so the generated
+# pydep overlay injects psycopg2-binary and confluent-kafka automatically
+# (zun pulls oslo.db and oslo.messaging).
+
+- job:
+    name: build-local-zun
+    description: Build Zun ubuntu_noble image from upstream stable branch.
+    vars:
+      container_images:
+        - context: .
+          repository: openstackhelm/zun
+          container_filename: zun/Dockerfile
+          arch:
+            - linux/amd64
+            - linux/arm64
+          tags:
+            - 2026.1-ubuntu_noble
+          build_args:
+            - BASE_VENV_BUILDER=quay.io/airshipit/venv_builder:2026.1-ubuntu_noble
+            - BASE_RUNTIME=quay.io/airshipit/base:2026.1-ubuntu_noble
+            - ZUN_REF=stable/2026.1
