@@ -20,8 +20,8 @@
           build_args:
             - BASE_VENV_BUILDER=quay.io/airshipit/venv_builder:2026.1-ubuntu_noble
             - BASE_RUNTIME=quay.io/airshipit/base:2026.1-ubuntu_noble
-            # fivetime fork branch = upstream stable/2026.1 + volume.host
-            # persistence fix (upstream leaks a kernel rbd map on every
-            # cinder-volume detach). NOT the fork's master (63 WIP commits).
+            # fivetime fork master(见仓库 FORK.md):upstream master 基点 +
+            # capsule/CRI 改造 + volume.host 持久化修复。docker+kuryr 路径
+            # 与上游 0 diff,无新增 DB migration,已核 schema 兼容 2026.1。
             - ZUN_REPO=https://github.com/fivetime/openstack-zun
-            - ZUN_REF=stable/2026.1-fivetime
+            - ZUN_REF=master
