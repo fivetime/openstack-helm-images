@@ -3,7 +3,7 @@
 FROM alpine:3.23 AS source
 
 ARG NOVA_INCUS_REPO=https://github.com/fivetime/nova-incus-driver.git
-ARG NOVA_INCUS_REF=830b16797142d731da4fd2f3d9d8552ce18260c0
+ARG NOVA_INCUS_REF=714c22a140dc9c11b8cb3e6b7aee11f6fa453a5e
 
 RUN apk add --no-cache git
 RUN --mount=type=secret,id=src_repo_token \
