@@ -46,6 +46,7 @@ yaml.SafeLoader.add_multi_constructor("!", _passthrough)
 TEMPLATED_TAG_RE = re.compile(r"\{\{")
 BUILD_JOB_NAME_RE = re.compile(r"(^openstack-helm-images-build-|^build-local-)")
 RELEASE_PREFIX_RE = re.compile(r"^(\d{4}\.\d+)\b")
+PINNED_BUILD_ARGS = frozenset({"NOVA_INCUS_REF"})
 
 # Foundation jobs build the layers everything else FROM s. They must build
 # before any service-tier cell. Names taken from upstream zuul.d/.
@@ -140,6 +141,40 @@ def render_image(img: dict, owner: str, job_name: str = "") -> dict | None:
         "release": extract_release(raw_tags),
         "repository": repo,
     }
+
+
+def validate_pinned_build_args(img: dict, job_name: str) -> None:
+    """Reject build-arg pins that silently override a different Dockerfile pin."""
+    build_args = {}
+    for item in img.get("build_args", []):
+        key, separator, value = item.partition("=")
+        if separator:
+            build_args[key] = value
+
+    pinned = PINNED_BUILD_ARGS & build_args.keys()
+    if not pinned:
+        return
+
+    context = Path(img.get("context", "."))
+    dockerfile = context / img.get(
+        "container_filename", img.get("dockerfile", "Dockerfile")
+    )
+    content = dockerfile.read_text(encoding="utf-8")
+    for key in sorted(pinned):
+        match = re.search(
+            rf"^ARG[ \t]+{re.escape(key)}=([^ \t\r\n]+)",
+            content,
+            flags=re.MULTILINE,
+        )
+        if match is None:
+            raise ValueError(
+                f"{job_name}: {dockerfile} has no default for pinned {key}"
+            )
+        if match.group(1) != build_args[key]:
+            raise ValueError(
+                f"{job_name}: {key} differs between {dockerfile} "
+                f"({match.group(1)}) and build_args ({build_args[key]})"
+            )
 
 
 def synthesize_master(row: dict, owner: str) -> dict | None:
@@ -345,6 +380,7 @@ def main() -> int:
     for j in build_jobs:
         tier = classify_tier(j["name"])
         for img in j["vars"]["container_images"]:
+            validate_pinned_build_args(img, j["name"])
             row = render_image(img, args.owner, j.get("name", ""))
             if row is None:
                 continue
