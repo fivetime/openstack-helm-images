@@ -7,6 +7,10 @@ ENV PATH=/var/lib/openstack/bin:$PATH
 
 ARG KURYR_LIBNETWORK_REPO=https://opendev.org/openstack/kuryr-libnetwork
 ARG KURYR_LIBNETWORK_REF=stable/2026.1
+# kuryr-lib from our fork: binding scripts run with set -e so a failed
+# ovs-vsctl fails the binding instead of silently leaving the port DOWN
+ARG KURYR_LIB_REPO=https://github.com/fivetime/openstack-kuryr
+ARG KURYR_LIB_REF=master
 ARG PROFILES=""
 
 # Use bindep to determine packages needed for this profile set
@@ -22,15 +26,18 @@ RUN if [ -s /etc/image_info/bindep_build.txt ]; then \
         && rm -rf /var/lib/apt/lists/*; \
     fi
 
-RUN sed -i '/^kuryr-libnetwork===/d' /upper-constraints.txt \
+RUN sed -i -e '/^kuryr-libnetwork===/d' -e '/^kuryr-lib===/d' /upper-constraints.txt \
     && git clone --filter=blob:none -b ${KURYR_LIBNETWORK_REF} ${KURYR_LIBNETWORK_REPO} /tmp/kuryr-libnetwork \
+    && git clone --filter=blob:none -b ${KURYR_LIB_REF} ${KURYR_LIB_REPO} /tmp/kuryr-lib \
     && uv pip install \
          --build-constraint /upper-constraints.txt \
          -c /upper-constraints.txt \
          -r /etc/image_info/python_packages.txt \
+         /tmp/kuryr-lib \
          /tmp/kuryr-libnetwork \
     && git -C /tmp/kuryr-libnetwork log --oneline -1 > /etc/image_info/project.txt \
-    && rm -rf /tmp/kuryr-libnetwork \
+    && git -C /tmp/kuryr-lib log --oneline -1 >> /etc/image_info/project.txt \
+    && rm -rf /tmp/kuryr-libnetwork /tmp/kuryr-lib \
     && uv pip freeze > /etc/image_info/pip.txt
 
 FROM ${BASE_RUNTIME} AS runtime
