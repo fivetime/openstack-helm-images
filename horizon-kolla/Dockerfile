@@ -14,5 +14,13 @@ USER root
 RUN /var/lib/kolla/venv/bin/pip install --no-cache-dir \
         -c https://releases.openstack.org/constraints/upper/${RELEASE} \
         zun-ui \
-    && /var/lib/kolla/venv/bin/pip show zun-ui | head -2
+    && /var/lib/kolla/venv/bin/pip show zun-ui | head -2 \
+    # zun-ui (master included) still references Bootstrap-3-era $gray-lighter,
+    # undefined in current horizon themes -> 'manage.py compress' aborts and
+    # the pod crash-loops. Inline its Bootstrap 3 value. Fail the build if the
+    # pattern count changes so a fixed/changed upstream gets noticed.
+    && cnt=$(grep -rl '\$gray-lighter' /var/lib/kolla/venv/lib/python3*/site-packages/zun_ui/static | wc -l) \
+    && test "$cnt" -ge 1 \
+    && grep -rl '\$gray-lighter' /var/lib/kolla/venv/lib/python3*/site-packages/zun_ui/static \
+       | xargs sed -i 's/\$gray-lighter/#eee/g'
 USER horizon
