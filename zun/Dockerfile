@@ -29,10 +29,11 @@ RUN sed -i '/^zun===/d' /upper-constraints.txt \
          -c /upper-constraints.txt \
          -r /etc/image_info/python_packages.txt \
          /tmp/zun \
-    # fork master 的 CRI stub(zun/criapi/api_pb2.py)用 protoc gencode 7.35.1
-    # 生成,protobuf runtime 不得旧于 gencode;upper-constraints 钉的 6.x 会在
-    # 驱动插件 import 时直接 VersionError 崩死,故单独升 protobuf
-    && uv pip install 'protobuf>=7.35.1' \
+    # fork master 的 CRI stub 由新工具链生成:api_pb2.py 要 protobuf runtime
+    # >= gencode 7.35.1,api_pb2_grpc.py 要 grpcio>=1.83.0;upper-constraints
+    # 钉的旧版会在驱动插件 import 时直接崩死(VersionError/RuntimeError),
+    # 故这两个包脱离 constraints 单独升级
+    && uv pip install 'protobuf>=7.35.1' 'grpcio>=1.83.0' \
     && git -C /tmp/zun log --oneline -1 > /etc/image_info/project.txt \
     && rm -rf /tmp/zun \
     && uv pip freeze > /etc/image_info/pip.txt
