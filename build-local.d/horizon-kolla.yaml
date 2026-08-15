@@ -1,0 +1,22 @@
+---
+# Fork-only Horizon (kolla base + zun-ui). The kolla 2026.1 horizon image
+# ships every dashboard plugin except zun-ui, and the airshipit loci image
+# ships none; this derives from the kolla base and adds zun-ui pinned by the
+# official upper-constraints so extra_panels can enable it.
+# amd64 only: it tracks the kolla base image's published architectures.
+
+- job:
+    name: build-local-horizon-kolla
+    description: Build kolla-based Horizon image with zun-ui added.
+    vars:
+      container_images:
+        - context: .
+          repository: openstackhelm/horizon-kolla
+          container_filename: horizon-kolla/Dockerfile
+          arch:
+            - linux/amd64
+          tags:
+            - 2026.1-ubuntu-noble
+          build_args:
+            - BASE=quay.io/openstack.kolla/horizon:2026.1-ubuntu-noble
+            - RELEASE=2026.1
