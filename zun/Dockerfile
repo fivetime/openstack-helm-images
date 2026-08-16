@@ -22,6 +22,10 @@ RUN if [ -s /etc/image_info/bindep_build.txt ]; then \
         && rm -rf /var/lib/apt/lists/*; \
     fi
 
+# Same reason as horizon-kolla: a clone of a moving branch inside an
+# unchanging RUN gets its layer reused and quietly builds yesterday's code.
+ADD https://api.github.com/repos/fivetime/openstack-zun/git/refs/heads/master /tmp/zun.ref
+
 RUN sed -i '/^zun===/d' /upper-constraints.txt \
     && git clone --filter=blob:none -b ${ZUN_REF} ${ZUN_REPO} /tmp/zun \
     && uv pip install \

@@ -19,6 +19,13 @@ ARG ZUN_UI_REF=master
 ARG ZUNCLIENT_REPO=https://github.com/fivetime/openstack-zunclient
 ARG ZUNCLIENT_REF=master
 
+# A pip install from a moving branch is one unchanging RUN line, so the
+# layer is reused and the branch's new commits never arrive -- an image
+# that looks rebuilt and is not. Fetching the ref itself first makes the
+# layer depend on where the branch points.
+ADD https://api.github.com/repos/fivetime/openstack-zun-ui/git/refs/heads/master /tmp/zun-ui.ref
+ADD https://api.github.com/repos/fivetime/openstack-zunclient/git/refs/heads/master /tmp/zunclient.ref
+
 USER root
 RUN curl -fsSL "https://releases.openstack.org/constraints/upper/${RELEASE}" \
         -o /tmp/uc.txt \
