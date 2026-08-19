@@ -7,6 +7,11 @@ ENV PATH=/var/lib/openstack/bin:$PATH
 
 ARG MISTRAL_REPO=https://opendev.org/openstack/mistral
 ARG MISTRAL_REF=stable/2026.1
+# mistral-extra delivers the OpenStack actions (nova.*, glance.*, ...);
+# split out of the mistral tree since 2023.1, so without it the image only
+# has the std.* actions.
+ARG MISTRAL_EXTRA_REPO=https://opendev.org/openstack/mistral-extra
+ARG MISTRAL_EXTRA_REF=stable/2026.1
 ARG PROFILES="fluent apache"
 
 # Use bindep to determine packages needed for this profile set
@@ -22,15 +27,23 @@ RUN if [ -s /etc/image_info/bindep_build.txt ]; then \
         && rm -rf /var/lib/apt/lists/*; \
     fi
 
-RUN sed -i '/^mistral===/d' /upper-constraints.txt \
+# Same reason as zun: a clone of a moving branch inside an unchanging RUN
+# gets its layer reused and quietly builds yesterday's code. The 2026.1 cell
+# builds from the fivetime fork branch below; when it moves, this ref file
+# changes and the clone layer rebuilds (which also refreshes mistral-extra).
+ADD https://api.github.com/repos/fivetime/openstack-mistral/git/refs/heads/stable/2026.1 /tmp/mistral.ref
+
+RUN sed -i '/^mistral===/d;/^mistral-extra===/d' /upper-constraints.txt \
     && git clone --filter=blob:none -b ${MISTRAL_REF} ${MISTRAL_REPO} /tmp/mistral \
+    && git clone --filter=blob:none -b ${MISTRAL_EXTRA_REF} ${MISTRAL_EXTRA_REPO} /tmp/mistral-extra \
     && uv pip install \
          --build-constraint /upper-constraints.txt \
          -c /upper-constraints.txt \
          -r /etc/image_info/python_packages.txt \
-         /tmp/mistral \
+         /tmp/mistral /tmp/mistral-extra \
     && git -C /tmp/mistral log --oneline -1 > /etc/image_info/project.txt \
-    && rm -rf /tmp/mistral \
+    && git -C /tmp/mistral-extra log --oneline -1 >> /etc/image_info/project.txt \
+    && rm -rf /tmp/mistral /tmp/mistral-extra \
     && uv pip freeze > /etc/image_info/pip.txt
 
 FROM ${BASE_RUNTIME} AS runtime
