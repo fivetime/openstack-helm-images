@@ -33,6 +33,7 @@ RUN sed -i '/^magnum===/d;/^magnum-cluster-api===/d' /upper-constraints.txt \
          -r /etc/image_info/python_packages.txt \
          /tmp/magnum \
          magnum-cluster-api==${MAGNUM_CLUSTER_API_VERSION} \
+         setuptools \
     && git -C /tmp/magnum log --oneline -1 > /etc/image_info/project.txt \
     && echo "magnum-cluster-api ${MAGNUM_CLUSTER_API_VERSION}" >> /etc/image_info/project.txt \
     && rm -rf /tmp/magnum \
