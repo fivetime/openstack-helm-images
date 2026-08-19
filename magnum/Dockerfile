@@ -7,6 +7,9 @@ ENV PATH=/var/lib/openstack/bin:$PATH
 
 ARG MAGNUM_REPO=https://opendev.org/openstack/magnum
 ARG MAGNUM_REF=stable/2026.1
+# Cluster API driver for Magnum (vexxhost). Published as cp38-abi3 manylinux
+# wheels with the Rust extension precompiled, so no cargo toolchain needed.
+ARG MAGNUM_CLUSTER_API_VERSION=0.38.1
 ARG PROFILES=""
 
 # Use bindep to determine packages needed for this profile set
@@ -22,14 +25,16 @@ RUN if [ -s /etc/image_info/bindep_build.txt ]; then \
         && rm -rf /var/lib/apt/lists/*; \
     fi
 
-RUN sed -i '/^magnum===/d' /upper-constraints.txt \
+RUN sed -i '/^magnum===/d;/^magnum-cluster-api===/d' /upper-constraints.txt \
     && git clone --filter=blob:none -b ${MAGNUM_REF} ${MAGNUM_REPO} /tmp/magnum \
     && uv pip install \
          --build-constraint /upper-constraints.txt \
          -c /upper-constraints.txt \
          -r /etc/image_info/python_packages.txt \
          /tmp/magnum \
+         magnum-cluster-api==${MAGNUM_CLUSTER_API_VERSION} \
     && git -C /tmp/magnum log --oneline -1 > /etc/image_info/project.txt \
+    && echo "magnum-cluster-api ${MAGNUM_CLUSTER_API_VERSION}" >> /etc/image_info/project.txt \
     && rm -rf /tmp/magnum \
     && uv pip freeze > /etc/image_info/pip.txt
 
