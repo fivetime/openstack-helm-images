@@ -10,6 +10,13 @@ ARG MAGNUM_REF=stable/2026.1
 # Cluster API driver for Magnum (vexxhost). Published as cp38-abi3 manylinux
 # wheels with the Rust extension precompiled, so no cargo toolchain needed.
 ARG MAGNUM_CLUSTER_API_VERSION=0.38.1
+# The wheel carries the prebuilt Rust extension; its bundled Helm charts are plain
+# data and need one fix (the CSI controller plugins must use the node resolver).
+# Rebuilding the wheel from source for two chart lines would drag a full Rust
+# toolchain in here, so overlay the charts from the fork branch cut at this exact
+# release instead.
+ARG MAGNUM_CLUSTER_API_REPO=https://github.com/fivetime/magnum-cluster-api.git
+ARG MAGNUM_CLUSTER_API_REF=v0.38.1-fivetime
 ARG PROFILES=""
 
 # Use bindep to determine packages needed for this profile set
@@ -39,6 +46,17 @@ RUN sed -i '/^magnum===/d;/^magnum-cluster-api===/d' /upper-constraints.txt \
     && rm -rf /tmp/magnum \
     && uv pip freeze > /etc/image_info/pip.txt
 
+RUN set -eu; \
+    installed=$(dirname "$(find /var/lib/openstack -type d -path '*/magnum_cluster_api/charts' | head -1)"); \
+    test -n "$installed"; \
+    git clone --depth 1 --branch "${MAGNUM_CLUSTER_API_REF}" "${MAGNUM_CLUSTER_API_REPO}" /tmp/mcapi; \
+    rm -rf "${installed}/charts"; \
+    cp -a /tmp/mcapi/magnum_cluster_api/charts "${installed}/charts"; \
+    git -C /tmp/mcapi log --oneline -1 >> /etc/image_info/project.txt; \
+    rm -rf /tmp/mcapi; \
+    grep -q 'dnsPolicy' "${installed}/charts/openstack-cinder-csi/templates/controllerplugin-deployment.yaml"; \
+    grep -q 'dnsPolicy' "${installed}/charts/openstack-manila-csi/templates/controllerplugin-statefulset.yaml"
+
 FROM ${BASE_RUNTIME} AS runtime
 
 ENV PATH=/var/lib/openstack/bin:$PATH
@@ -67,26 +85,6 @@ RUN curl -fsSL "https://get.helm.sh/helm-${HELM_VERSION}-linux-${TARGETARCH}.tar
     && install -o root -g root -m 0755 "/tmp/linux-${TARGETARCH}/helm" /usr/local/bin/helm \
     && rm -rf /tmp/helm.tgz "/tmp/linux-${TARGETARCH}" \
     && helm version --short >> /etc/image_info/project.txt
-
-# magnum-cluster-api ships the cinder/manila CSI charts with hostNetwork (and a
-# node DNS policy) only on the *node* plugins. The controller plugins keep the
-# default ClusterFirst policy, so they resolve through the workload cluster's own
-# CoreDNS -- which is authoritative for cluster.local and never forwards upstream.
-# An OpenStack endpoint published under *.svc.cluster.local is therefore NXDOMAIN
-# for them, and cinder-csi-controllerplugin crash-loops on GetOpenStackProvider.
-# "Default" here means the node's resolv.conf, which does resolve those names.
-# The greps make a missed anchor fail the build instead of shipping a silently
-# unpatched image.
-RUN set -eu; \
-    cinder=$(find /var/lib/openstack -path '*/magnum_cluster_api/charts/openstack-cinder-csi/templates/controllerplugin-deployment.yaml'); \
-    manila=$(find /var/lib/openstack -path '*/magnum_cluster_api/charts/openstack-manila-csi/templates/controllerplugin-statefulset.yaml'); \
-    test -n "$cinder" && test -n "$manila"; \
-    grep -q '^      dnsPolicy:' "$cinder" && { echo "cinder chart already sets dnsPolicy; review patch" >&2; exit 1; } || true; \
-    sed -i '/^      serviceAccount: csi-cinder-controller-sa$/a\      dnsPolicy: Default' "$cinder"; \
-    sed -i '/^      serviceAccountName: {{ include "openstack-manila-csi.serviceAccountName.controllerplugin" . }}$/a\      dnsPolicy: Default' "$manila"; \
-    grep -q '^      dnsPolicy: Default$' "$cinder"; \
-    grep -q '^      dnsPolicy: Default$' "$manila"; \
-    echo "csi controllerplugin dnsPolicy patched" >> /etc/image_info/project.txt
 
 RUN find /var/lib/openstack \( -name "*.pyc" -o -name "__pycache__" \) -delete \
     && rm -rf /tmp/* /root/.cache /etc/machine-id
