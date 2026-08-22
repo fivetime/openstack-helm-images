@@ -10,6 +10,10 @@ ARG MAGNUM_REF=stable/2026.1
 # Cluster API driver for Magnum (vexxhost). Published as cp38-abi3 manylinux
 # wheels with the Rust extension precompiled, so no cargo toolchain needed.
 ARG MAGNUM_CLUSTER_API_VERSION=0.38.1
+# magnum-cluster-api shells out to `helm` to install its in-cluster addon
+# charts (cilium, CCM, cinder/manila CSI, autoscaler), so the binary has to
+# be in the runtime image -- upstream's own image does the same.
+ARG HELM_VERSION=v3.19.4
 ARG PROFILES=""
 
 # Use bindep to determine packages needed for this profile set
@@ -53,6 +57,15 @@ RUN if [ -s /etc/image_info/bindep_runtime.txt ]; then \
         && DEBIAN_FRONTEND=noninteractive xargs --no-run-if-empty apt-get install -y --no-install-recommends < /etc/image_info/bindep_runtime.txt \
         && rm -rf /var/lib/apt/lists/*; \
     fi
+
+ARG HELM_VERSION
+ARG TARGETARCH
+RUN curl -fsSL "https://get.helm.sh/helm-${HELM_VERSION}-linux-${TARGETARCH}.tar.gz" \
+        -o /tmp/helm.tgz \
+    && tar -xzf /tmp/helm.tgz -C /tmp \
+    && install -o root -g root -m 0755 "/tmp/linux-${TARGETARCH}/helm" /usr/local/bin/helm \
+    && rm -rf /tmp/helm.tgz "/tmp/linux-${TARGETARCH}" \
+    && helm version --short >> /etc/image_info/project.txt
 
 RUN find /var/lib/openstack \( -name "*.pyc" -o -name "__pycache__" \) -delete \
     && rm -rf /tmp/* /root/.cache /etc/machine-id
