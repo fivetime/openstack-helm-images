@@ -79,7 +79,7 @@ RUN --mount=type=secret,id=src_repo_token \
         && git apply --no-index \
             /tmp/nova-incus/patches/os-brick/0001-rbd-fallback-to-kernel-device-path.patch) \
  && /var/lib/openstack/bin/python -c "import tempfile, requests; from glanceclient.common import http; f = tempfile.TemporaryFile(); f.write(b'x' * 10); f.seek(0); body = http._BaseHTTPClient._chunk_body(f); headers = requests.Request('PUT', 'http://example.invalid', data=body).prepare().headers; assert headers.get('Content-Length') == '10', headers; assert 'Transfer-Encoding' not in headers, headers" \
- && /var/lib/openstack/bin/python -c "import inspect; from os_brick.initiator.connectors import rbd; attach = inspect.getsource(rbd.RBDConnector._local_attach_volume); detach = inspect.getsource(rbd.RBDConnector.disconnect_volume); assert 'root_device = self._find_root_device' in attach; assert \"['--options', 'noudev']\" in attach; assert \"['--options', 'noudev']\" in detach; print('os-brick containerized RBD map/unmap OK')" \
+ && /var/lib/openstack/bin/python -c "import inspect; from os_brick.initiator.connectors import rbd; attach = inspect.getsource(rbd.RBDConnector._local_attach_volume); detach = inspect.getsource(rbd.RBDConnector.disconnect_volume); assert 'root_device = self._find_root_device' in attach; assert 'noudev' not in attach; assert 'noudev' not in detach; print('os-brick host-udev RBD map/unmap OK')" \
  && mkdir -p /opt/nova-incus-runtime/etc/nova/rootwrap.d \
         /opt/nova-incus-runtime/usr/local/sbin /etc/image_info \
  && cp /tmp/nova-incus/etc/nova/rootwrap.d/incus.filters \
