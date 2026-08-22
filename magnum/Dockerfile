@@ -9,12 +9,11 @@ ARG MAGNUM_REPO=https://opendev.org/openstack/magnum
 ARG MAGNUM_REF=stable/2026.1
 # Cluster API driver for Magnum (vexxhost). Published as cp38-abi3 manylinux
 # wheels with the Rust extension precompiled, so no cargo toolchain needed.
-ARG MAGNUM_CLUSTER_API_VERSION=0.38.1
-# The wheel carries the prebuilt Rust extension; its bundled Helm charts are plain
-# data and need one fix (the CSI controller plugins must use the node resolver).
-# Rebuilding the wheel from source for two chart lines would drag a full Rust
-# toolchain in here, so overlay the charts from the fork branch cut at this exact
-# release instead.
+# Built from the fork, not PyPI: magnum-cluster-api compiles its Helm charts into
+# the Rust extension with include_dir!, so the CSI controller-plugin DNS fix only
+# takes effect if the wheel itself is rebuilt -- patching the chart files that land
+# in site-packages does nothing at all. That is why the Rust toolchain is here.
+# The branch is cut at the 0.38.1 release commit plus that one chart fix.
 ARG MAGNUM_CLUSTER_API_REPO=https://github.com/fivetime/magnum-cluster-api.git
 ARG MAGNUM_CLUSTER_API_REF=v0.38.1-fivetime
 ARG PROFILES=""
@@ -32,30 +31,28 @@ RUN if [ -s /etc/image_info/bindep_build.txt ]; then \
         && rm -rf /var/lib/apt/lists/*; \
     fi
 
+# magnum-cluster-api is a maturin/pyo3 project; building it from source needs cargo.
+RUN curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs \
+      | sh -s -- -y --profile minimal --default-toolchain stable --no-modify-path
+ENV PATH=/root/.cargo/bin:$PATH
+
 RUN sed -i '/^magnum===/d;/^magnum-cluster-api===/d' /upper-constraints.txt \
     && git clone --filter=blob:none -b ${MAGNUM_REF} ${MAGNUM_REPO} /tmp/magnum \
+    && git clone --depth 1 -b ${MAGNUM_CLUSTER_API_REF} ${MAGNUM_CLUSTER_API_REPO} /tmp/mcapi \
     && uv pip install \
          --build-constraint /upper-constraints.txt \
          -c /upper-constraints.txt \
          -r /etc/image_info/python_packages.txt \
          /tmp/magnum \
-         magnum-cluster-api==${MAGNUM_CLUSTER_API_VERSION} \
+         /tmp/mcapi \
          'setuptools<81' \
     && git -C /tmp/magnum log --oneline -1 > /etc/image_info/project.txt \
-    && echo "magnum-cluster-api ${MAGNUM_CLUSTER_API_VERSION}" >> /etc/image_info/project.txt \
-    && rm -rf /tmp/magnum \
+    && git -C /tmp/mcapi log --oneline -1 >> /etc/image_info/project.txt \
+    && python3 -c "import magnum_cluster_api, pathlib, sys; \
+p = pathlib.Path(magnum_cluster_api.__file__).parent / 'charts' / 'openstack-cinder-csi' / 'templates' / 'controllerplugin-deployment.yaml'; \
+sys.exit(0 if 'dnsPolicy' in p.read_text() else 'chart fix missing from the built wheel')" \
+    && rm -rf /tmp/magnum /tmp/mcapi \
     && uv pip freeze > /etc/image_info/pip.txt
-
-RUN set -eu; \
-    installed=$(dirname "$(find /var/lib/openstack -type d -path '*/magnum_cluster_api/charts' | head -1)"); \
-    test -n "$installed"; \
-    git clone --depth 1 --branch "${MAGNUM_CLUSTER_API_REF}" "${MAGNUM_CLUSTER_API_REPO}" /tmp/mcapi; \
-    rm -rf "${installed}/charts"; \
-    cp -a /tmp/mcapi/magnum_cluster_api/charts "${installed}/charts"; \
-    git -C /tmp/mcapi log --oneline -1 >> /etc/image_info/project.txt; \
-    rm -rf /tmp/mcapi; \
-    grep -q 'dnsPolicy' "${installed}/charts/openstack-cinder-csi/templates/controllerplugin-deployment.yaml"; \
-    grep -q 'dnsPolicy' "${installed}/charts/openstack-manila-csi/templates/controllerplugin-statefulset.yaml"
 
 FROM ${BASE_RUNTIME} AS runtime
 
