@@ -68,6 +68,26 @@ RUN curl -fsSL "https://get.helm.sh/helm-${HELM_VERSION}-linux-${TARGETARCH}.tar
     && rm -rf /tmp/helm.tgz "/tmp/linux-${TARGETARCH}" \
     && helm version --short >> /etc/image_info/project.txt
 
+# magnum-cluster-api ships the cinder/manila CSI charts with hostNetwork (and a
+# node DNS policy) only on the *node* plugins. The controller plugins keep the
+# default ClusterFirst policy, so they resolve through the workload cluster's own
+# CoreDNS -- which is authoritative for cluster.local and never forwards upstream.
+# An OpenStack endpoint published under *.svc.cluster.local is therefore NXDOMAIN
+# for them, and cinder-csi-controllerplugin crash-loops on GetOpenStackProvider.
+# "Default" here means the node's resolv.conf, which does resolve those names.
+# The greps make a missed anchor fail the build instead of shipping a silently
+# unpatched image.
+RUN set -eu; \
+    cinder=$(find /var/lib/openstack -path '*/magnum_cluster_api/charts/openstack-cinder-csi/templates/controllerplugin-deployment.yaml'); \
+    manila=$(find /var/lib/openstack -path '*/magnum_cluster_api/charts/openstack-manila-csi/templates/controllerplugin-statefulset.yaml'); \
+    test -n "$cinder" && test -n "$manila"; \
+    grep -q '^      dnsPolicy:' "$cinder" && { echo "cinder chart already sets dnsPolicy; review patch" >&2; exit 1; } || true; \
+    sed -i '/^      serviceAccount: csi-cinder-controller-sa$/a\      dnsPolicy: Default' "$cinder"; \
+    sed -i '/^      serviceAccountName: {{ include "openstack-manila-csi.serviceAccountName.controllerplugin" . }}$/a\      dnsPolicy: Default' "$manila"; \
+    grep -q '^      dnsPolicy: Default$' "$cinder"; \
+    grep -q '^      dnsPolicy: Default$' "$manila"; \
+    echo "csi controllerplugin dnsPolicy patched" >> /etc/image_info/project.txt
+
 RUN find /var/lib/openstack \( -name "*.pyc" -o -name "__pycache__" \) -delete \
     && rm -rf /tmp/* /root/.cache /etc/machine-id
 
