@@ -18,7 +18,7 @@ ARG MAGNUM_CLUSTER_API_REPO=https://github.com/fivetime/magnum-cluster-api.git
 # Must be a tag, not a branch: build.rs feeds git describe into VERGEN_GIT_DESCRIBE,
 # which names the ClusterClass and is asserted non-empty at compile time. A shallow
 # branch clone carries no tags and the build fails there.
-ARG MAGNUM_CLUSTER_API_REF=v0.38.1-fivetime.1
+ARG MAGNUM_CLUSTER_API_REF=v0.38.1-fivetime.2
 ARG PROFILES=""
 
 # Use bindep to determine packages needed for this profile set
