@@ -15,7 +15,10 @@ ARG MAGNUM_REF=stable/2026.1
 # in site-packages does nothing at all. That is why the Rust toolchain is here.
 # The branch is cut at the 0.38.1 release commit plus that one chart fix.
 ARG MAGNUM_CLUSTER_API_REPO=https://github.com/fivetime/magnum-cluster-api.git
-ARG MAGNUM_CLUSTER_API_REF=v0.38.1-fivetime
+# Must be a tag, not a branch: build.rs feeds git describe into VERGEN_GIT_DESCRIBE,
+# which names the ClusterClass and is asserted non-empty at compile time. A shallow
+# branch clone carries no tags and the build fails there.
+ARG MAGNUM_CLUSTER_API_REF=v0.38.1-fivetime.1
 ARG PROFILES=""
 
 # Use bindep to determine packages needed for this profile set
@@ -30,11 +33,6 @@ RUN if [ -s /etc/image_info/bindep_build.txt ]; then \
         && DEBIAN_FRONTEND=noninteractive xargs --no-run-if-empty apt-get install -y --no-install-recommends < /etc/image_info/bindep_build.txt \
         && rm -rf /var/lib/apt/lists/*; \
     fi
-
-# magnum-cluster-api is a maturin/pyo3 project; building it from source needs cargo.
-RUN curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs \
-      | sh -s -- -y --profile minimal --default-toolchain stable --no-modify-path
-ENV PATH=/root/.cargo/bin:$PATH
 
 RUN sed -i '/^magnum===/d;/^magnum-cluster-api===/d' /upper-constraints.txt \
     && git clone --filter=blob:none -b ${MAGNUM_REF} ${MAGNUM_REPO} /tmp/magnum \
