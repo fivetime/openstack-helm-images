@@ -1,18 +1,25 @@
 boto3                  [glance]
-cryptography           [placement]
+# confluent-kafka/etcd3gw: CI 的 .github/scripts/generate_pydep.py 会为所有
+# 声明 oslo.messaging 的服务自动追加一行 confluent-kafka(于是 CI 产物里会
+# 出现重复行,bindep 解析无害)。这里显式写死是为了【本地 docker build】——
+# 本地不跑那个生成器,漏了它 aodh/ceilometer 连 Redpanda 会 DriverLoadFailure。
+# etcd3gw 生成器不管(它只看 oslo.db / oslo.messaging),tooz 的 etcd3 驱动只能手写。
+confluent-kafka        [aodh ceilometer]
+cryptography           [gnocchi placement]
+etcd3gw                [aodh ceilometer gnocchi]
 fluent-logger          [fluent]
 httplib2               [placement]
 keystonemiddleware     [swift]
 kubernetes             [openstack-client]
 ldappool               [(keystone ldap)]
-libvirt-python         [masakari-monitors nova]
+libvirt-python         [ceilometer masakari-monitors nova]
 networking-baremetal   [(neutron baremetal)]
 neutron-vpnaas         [(neutron vpn)]
 os-brick               [glance]
 oslo-rootwrap          [glance]
 ovn-octavia-provider   [(octavia ovn)]
 purestorage            [(cinder purestorage) (nova purestorage)]
-pymemcache             [blazar horizon]
+pymemcache             [blazar horizon gnocchi]
 pymysql                []
 python-cinderclient    [freezer glance]
 python-keystoneclient  [freezer freezer-api]
