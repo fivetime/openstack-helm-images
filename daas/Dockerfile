@@ -14,6 +14,19 @@ ARG DAAS_REPO=https://github.com/fivetime/openstack-daas
 ARG DAAS_REF=1554532684ae73abb71d9d29812d1d9e7244fd85
 ARG PROFILES=""
 
+# The gateway sends a container's resolvers to zun, and zunclient checks
+# the field names locally before anything is sent -- so an attribute the
+# server understands is still refused here. `dns`/`dns_search` are in the
+# fork and not in 5.4.0, so a container create fails with a list of
+# allowed keys and no hint that the client is the one refusing.
+#
+# Cloned with its tags on purpose: pbr reads the version from them, and a
+# shallow clone would build 0.0.1, which does not satisfy the
+# python-zunclient>=4.2.0 that daas asks for -- so pip would quietly put
+# the released version back on top of the fork.
+ARG ZUNCLIENT_REPO=https://github.com/fivetime/openstack-zunclient
+ARG ZUNCLIENT_REF=9a425692e3ea751f048687076aa91d520cad3731
+
 COPY bindep.txt pydep.txt /opt/
 RUN mkdir -p /etc/image_info && \
     uvx bindep -f /opt/bindep.txt -b -l newline daas ${PROFILES} > /etc/image_info/bindep_runtime.txt && \
@@ -41,12 +54,22 @@ RUN --mount=type=secret,id=src_repo_token \
     && git -C /tmp/daas fetch --depth=1 --filter=blob:none origin ${DAAS_REF} \
     && git -C /tmp/daas checkout --detach FETCH_HEAD \
     && rm -f /root/.gitconfig \
+    && sed -i '/^python-zunclient===/d' /upper-constraints.txt \
+    && git clone --filter=blob:none ${ZUNCLIENT_REPO} /tmp/zunclient \
+    && git -C /tmp/zunclient checkout --detach ${ZUNCLIENT_REF} \
+    && uv pip install \
+         --build-constraint /upper-constraints.txt \
+         -c /upper-constraints.txt \
+         /tmp/zunclient \
+    && rm -rf /tmp/zunclient \
     && uv pip install \
          --build-constraint /upper-constraints.txt \
          -c /upper-constraints.txt \
          -r /etc/image_info/python_packages.txt \
          /tmp/daas \
     && git -C /tmp/daas log --oneline -1 > /etc/image_info/project.txt \
+    && uv pip show python-zunclient | awk '/^Version/{print "python-zunclient", $2}' \
+         >> /etc/image_info/project.txt \
     && rm -rf /tmp/daas \
     && uv pip freeze > /etc/image_info/pip.txt
 
