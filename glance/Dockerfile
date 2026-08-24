@@ -7,7 +7,7 @@ ENV PATH=/var/lib/openstack/bin:$PATH
 
 ARG GLANCE_REPO=https://opendev.org/openstack/glance
 ARG GLANCE_REF=stable/2026.1
-ARG PROFILES="fluent ceph qemu-utils"
+ARG PROFILES="fluent ceph qemu"
 
 # Use bindep to determine packages needed for this profile set
 COPY bindep.txt pydep.txt /opt/
