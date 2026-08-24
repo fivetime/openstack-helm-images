@@ -11,7 +11,7 @@ ARG DAAS_REPO=https://github.com/fivetime/openstack-daas
 # changes when the branch moves -- cannot authenticate. Naming the
 # commit makes the build reproducible and invalidates the layer by
 # itself.
-ARG DAAS_REF=1ef82d36060acb6ab2bfb802edccc884eb1d308b
+ARG DAAS_REF=72d83561327560c0d72c37dee0f5f0f8cd5b5bbe
 ARG PROFILES=""
 
 COPY bindep.txt pydep.txt /opt/
