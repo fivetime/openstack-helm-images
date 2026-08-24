@@ -42,7 +42,6 @@ RUN --mount=type=secret,id=src_repo_token \
     && git -C /tmp/daas checkout --detach FETCH_HEAD \
     && rm -f /root/.gitconfig \
     && uv pip install \
-    && uv pip install \
          --build-constraint /upper-constraints.txt \
          -c /upper-constraints.txt \
          -r /etc/image_info/python_packages.txt \
