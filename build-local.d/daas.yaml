@@ -19,4 +19,7 @@
             - BASE_VENV_BUILDER=quay.io/airshipit/venv_builder:2026.1-ubuntu_noble
             - BASE_RUNTIME=quay.io/airshipit/base:2026.1-ubuntu_noble
             - DAAS_REPO=https://github.com/fivetime/openstack-daas
-            - DAAS_REF=main
+            # Bumped per build: the repository is private, so a moving branch
+            # cannot be watched from the build and the commit is what makes the
+            # layer change.
+            - DAAS_REF=e579bd13ed3f6ea9808108812a1d359da6ee579d

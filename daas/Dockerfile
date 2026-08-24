@@ -6,7 +6,12 @@ FROM ${BASE_VENV_BUILDER} AS build
 ENV PATH=/var/lib/openstack/bin:$PATH
 
 ARG DAAS_REPO=https://github.com/fivetime/openstack-daas
-ARG DAAS_REF=main
+# A commit, not a branch. The repository is private, so the trick used
+# for public forks -- fetching the ref through the API so the layer
+# changes when the branch moves -- cannot authenticate. Naming the
+# commit makes the build reproducible and invalidates the layer by
+# itself.
+ARG DAAS_REF=e579bd13ed3f6ea9808108812a1d359da6ee579d
 ARG PROFILES=""
 
 COPY bindep.txt pydep.txt /opt/
@@ -21,11 +26,22 @@ RUN if [ -s /etc/image_info/bindep_build.txt ]; then \
         && rm -rf /var/lib/apt/lists/*; \
     fi
 
-# Same reason as zun: a clone of a moving branch inside an unchanging RUN
-# gets its layer reused and quietly builds yesterday's code.
-ADD https://api.github.com/repos/fivetime/openstack-daas/git/refs/heads/main /tmp/daas.ref
-
-RUN git clone --filter=blob:none -b ${DAAS_REF} ${DAAS_REPO} /tmp/daas \
+# The repository is private. CI supplies src_repo_token as a BuildKit
+# secret; the token and the temporary git rewrite live only inside
+# this RUN and never reach an image layer.
+RUN --mount=type=secret,id=src_repo_token \
+    if [ -s /run/secrets/src_repo_token ]; then \
+        token="$(cat /run/secrets/src_repo_token)"; \
+        git config --global \
+          url."https://x-access-token:${token}@github.com/".insteadOf \
+          "https://github.com/"; \
+    fi \
+    && git init /tmp/daas \
+    && git -C /tmp/daas remote add origin ${DAAS_REPO} \
+    && git -C /tmp/daas fetch --depth=1 --filter=blob:none origin ${DAAS_REF} \
+    && git -C /tmp/daas checkout --detach FETCH_HEAD \
+    && rm -f /root/.gitconfig \
+    && uv pip install \
     && uv pip install \
          --build-constraint /upper-constraints.txt \
          -c /upper-constraints.txt \
