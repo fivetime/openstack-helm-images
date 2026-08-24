@@ -30,7 +30,13 @@ ARG ZUNCLIENT_REF=master
 # tags (pbr reports it as 0.0.1.devN), so it is pinned by commit. A SHA in
 # the RUN line is its own cache key, so it needs no ADD cache-buster the way
 # the moving branches above do.
-ARG BARBICAN_UI_REPO=https://opendev.org/openstack/barbican-ui
+# Deliberately NOT named *_REPO: generate_pydep.py treats every
+# "ARG <X>_REPO=https://{opendev,github}.com/openstack/<proj>" as a backing
+# service repo and fetches requirements.txt from its stable/<release> branch.
+# barbican-ui has only master, so that lookup 404s and, being the sole match,
+# fails the whole build. horizon-kolla has no business in that scan anyway --
+# it consumes no pydep.txt and needs neither psycopg2 nor confluent-kafka.
+ARG BARBICAN_UI_GIT=https://opendev.org/openstack/barbican-ui
 ARG BARBICAN_UI_REF=f962e455b529580c2bb0e924a6fd39185a77ec16
 # These two are on PyPI; 18.0.0 and 20.0.0 are the 2026.1 releases.
 ARG FREEZER_WEB_UI_VERSION=18.0.0
@@ -51,7 +57,7 @@ RUN curl -fsSL "https://releases.openstack.org/constraints/upper/${RELEASE}" \
         -c /tmp/uc.txt \
         "git+${ZUNCLIENT_REPO}@${ZUNCLIENT_REF}#egg=python-zunclient" \
         "git+${ZUN_UI_REPO}@${ZUN_UI_REF}#egg=zun-ui" \
-        "git+${BARBICAN_UI_REPO}@${BARBICAN_UI_REF}#egg=barbican-ui" \
+        "git+${BARBICAN_UI_GIT}@${BARBICAN_UI_REF}#egg=barbican-ui" \
         "freezer-web-ui==${FREEZER_WEB_UI_VERSION}" \
         "zaqar-ui==${ZAQAR_UI_VERSION}" \
     && /var/lib/kolla/venv/bin/pip show zun-ui python-zunclient \
