@@ -71,7 +71,7 @@ RUN curl -fsSL "https://releases.openstack.org/constraints/upper/${RELEASE}" \
     # A plugin whose enabled/ files are missing is skipped in silence at pod
     # start, so fail the build here instead.
     && for m in zun_ui barbican_ui freezer_ui zaqar_ui; do \
-         ls /var/lib/kolla/venv/lib/python3*/site-packages/\$m/enabled/_[1-9]*.py \
+         ls /var/lib/kolla/venv/lib/python3*/site-packages/$m/enabled/_[1-9]*.py \
            >/dev/null || exit 1; \
        done
 USER horizon
