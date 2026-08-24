@@ -35,11 +35,24 @@
 #           所以走 constraints 反而会把一个上游撤回的版本装进来。
 #        b) protoc 生成的 *_pb2_grpc.py 里有硬版本闸门
 #           `if grpc.__version__ < GRPC_GENERATED_VERSION: raise RuntimeError`。
-#           驱动的 stub 用 grpcio-tools 1.83.0 生成,装 1.78.1 会在 import 时直接崩。
-#           闸门是 >= ,所以只要 runtime 不低于生成版本即可。
+#           驱动的 stub 用 grpcio-tools **1.81.1** 生成,装 1.78.1 会在 import 时直接崩。
+#           闸门是 >= ,所以只要 runtime 不低于生成版本即可(不设上界,装最新即可)。
+#      ⚠️ 还有**第二道**闸门在 `*_pb2.py`:`ValidateProtobufRuntimeVersion()` 要求
+#         runtime protobuf 不低于 gencode 版本。本镜像的 protobuf 是 **6.33.5**
+#         (受 constraints 约束、且被 google-api-core 依赖,不能随意升),所以驱动的
+#         stub 必须用**发出 6.x gencode** 的 grpcio-tools 生成 —— 1.81.1 是最新的
+#         非 yanked 且满足 `protobuf<7.0.0` 的版本。用 1.82.1+ 生成会发出 7.x gencode,
+#         驱动 import 时报 `gencode 7.35.1 runtime 6.33.5` 直接崩。
 #      protobuf 不用显式装:已由 google-api-core/googleapis-common-protos/proto-plus
 #      经上面那条**受约束**的安装带进来(6.33.5),重复声明反而可能绕开约束。
 #      cp312 有 musllinux wheel,不触发源码编译,不影响构建时长。
+#   5. NVMe-oF 卷驱动 (cinder-nvme-of) —— 我方树外驱动,把 RBD 卷经 ceph-nvmeof 网关
+#      以 NVMe/TCP 导给裸金属。cinder 用 importutils 按 dotted path 加载驱动,
+#      装进同一个 venv 即可,**不需要改 cinder 源码、也不需要改 chart**:
+#        [rbd-nvmeof] volume_driver = cinder_nvme_of.driver.RBDNVMeOFDriver
+#      装在主 RUN 内(git/build-deps 尚在)而不是单独一层:pbr 取版本要 .git,
+#      而主 RUN 末尾 `apk del .build-deps` 会把 git 删掉;GitHub 的 archive tarball
+#      既无 .git 也无 PKG-INFO,pbr 会直接报错,所以只能走 git+。
 #
 # 构建 (context = cinder/，与 build-local.d/cinder.yaml 一致)：
 #   cd cinder && docker build -f Dockerfile.alpine -t cinder:alpine-test .
@@ -60,6 +73,18 @@ ARG CINDER_REPO=https://opendev.org/openstack/cinder
 ARG CINDER_REF=stable/2026.1
 ARG CONSTRAINTS=https://opendev.org/openstack/requirements/raw/branch/stable/2026.1/upper-constraints.txt
 
+# 我方树外 NVMe-oF 卷驱动(**私有仓库**,同 nova/Dockerfile.incus 的处理方式)。
+# **按 commit SHA 钉版,不要写分支名**,两个理由:
+#   1. 可复现:镜像和驱动代码一一对应。
+#   2. 顺带解决缓存陷阱 —— 在内容不变的 RUN 里 clone 一个**移动的分支**,docker 会复用
+#      该 layer、静默装进昨天的代码,从镜像外面完全看不出来。SHA 写进 ARG 后,
+#      改 SHA 就改了 layer 的缓存键,自然失效,不需要 mistral 那种 ADD ref 击破
+#      (那招对私有仓库也用不了:GitHub 的 refs API 对私有库匿名返回 404,
+#       而 `ADD <url>` 没法带 Authorization 头)。
+# 换驱动版本 = 改下面这行 SHA(或在 build-local.d/cinder.yaml 里传 build_arg)。
+ARG NVMEOF_DRIVER_REPO=https://github.com/fivetime/cinder-nvme-of.git
+ARG NVMEOF_DRIVER_REF=c4c4be3f31843b569f49bca881790a833d091600
+
 # 运行期工具/库 + 一次性 build 依赖(--virtual 装完即删)。
 #  - python3: venv 解释器(venv 的 bin/python 指向系统 python3，二者同为 3.12)
 #  - 存储后端工具见文件头；os-brick 运行期 shell 出去调 iscsiadm/multipath/lvs 等
@@ -72,7 +97,14 @@ ARG CONSTRAINTS=https://opendev.org/openstack/requirements/raw/branch/stable/202
 # 先建**隔离** venv 让 pip 干净地按 upper-constraints 解析依赖，装完再把
 # include-system-site-packages 翻成 true —— 这样 rados/rbd(apk)可被 import，又不污染解析。
 # 清理(pyc/__pycache__/machine-id)必须与生成在同一 RUN 层，跨层删只加 whiteout、徒增体积。
-RUN apk add --no-cache \
+RUN --mount=type=secret,id=src_repo_token \
+    if [ -s /run/secrets/src_repo_token ]; then \
+        token="$(cat /run/secrets/src_repo_token)"; \
+        git config --global \
+          url."https://x-access-token:${token}@github.com/".insteadOf \
+          "https://github.com/"; \
+    fi \
+ && apk add --no-cache \
         python3 \
         lvm2 lvm2-extra device-mapper \
         ceph-common py3-rados py3-rbd \
@@ -97,16 +129,20 @@ RUN apk add --no-cache \
         "cinder @ git+${CINDER_REPO}@${CINDER_REF}" \
  && /var/lib/openstack/bin/pip install --no-cache-dir \
         psycopg2-binary 'confluent-kafka>=2.12,<2.13' etcd3gw \
-        'grpcio>=1.83.0' \
+        'grpcio>=1.81.1' \
+ && /var/lib/openstack/bin/pip install --no-cache-dir --no-deps \
+        "cinder-nvme-of @ git+${NVMEOF_DRIVER_REPO}@${NVMEOF_DRIVER_REF}" \
  && sed -i 's/^include-system-site-packages = false/include-system-site-packages = true/' \
         /var/lib/openstack/pyvenv.cfg \
  && mkdir -p /etc/image_info \
  && /var/lib/openstack/bin/pip freeze --local > /etc/image_info/pip.txt \
  && grep '^cinder @' /etc/image_info/pip.txt > /etc/image_info/project.txt \
+ && grep -iE '^cinder[-_]nvme[-_]of' /etc/image_info/pip.txt >> /etc/image_info/project.txt \
  && cp /tmp/uc.txt /upper-constraints.txt \
  && apk del .build-deps \
  && find /var/lib/openstack -name '*.pyc' -delete \
  && find /var/lib/openstack -type d -name '__pycache__' -delete \
+ && rm -f /root/.gitconfig \
  && rm -rf /root/.cargo /root/.cache /tmp/* /var/cache/apk/* /etc/machine-id
 
 # cinder 用户/运行目录 (uid 42424，与官方 ubuntu 镜像一致；chart 以此 uid 运行容器)。
@@ -149,6 +185,10 @@ RUN export PYTHONDONTWRITEBYTECODE=1 \
  && python3 -c "import rados, rbd; print('ceph rbd bindings OK')" \
  && python3 -c "import psycopg2, confluent_kafka, pymysql, etcd3gw; print('db+kafka+etcd drivers OK')" \
  && python3 -c "import grpc, google.protobuf as p; print('grpc', grpc.__version__, '| protobuf', p.__version__)" \
+ && python3 -c "from cinder_nvme_of.driver import RBDNVMeOFDriver as D; \
+from cinder.interface import volume_driver as vd; \
+assert issubclass(D, vd.VolumeDriverCore), 'driver fails VolumeDriverCore'; \
+print('cinder-nvme-of driver OK', D.VERSION, D.STORAGE_PROTOCOL)" \
  && test -n "$(hostname --fqdn)" && echo "hostname --fqdn -> $(hostname --fqdn)" \
  && echo "venv layout OK (cinder in /var/lib/openstack)"
 

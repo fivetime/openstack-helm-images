@@ -4,7 +4,7 @@
 # variant that is SAME-SOURCE as the ubuntu one (opendev cinder stable/2026.1)
 # and installs into the same /var/lib/openstack venv (drop-in layout parity).
 #
-# Why a fork variant: we bake four optional drivers into the image:
+# Why a fork variant: we bake five optional drivers into the image:
 #   * etcd3gw          -- tooz coordination backend (cinder-volume active/active DLM)
 #   * psycopg2-binary  -- PostgreSQL [database] connection
 #   * confluent-kafka  -- oslo_messaging_notifications.driver=kafka (redpanda)
@@ -13,6 +13,12 @@
 #                         NOT resolved against upper-constraints: stable/2026.1 pins
 #                         grpcio===1.78.1, which upstream YANKED (grpc#41725), and an
 #                         exact pin installs a yanked release without complaint.
+#   * cinder-nvme-of   -- our out-of-tree volume driver exporting RBD over NVMe/TCP
+#                         via a ceph-nvmeof gateway. PRIVATE repo, pinned by commit
+#                         SHA and cloned with the src_repo_token BuildKit secret
+#                         (same pattern as nova/Dockerfile.incus). Changing the
+#                         driver means bumping NVMEOF_DRIVER_REF in
+#                         cinder/Dockerfile.alpine.
 # These are written directly into cinder/Dockerfile.alpine as explicit pip
 # installs -- they are INDEPENDENT of the workflow's pydep "dynamic
 # substitution". (The build-services job overlays a generated pydep-<rel>.txt
@@ -27,7 +33,7 @@
 
 - job:
     name: build-local-cinder-alpine
-    description: Build fork-only cinder Alpine variant (adds etcd/PostgreSQL/Kafka/gRPC drivers).
+    description: Build fork-only cinder Alpine variant (adds etcd/PostgreSQL/Kafka/gRPC + NVMe-oF driver).
     vars:
       container_images:
         # Tagged as a 2026.1 *release* entry (not a rolling `alpine_latest`) so it

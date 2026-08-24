@@ -66,16 +66,17 @@ Alpine 把它们打成 `py3-rados19` / `py3-rbd19`（ceph 19.2.x），装在**�
 这样 RBD 绑定可用，而 cinder 的依赖版本仍由 pip + upper-constraints 完全掌控。
 该模块按 arch 自动选 amd64/arm64 的 `.so`，故多架构构建无需特殊处理。
 
-## 我方增量：四类可选驱动
+## 我方增量：五类可选驱动
 
-在与官方同源的基础上，额外 pip 装四样（**故意不受 upper-constraints 约束**，单独一步装）：
+在与官方同源的基础上，额外 pip 装五样（**故意不受 upper-constraints 约束**，单独一步装）：
 
 | 驱动 | 包 | 用途 |
 |---|---|---|
 | etcd | `etcd3gw` | tooz 协调后端。cinder-volume active/active（DLM）用 tooz 选主/加锁，etcd3gw 让其后端可指向 etcd（纯 python，走 etcd gRPC-gateway 的 HTTP/JSON） |
 | PostgreSQL | `psycopg2-binary` | `[database] connection = postgresql+psycopg2://…`（自带 libpq，无需系统 libpq） |
 | Kafka | `confluent-kafka` | `oslo_messaging_notifications.driver = kafka`（如 redpanda）。musl 无 wheel，需对 alpine 的 `librdkafka 2.12.x` 编译，故钉 `>=2.12,<2.13` |
-| gRPC | `grpcio>=1.83.0` | 树外驱动 [cinder-nvme-of](https://github.com/fivetime/cinder-nvme-of) 跟 ceph-nvmeof 网关控制面通信用（网关**只**暴露 gRPC）。**这一条必须绕开 constraints**：stable/2026.1 钉的 `grpcio===1.78.1` 已被上游 **yank**（[grpc#41725](https://github.com/grpc/grpc/issues/41725)，"Caused major outage with gcloud serverless environments"），而 `-c` 的精确 pin 对 yanked 版本照装不误；且 protoc 在生成的 `*_pb2_grpc.py` 里埋了 `if grpc.__version__ < GRPC_GENERATED_VERSION: raise RuntimeError` 的硬闸门，装 1.78.1 会在 import 时直接崩。cp312 有 musllinux wheel，不触发源码编译 |
+| gRPC | `grpcio>=1.81.1` | 树外驱动 [cinder-nvme-of](https://github.com/fivetime/cinder-nvme-of) 跟 ceph-nvmeof 网关控制面通信用（网关**只**暴露 gRPC）。**这一条必须绕开 constraints**：stable/2026.1 钉的 `grpcio===1.78.1` 已被上游 **yank**（[grpc#41725](https://github.com/grpc/grpc/issues/41725)，"Caused major outage with gcloud serverless environments"），而 `-c` 的精确 pin 对 yanked 版本照装不误；且 protoc 在生成的 `*_pb2_grpc.py` 里埋了 `if grpc.__version__ < GRPC_GENERATED_VERSION: raise RuntimeError` 的硬闸门，装 1.78.1 会在 import 时直接崩。cp312 有 musllinux wheel，不触发源码编译 |
+| NVMe-oF 驱动 | [`cinder-nvme-of`](https://github.com/fivetime/cinder-nvme-of) | 我方树外卷驱动，把 RBD 卷经 ceph-nvmeof 网关以 NVMe/TCP 导给裸金属（`volume_driver = cinder_nvme_of.driver.RBDNVMeOFDriver`）。**私有仓库**，按 commit SHA 钉版 + `src_repo_token` BuildKit secret 克隆（同 `nova/Dockerfile.incus`）。装在主 RUN 内且必须走 `git+`：pbr 取版本要 `.git`，而 GitHub 的 archive tarball 既无 `.git` 也无 `PKG-INFO`；`--no-deps` 安装，避免 pip 把 oslo.\* 升过 upper-constraints |
 
 ## 构建与验证
 
