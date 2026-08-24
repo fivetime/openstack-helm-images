@@ -1,13 +1,20 @@
 # syntax=docker/dockerfile:1
-# Fork-only: kolla horizon + zun-ui.
+# Fork-only: kolla horizon + the dashboard plugins kolla leaves out.
 # The kolla 2026.1 horizon image bundles most dashboard plugins but not
-# zun-ui; the airshipit (loci) horizon image bundles none at all. Add the
-# missing plugin on top of the kolla base so conf.horizon.extra_panels can
-# enable it (the chart start script symlinks enabled/ files and runs
-# collectstatic+compress at startup, so no other build step is needed).
+# zun-ui, barbican-ui, freezer-web-ui or zaqar-ui; the airshipit (loci)
+# horizon image bundles none at all. Add the missing plugins on top of the
+# kolla base so conf.horizon.extra_panels can enable them (the chart start
+# script symlinks enabled/ files and runs collectstatic+compress at startup,
+# so no other build step is needed).
 # zun-ui comes from the fivetime fork, which carries the $gray-lighter
 # SCSS fix (compress aborts on it -> dashboard crash-loop) and the
 # absolute-path validation on the mounts form.
+#
+# NOTE: upper-constraints pins no horizon plugin at all -- not zun-ui, not
+# octavia-dashboard, not the three added here -- so these are pinned by hand.
+# Bump them together with RELEASE. Their clients (python-freezerclient,
+# python-zaqarclient, python-barbicanclient) ARE in constraints and are left
+# to resolve from there.
 ARG BASE=quay.io/openstack.kolla/horizon:2026.1-ubuntu-noble
 FROM ${BASE}
 
@@ -18,6 +25,16 @@ ARG ZUN_UI_REF=master
 # the flavor limit fields exist only in the fork.
 ARG ZUNCLIENT_REPO=https://github.com/fivetime/openstack-zunclient
 ARG ZUNCLIENT_REF=master
+
+# barbican-ui is never published to PyPI and its master carries no release
+# tags (pbr reports it as 0.0.1.devN), so it is pinned by commit. A SHA in
+# the RUN line is its own cache key, so it needs no ADD cache-buster the way
+# the moving branches above do.
+ARG BARBICAN_UI_REPO=https://opendev.org/openstack/barbican-ui
+ARG BARBICAN_UI_REF=f962e455b529580c2bb0e924a6fd39185a77ec16
+# These two are on PyPI; 18.0.0 and 20.0.0 are the 2026.1 releases.
+ARG FREEZER_WEB_UI_VERSION=18.0.0
+ARG ZAQAR_UI_VERSION=20.0.0
 
 # A pip install from a moving branch is one unchanging RUN line, so the
 # layer is reused and the branch's new commits never arrive -- an image
@@ -34,8 +51,21 @@ RUN curl -fsSL "https://releases.openstack.org/constraints/upper/${RELEASE}" \
         -c /tmp/uc.txt \
         "git+${ZUNCLIENT_REPO}@${ZUNCLIENT_REF}#egg=python-zunclient" \
         "git+${ZUN_UI_REPO}@${ZUN_UI_REF}#egg=zun-ui" \
-    && /var/lib/kolla/venv/bin/pip show zun-ui python-zunclient | grep -E "Name|Version" \
+        "git+${BARBICAN_UI_REPO}@${BARBICAN_UI_REF}#egg=barbican-ui" \
+        "freezer-web-ui==${FREEZER_WEB_UI_VERSION}" \
+        "zaqar-ui==${ZAQAR_UI_VERSION}" \
+    && /var/lib/kolla/venv/bin/pip show zun-ui python-zunclient \
+        barbican-ui freezer-web-ui zaqar-ui | grep -E "Name|Version" \
+    && /var/lib/kolla/venv/bin/pip check \
     && rm -f /tmp/uc.txt \
     # guard: the fork must have fixed this, or compress dies at pod start
-    && ! grep -rq '\$gray-lighter' /var/lib/kolla/venv/lib/python3*/site-packages/zun_ui/static
+    && ! grep -rq '\$gray-lighter' /var/lib/kolla/venv/lib/python3*/site-packages/zun_ui/static \
+    # guard: extra_panels matches on the *module* directory, which differs
+    # from the pip name for every one of these (freezer-web-ui -> freezer_ui).
+    # A plugin whose enabled/ files are missing is skipped in silence at pod
+    # start, so fail the build here instead.
+    && for m in zun_ui barbican_ui freezer_ui zaqar_ui; do \
+         ls /var/lib/kolla/venv/lib/python3*/site-packages/\$m/enabled/_[1-9]*.py \
+           >/dev/null || exit 1; \
+       done
 USER horizon

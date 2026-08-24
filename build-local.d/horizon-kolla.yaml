@@ -1,13 +1,15 @@
 ---
-# Fork-only Horizon (kolla base + zun-ui). The kolla 2026.1 horizon image
-# ships every dashboard plugin except zun-ui, and the airshipit loci image
-# ships none; this derives from the kolla base and adds zun-ui pinned by the
-# official upper-constraints so extra_panels can enable it.
+# Fork-only Horizon (kolla base + the plugins kolla leaves out). The kolla
+# 2026.1 horizon image ships most dashboard plugins but not zun-ui,
+# barbican-ui, freezer-web-ui or zaqar-ui, and the airshipit loci image ships
+# none; this derives from the kolla base and adds those four so extra_panels
+# can enable them. upper-constraints pins no horizon plugin at all, so the
+# four are pinned in the Dockerfile by hand -- bump them with the release.
 # amd64 only: it tracks the kolla base image's published architectures.
 
 - job:
     name: build-local-horizon-kolla
-    description: Build kolla-based Horizon image with zun-ui added.
+    description: Build kolla-based Horizon image with the missing dashboard plugins added.
     vars:
       container_images:
         - context: .
