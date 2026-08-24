@@ -10,9 +10,9 @@ ENV PATH=/var/lib/openstack/bin:$PATH
 ARG NOVA_REPO=https://opendev.org/openstack/nova
 ARG NOVA_REF=8595b8eed4d0cabf6a7db04b0d946cf764187965
 ARG NOVA_INCUS_REPO=https://github.com/fivetime/nova-incus-driver.git
-ARG NOVA_INCUS_REF=51f307e0158f449f23013f5efca45c9ed694879b
+ARG NOVA_INCUS_REF=1c2b124844082df302442ce35ce951c2a8c89670
 ARG INCUS_SDK_REPO=https://github.com/fivetime/incus-python-sdk.git
-ARG INCUS_SDK_REF=1a26b144316806ffb2dbcb75a523a75e8955695b
+ARG INCUS_SDK_REF=4078fd46ae955e87c2fbd8eb3e75a283c60a594b
 ARG REQUIREMENTS_REPO=https://opendev.org/openstack/requirements
 ARG REQUIREMENTS_REF=06cd4e8523cbade25fb93efc4f8ea77d6d97064f
 # The Nova Incus repository is private. CI supplies src_repo_token as a
