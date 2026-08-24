@@ -1,0 +1,30 @@
+---
+# Fork-only:RaaS 编排器(Runner-as-a-Service)。
+#
+# 与本仓库其余镜像不同,它不是 OpenStack 的 Python 服务,而是一个纯 Go 静态
+# 二进制,所以不用 loci / venv_builder,Dockerfile 自己两段式构建。
+# 源码在私有仓库 fivetime/openstack-raas,CI 经 BuildKit secret
+# (id=src_repo_token,取自 CR_PAT)注入 PAT。
+#
+# tag 不带 OpenStack 版本号:这个服务不跟随 OpenStack 的发布周期。
+# zuul_to_matrix.py 的 extract_release 会因此把它归到 rolling 层。
+
+- job:
+    name: build-local-raas
+    description: Build the RaaS orchestrator image (Go, fork-only).
+    vars:
+      container_images:
+        - context: raas
+          repository: openstackhelm/raas
+          container_filename: Dockerfile
+          arch:
+            - linux/amd64
+            - linux/arm64
+          tags:
+            - latest
+          build_args:
+            # 钉 commit 而非分支。私有仓库破不了 ADD ref API 那招,写分支名
+            # 会让 RUN 层永远命中缓存、静默构建旧代码。发版时改这一行,
+            # 并同步 raas/Dockerfile 里 ARG RAAS_REF 的默认值 ——
+            # PINNED_BUILD_ARGS 校验器会强制两者一致。
+            - RAAS_REF=0cf2655e4d7f0ec6dd5497a8d031f9bc63a084a9
