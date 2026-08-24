@@ -1,0 +1,22 @@
+---
+# Fork-only DaaS (Docker API gateway) image. There is no upstream project;
+# it is built from the fork the same way zun is, so the generated pydep
+# overlay picks up the database driver automatically.
+
+- job:
+    name: build-local-daas
+    description: Build the DaaS gateway image from the fork.
+    vars:
+      container_images:
+        - context: .
+          repository: openstackhelm/daas
+          container_filename: daas/Dockerfile
+          arch:
+            - linux/amd64
+          tags:
+            - 2026.1-ubuntu_noble
+          build_args:
+            - BASE_VENV_BUILDER=quay.io/airshipit/venv_builder:2026.1-ubuntu_noble
+            - BASE_RUNTIME=quay.io/airshipit/base:2026.1-ubuntu_noble
+            - DAAS_REPO=https://github.com/fivetime/openstack-daas
+            - DAAS_REF=main
