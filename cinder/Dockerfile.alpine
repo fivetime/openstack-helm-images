@@ -50,6 +50,9 @@
 #      以 NVMe/TCP 导给裸金属。cinder 用 importutils 按 dotted path 加载驱动,
 #      装进同一个 venv 即可,**不需要改 cinder 源码、也不需要改 chart**:
 #        [rbd-nvmeof] volume_driver = cinder_nvme_of.driver.RBDNVMeOFDriver
+#      ⚠️ 私有库的 token 注入块(git config url.insteadOf)必须放在 **apk 装完 git 之后**。
+#      nova/Dockerfile.incus 把 apk 放在单独的前一个 RUN,所以它可以在 RUN 开头就注入;
+#      本镜像只有一个大 RUN,在开头注入会得到 `/bin/sh: git: not found` (exit 127)。
 #      装在主 RUN 内(git/build-deps 尚在)而不是单独一层:pbr 取版本要 .git,
 #      而主 RUN 末尾 `apk del .build-deps` 会把 git 删掉;GitHub 的 archive tarball
 #      既无 .git 也无 PKG-INFO,pbr 会直接报错,所以只能走 git+。
@@ -98,13 +101,7 @@ ARG NVMEOF_DRIVER_REF=c4c4be3f31843b569f49bca881790a833d091600
 # include-system-site-packages 翻成 true —— 这样 rados/rbd(apk)可被 import，又不污染解析。
 # 清理(pyc/__pycache__/machine-id)必须与生成在同一 RUN 层，跨层删只加 whiteout、徒增体积。
 RUN --mount=type=secret,id=src_repo_token \
-    if [ -s /run/secrets/src_repo_token ]; then \
-        token="$(cat /run/secrets/src_repo_token)"; \
-        git config --global \
-          url."https://x-access-token:${token}@github.com/".insteadOf \
-          "https://github.com/"; \
-    fi \
- && apk add --no-cache \
+    apk add --no-cache \
         python3 \
         lvm2 lvm2-extra device-mapper \
         ceph-common py3-rados py3-rbd \
@@ -130,6 +127,12 @@ RUN --mount=type=secret,id=src_repo_token \
  && /var/lib/openstack/bin/pip install --no-cache-dir \
         psycopg2-binary 'confluent-kafka>=2.12,<2.13' etcd3gw \
         'grpcio>=1.81.1' \
+ && if [ -s /run/secrets/src_repo_token ]; then \
+        token="$(cat /run/secrets/src_repo_token)"; \
+        git config --global \
+          url."https://x-access-token:${token}@github.com/".insteadOf \
+          "https://github.com/"; \
+    fi \
  && /var/lib/openstack/bin/pip install --no-cache-dir --no-deps \
         "cinder-nvme-of @ git+${NVMEOF_DRIVER_REPO}@${NVMEOF_DRIVER_REF}" \
  && sed -i 's/^include-system-site-packages = false/include-system-site-packages = true/' \
