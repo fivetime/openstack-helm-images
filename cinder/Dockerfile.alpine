@@ -25,6 +25,21 @@
 #   1. etcd (etcd3gw)        —— tooz 协调后端，cinder-volume active/active 的 DLM。
 #   2. PostgreSQL (psycopg2-binary) —— 让 [database] connection 可用 PG。
 #   3. Kafka (confluent-kafka)      —— oslo_messaging_notifications.driver=kafka(redpanda)。
+#   4. gRPC (grpcio)         —— 树外驱动 cinder-nvme-of 用它跟 ceph-nvmeof 网关的控制面
+#      通信(网关**只**暴露 gRPC,其 SPDK JSON-RPC 是容器内 unix socket,够不着)。
+#      装在这里而不是让运维事后 pip:官方镜像不带 grpcio,漏了它 cinder-volume 起不来。
+#      ⚠️ **故意放在不受 constraints 约束的这一条**,两个原因缺一不可:
+#        a) stable/2026.1 的 upper-constraints 钉的是 `grpcio===1.78.1`,而该版本
+#           **已被上游 yank**("Caused major outage with gcloud serverless
+#           environments", grpc#41725)。`-c` 是精确 pin,pip 对 yanked 版本照装不误,
+#           所以走 constraints 反而会把一个上游撤回的版本装进来。
+#        b) protoc 生成的 *_pb2_grpc.py 里有硬版本闸门
+#           `if grpc.__version__ < GRPC_GENERATED_VERSION: raise RuntimeError`。
+#           驱动的 stub 用 grpcio-tools 1.83.0 生成,装 1.78.1 会在 import 时直接崩。
+#           闸门是 >= ,所以只要 runtime 不低于生成版本即可。
+#      protobuf 不用显式装:已由 google-api-core/googleapis-common-protos/proto-plus
+#      经上面那条**受约束**的安装带进来(6.33.5),重复声明反而可能绕开约束。
+#      cp312 有 musllinux wheel,不触发源码编译,不影响构建时长。
 #
 # 构建 (context = cinder/，与 build-local.d/cinder.yaml 一致)：
 #   cd cinder && docker build -f Dockerfile.alpine -t cinder:alpine-test .
@@ -82,6 +97,7 @@ RUN apk add --no-cache \
         "cinder @ git+${CINDER_REPO}@${CINDER_REF}" \
  && /var/lib/openstack/bin/pip install --no-cache-dir \
         psycopg2-binary 'confluent-kafka>=2.12,<2.13' etcd3gw \
+        'grpcio>=1.83.0' \
  && sed -i 's/^include-system-site-packages = false/include-system-site-packages = true/' \
         /var/lib/openstack/pyvenv.cfg \
  && mkdir -p /etc/image_info \
@@ -132,6 +148,7 @@ RUN export PYTHONDONTWRITEBYTECODE=1 \
  && python3 -c "import os_brick, importlib.metadata as m; print('os-brick', m.version('os-brick'))" \
  && python3 -c "import rados, rbd; print('ceph rbd bindings OK')" \
  && python3 -c "import psycopg2, confluent_kafka, pymysql, etcd3gw; print('db+kafka+etcd drivers OK')" \
+ && python3 -c "import grpc, google.protobuf as p; print('grpc', grpc.__version__, '| protobuf', p.__version__)" \
  && test -n "$(hostname --fqdn)" && echo "hostname --fqdn -> $(hostname --fqdn)" \
  && echo "venv layout OK (cinder in /var/lib/openstack)"
 
