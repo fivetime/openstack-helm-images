@@ -8,7 +8,7 @@
 # 符号链接补路径。官方的 sudoers/privsep 在其 BASE_RUNTIME(airshipit/base)基底里，
 # 而 alpine 基底没有，故由本镜像补 /etc/sudoers.d/neutron。
 #
-# 相对官方的“我方增量”仅三样：
+# 相对官方的“我方增量”四样：
 #   1. ovsdb_dns_patch —— 把 ovs.dns_resolve.resolve 换成同步 getaddrinfo。python 版
 #      ovs 库只靠 unbound 异步解析 DNS，一次性 OVSDB 连接拿不到结果 -> ovn_nb_connection
 #      只能写裸 IP(单 VIP -> RAFT 抖动)。补丁后可用 per-pod RAFT 成员列表(DNS)跟随
@@ -16,6 +16,9 @@
 #   2. PostgreSQL(psycopg2-binary) + Kafka(confluent-kafka) 驱动 —— 镜像 generate_pydep
 #      的意图;让 oslo_messaging_notifications.driver=kafka(redpanda)可用。
 #   3. sudoers + GNU 兼容 hostname wrapper —— 补 alpine 基底相对 airshipit/base 缺的两样。
+#   4. networking-baremetal —— ironic <-> neutron 集成(ironic-neutron-agent 二进制 +
+#      baremetal / baremetal-l2vni 两个 ML2 mechanism driver)。官方 ubuntu 镜像靠
+#      PROFILES 里的 `baremetal` 经 pydep 带进来,alpine 变体不走 pydep,故显式装。
 #
 # FROM ovn alpine 镜像 (= alpine 3.23 + ovs-vsctl/ovsdb 工具，neutron-ovn-agent 需要)。
 #
@@ -80,6 +83,35 @@ RUN apk add --no-cache \
  && find /var/lib/openstack -type d -name '__pycache__' -delete \
  && rm -rf /root/.cargo /root/.cache /tmp/* /var/cache/apk/* /etc/machine-id
 
+# networking-baremetal —— ironic <-> neutron 的深度集成层,提供两样东西:
+#   * `ironic-neutron-agent` 二进制:neutron chart 的 deployment_ironic_agent 跑它,
+#     把 ironic 侧的裸机节点/端口状态上报给 neutron。
+#   * ML2 mechanism driver `baremetal` 和 `baremetal-l2vni`(注意是连字符,fork 文档里
+#     写成 baremetal_l2vni 是错的),由 neutron-server 加载,负责绑定 vnic_type=baremetal
+#     的端口;l2vni 那个还会给 VXLAN/Geneve 覆盖网动态分配 VLAN 段并建 OVN localnet 口。
+# 所以它必须装进**同一个** neutron 镜像 —— agent 和 server 都用得到。
+#
+# --no-deps 不是图省事,是必须的:networking-baremetal 的 requirements.txt 写着
+# `neutron>=27.0.0.0rc1`,而本镜像里 git 装的 neutron 经 pbr 算出来是 1.0.0.devNNNNN
+# (fork 没有上游 tag),版本比较过不去 -> pip 会**从 PyPI 拉一个 neutron 覆盖掉 fork 的
+# neutron**(实测 --dry-run 输出 `Would install ... neutron-29.0.0.0b1`),ovsdb DNS 补丁
+# 和 fork 的生产修复就这么静默没了。它的其余依赖(ncclient/neutron-lib/oslo.*/
+# openstacksdk/tooz/tenacity/keystoneauth1)neutron 自己已经全部带进来了,逐个验过。
+ARG NETWORKING_BAREMETAL_REPO=https://github.com/fivetime/networking-baremetal.git
+ARG NETWORKING_BAREMETAL_REF=master
+# 分支不是不可变引用:`pip install git+...@master` 所在的 RUN 层会被缓存命中,
+# 于是永远装的是第一次构建时的那个提交。拿 GitHub refs API 的响应当缓存键,
+# 分支一动这一层就失效。
+ADD https://api.github.com/repos/fivetime/networking-baremetal/git/refs/heads/master /tmp/networking-baremetal.ref
+RUN apk add --no-cache --virtual .nb-deps git \
+ && /var/lib/openstack/bin/pip install --no-cache-dir --no-deps \
+        "networking-baremetal @ git+${NETWORKING_BAREMETAL_REPO}@${NETWORKING_BAREMETAL_REF}" \
+ && /var/lib/openstack/bin/pip freeze > /etc/image_info/pip.txt \
+ && apk del .nb-deps \
+ && find /var/lib/openstack -name '*.pyc' -delete \
+ && find /var/lib/openstack -type d -name '__pycache__' -delete \
+ && rm -rf /root/.cache /tmp/*
+
 # DNS 修复：把 ovs.dns_resolve.resolve 换成同步 getaddrinfo。.pth 放进 venv 的
 # site-packages，对 venv 里所有进程(neutron-server/ovn-agent/db-manage)生效，
 # 不改上游 neutron 代码。
@@ -121,12 +153,19 @@ RUN printf '%s\n' \
 # 自检:neutron 确实在 venv 布局(/var/lib/openstack/bin)、WSGI 模块在(用 find_spec
 # 不执行,避免 import 期 boot_server 读不存在的配置)、uwsgi/入口/工具/驱动/补丁/
 # hostname 全部正常。
+# ⚠ 每条 `python3 -c` 必须压成一行:旧版(非 BuildKit)builder 按换行切指令、不跟踪
+# 引号,内嵌脚本里的 `from x import y` 会被当成 FROM 指令 ->「FROM requires either
+# one or three arguments」。
 RUN export PYTHONDONTWRITEBYTECODE=1 \
  && test "$(command -v neutron-ovn-agent)" = "/var/lib/openstack/bin/neutron-ovn-agent" \
  && python3 -c "import neutron; import importlib.util as u; assert u.find_spec('neutron.wsgi.api'), 'wsgi app module missing'" \
  && for c in uwsgi neutron-db-manage neutron-rpc-server neutron-rootwrap ovs-vsctl haproxy lshw; do command -v "$c" >/dev/null || { echo "MISSING $c"; exit 1; }; done \
  && test -n "$(hostname --fqdn)" && echo "hostname --fqdn -> $(hostname --fqdn)" \
  && python3 -c "import neutron_taas; print('tap-as-a-service OK')" \
+ && test "$(command -v ironic-neutron-agent)" = "/var/lib/openstack/bin/ironic-neutron-agent" \
+ && python3 -c "from networking_baremetal.plugins.ml2 import baremetal_mech, baremetal_l2vni_mapping; print('networking-baremetal ML2 OK')" \
+ && python3 -c "from importlib.metadata import entry_points as e; n={x.name for x in e(group='neutron.ml2.mechanism_drivers')}; m={'baremetal','baremetal-l2vni'}-n; assert not m, 'ML2 entry points missing: %s' % m; print('ML2 entry points OK')" \
+ && python3 -c "import json; from importlib.metadata import distribution as d; u=d('neutron').read_text('direct_url.json'); assert u and 'vcs_info' in json.loads(u), 'neutron is no longer the git build -- a dependency resolver replaced it'; print('neutron still the git build OK')" \
  && python3 -c "import psycopg2, confluent_kafka, pymysql; print('db+kafka drivers OK')" \
  && python3 -c "import ovs.dns_resolve as d; assert getattr(d, '_ovnic_dns_patched', False); print('DNS patch active')" \
  && echo "venv layout OK (neutron in /var/lib/openstack)"

@@ -55,3 +55,8 @@
             - NEUTRON_REPO=https://github.com/fivetime/openstack-neutron.git
             - NEUTRON_REF=stable/2026.1
             - CONSTRAINTS=https://opendev.org/openstack/requirements/raw/branch/stable/2026.1/upper-constraints.txt
+            # networking-baremetal 只有 master 带 L2VNI mechanism driver(fork 自有),
+            # 上游最新 stable 才到 2025.2。两个 cell(2026.1 / master)都用 master ——
+            # synthesize_master 的 `stable/2026.1`->`master` 改写对它是 no-op。
+            - NETWORKING_BAREMETAL_REPO=https://github.com/fivetime/networking-baremetal.git
+            - NETWORKING_BAREMETAL_REF=master
