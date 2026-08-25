@@ -75,7 +75,7 @@
             # upstream master, and an immutable ref is what a release build
             # wants anyway. Drop this override once the fix lands upstream.
             - "CLOUDKITTY_REPO=https://github.com/fivetime/openstack-cloudkitty"
-            - "CLOUDKITTY_REF=2026.1-fivetime.1"
+            - "CLOUDKITTY_REF=2026.1-fivetime.2"
     files: &cloudkitty_files
       - cloudkitty/.*
       - zuul.d/cloudkitty.yaml
