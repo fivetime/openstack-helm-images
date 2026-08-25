@@ -92,7 +92,8 @@ RUN curl -fsSL "https://releases.openstack.org/constraints/upper/${RELEASE}" \
 # src_repo_token (from CR_PAT); the token and the git url rewrite live only
 # inside this RUN and reach no image layer. With the secret absent (local
 # build, or the repo made public) it falls through to an anonymous clone.
-COPY check-raas-ui-enabled.py /tmp/check-raas-ui-enabled.py
+# build context is the repo root (build-local.d: context: .), so the source path is qualified
+COPY horizon-kolla/check-raas-ui-enabled.py /tmp/check-raas-ui-enabled.py
 RUN --mount=type=secret,id=src_repo_token \
     if ! command -v git >/dev/null; then \
         apt-get update && apt-get install -y --no-install-recommends git \
