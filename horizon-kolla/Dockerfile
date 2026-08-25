@@ -51,7 +51,7 @@ ARG ZAQAR_UI_VERSION=20.0.0
 # Same *_GIT (not *_REPO) naming as barbican-ui, for the same
 # generate_pydep.py reason.
 ARG RAAS_UI_GIT=https://github.com/fivetime/openstack-raas-ui
-ARG RAAS_UI_REF=45c267462131ca2dee971c69186530f5d03a4dac
+ARG RAAS_UI_REF=96c1ebe24b19283dbc63ed2fe250e0afe5778c66
 
 # A pip install from a moving branch is one unchanging RUN line, so the
 # layer is reused and the branch's new commits never arrive -- an image
@@ -118,5 +118,20 @@ RUN --mount=type=secret,id=src_repo_token \
     # whether the panel actually renders was verified against a live Horizon.
     && /var/lib/kolla/venv/bin/python3 -m compileall -q \
          /var/lib/kolla/venv/lib/python3*/site-packages/raas_ui \
-    && /var/lib/kolla/venv/bin/python3 -c "import raas_ui.enabled._2810_project_ci_panel_group, raas_ui.enabled._2820_project_runners_panel"
+    && /var/lib/kolla/venv/bin/python3 -c "import raas_ui.enabled._2810_project_ci_panel_group, raas_ui.enabled._2820_project_runners_panel" \
+ && python3 - <<'EOF'
+# 同一个 app 只能由一个 enabled 文件加进 INSTALLED_APPS。写两次 Django 直接
+# 拒绝启动("Application labels aren't unique"),整个 Horizon 起不来 —— 这种
+# 错只有活的 Horizon 才会报,镜像里必须提前拦。
+import importlib, pkgutil, collections
+import raas_ui.enabled as pkg
+seen = collections.defaultdict(list)
+for m in pkgutil.iter_modules(pkg.__path__):
+    mod = importlib.import_module("raas_ui.enabled." + m.name)
+    for app in getattr(mod, "ADD_INSTALLED_APPS", []):
+        seen[app].append(m.name)
+dup = {a: f for a, f in seen.items() if len(f) > 1}
+assert not dup, "ADD_INSTALLED_APPS declared in more than one enabled file: %r" % dup
+print("enabled files: %d, apps: %s" % (len(list(pkgutil.iter_modules(pkg.__path__))), dict(seen)))
+EOF
 USER horizon
