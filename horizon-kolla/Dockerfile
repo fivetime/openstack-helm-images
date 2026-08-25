@@ -42,6 +42,17 @@ ARG BARBICAN_UI_REF=f962e455b529580c2bb0e924a6fd39185a77ec16
 ARG FREEZER_WEB_UI_VERSION=18.0.0
 ARG ZAQAR_UI_VERSION=20.0.0
 
+# raas-ui: the RaaS (Runner-as-a-Service) Horizon panel, fivetime-only and
+# in a PRIVATE repository. Pinned by commit rather than branch: the ADD
+# refs-API cache-buster used above returns 404 anonymously for a private
+# repo, and a branch name in a RUN line is an unchanging cache key -- the
+# build would keep serving stale code without a word. RAAS_UI_REF is in
+# PINNED_BUILD_ARGS so this default and the build-local.d pin cannot drift.
+# Same *_GIT (not *_REPO) naming as barbican-ui, for the same
+# generate_pydep.py reason.
+ARG RAAS_UI_GIT=https://github.com/fivetime/openstack-raas-ui
+ARG RAAS_UI_REF=e2fcd126d36907b15dfcd3ddb37fdf895b7a6b63
+
 # A pip install from a moving branch is one unchanging RUN line, so the
 # layer is reused and the branch's new commits never arrive -- an image
 # that looks rebuilt and is not. Fetching the ref itself first makes the
@@ -74,4 +85,29 @@ RUN curl -fsSL "https://releases.openstack.org/constraints/upper/${RELEASE}" \
          ls /var/lib/kolla/venv/lib/python3*/site-packages/$m/enabled/_[1-9]*.py \
            >/dev/null || exit 1; \
        done
+
+# raas-ui goes in its own layer with the secret mount, kept apart from the
+# public plugins above so a token rotation or raas-ui bump does not
+# invalidate their (slow, constraint-resolving) layer. CI supplies
+# src_repo_token (from CR_PAT); the token and the git url rewrite live only
+# inside this RUN and reach no image layer. With the secret absent (local
+# build, or the repo made public) it falls through to an anonymous clone.
+RUN --mount=type=secret,id=src_repo_token \
+    if ! command -v git >/dev/null; then \
+        apt-get update && apt-get install -y --no-install-recommends git \
+        && rm -rf /var/lib/apt/lists/*; \
+    fi \
+    && if [ -s /run/secrets/src_repo_token ]; then \
+        TOK="$(cat /run/secrets/src_repo_token)"; \
+        git config --global \
+          url."https://x-access-token:${TOK}@github.com/".insteadOf "https://github.com/"; \
+    fi \
+    && PBR_VERSION=0.1.0 /var/lib/kolla/venv/bin/pip install --no-cache-dir \
+        "raas-ui @ git+${RAAS_UI_GIT}@${RAAS_UI_REF}" \
+    && rm -f /root/.gitconfig \
+    && /var/lib/kolla/venv/bin/pip show raas-ui | grep -E "Name|Version" \
+    # same silent-skip guard as the four above: extra_panels needs enabled/
+    && ls /var/lib/kolla/venv/lib/python3*/site-packages/raas_ui/enabled/_[1-9]*.py >/dev/null \
+    # and the panel must import -- a broken module is skipped just as quietly
+    && /var/lib/kolla/venv/bin/python3 -c "import raas_ui.content.runners.panel, raas_ui.api.raas"
 USER horizon

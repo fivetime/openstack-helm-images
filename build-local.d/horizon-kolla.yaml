@@ -22,3 +22,6 @@
           build_args:
             - BASE=quay.io/openstack.kolla/horizon:2026.1-ubuntu-noble
             - RELEASE=2026.1
+            # raas-ui is private and pinned by commit; must equal the
+            # Dockerfile's ARG default (PINNED_BUILD_ARGS enforces it).
+            - RAAS_UI_REF=e2fcd126d36907b15dfcd3ddb37fdf895b7a6b63
