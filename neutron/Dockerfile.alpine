@@ -8,7 +8,7 @@
 # 符号链接补路径。官方的 sudoers/privsep 在其 BASE_RUNTIME(airshipit/base)基底里，
 # 而 alpine 基底没有，故由本镜像补 /etc/sudoers.d/neutron。
 #
-# 相对官方的“我方增量”四样：
+# 相对官方的“我方增量”五样：
 #   1. ovsdb_dns_patch —— 把 ovs.dns_resolve.resolve 换成同步 getaddrinfo。python 版
 #      ovs 库只靠 unbound 异步解析 DNS，一次性 OVSDB 连接拿不到结果 -> ovn_nb_connection
 #      只能写裸 IP(单 VIP -> RAFT 抖动)。补丁后可用 per-pod RAFT 成员列表(DNS)跟随
@@ -19,6 +19,8 @@
 #   4. networking-baremetal —— ironic <-> neutron 集成(ironic-neutron-agent 二进制 +
 #      baremetal / baremetal-l2vni 两个 ML2 mechanism driver)。官方 ubuntu 镜像靠
 #      PROFILES 里的 `baremetal` 经 pydep 带进来,alpine 变体不走 pydep,故显式装。
+#   5. networking-generic-switch —— 把 VLAN 落到物理交换机端口上的 genericswitch
+#      ML2 driver(+netmiko)。没有它裸机端口只能停在 binding_failed。
 #
 # FROM ovn alpine 镜像 (= alpine 3.23 + ovs-vsctl/ovsdb 工具，neutron-ovn-agent 需要)。
 #
@@ -112,6 +114,32 @@ RUN apk add --no-cache --virtual .nb-deps git \
  && find /var/lib/openstack -type d -name '__pycache__' -delete \
  && rm -rf /root/.cache /tmp/*
 
+# networking-generic-switch(NGS)—— 把 VLAN 真正落到物理交换机端口上的那一环。
+# 分工:networking-baremetal 的 `baremetal` driver 只在 neutron 侧记账,它在
+#   try_to_bind_segment_for_agent 末尾有一句 `if not by_device: return False` ——
+#   没有已配置的交换机设备与端口的 local_link_information 对上就主动弃权,
+#   把机会让给排在 mechanism_drivers 后面的驱动。NGS 就是接手的那个:
+#   bind_port 里 set_binding(VIF_TYPE_OTHER),真正的 `switchport access vlan N`
+#   在 update_port_postcommit 里通过 netmiko SSH 下发。
+# 少了它,vnic_type=baremetal 的端口永远停在 binding_failed。
+#
+# 这里【带依赖】装,跟 networking-baremetal 的 --no-deps 不一样:NGS 的
+# requirements.txt 里没有 neutron(neutron 只在 optional-dependencies 里),
+# `pip install --dry-run` 实测只会新增 etcd3gw / netmiko 及 netmiko 自己的
+# ntc-templates / pyserial / ruamel.yaml / scp / textfsm,不碰 neutron、
+# neutron-lib 和任何 oslo 库。底下那条 "neutron 仍是 git 版" 的断言同时也守着这一层。
+ARG NETWORKING_GENERIC_SWITCH_REPO=https://github.com/fivetime/networking-generic-switch.git
+ARG NETWORKING_GENERIC_SWITCH_REF=master
+ADD https://api.github.com/repos/fivetime/networking-generic-switch/git/refs/heads/master /tmp/networking-generic-switch.ref
+RUN apk add --no-cache --virtual .ngs-deps git \
+ && /var/lib/openstack/bin/pip install --no-cache-dir \
+        "networking-generic-switch @ git+${NETWORKING_GENERIC_SWITCH_REPO}@${NETWORKING_GENERIC_SWITCH_REF}" \
+ && /var/lib/openstack/bin/pip freeze > /etc/image_info/pip.txt \
+ && apk del .ngs-deps \
+ && find /var/lib/openstack -name '*.pyc' -delete \
+ && find /var/lib/openstack -type d -name '__pycache__' -delete \
+ && rm -rf /root/.cache /tmp/*
+
 # DNS 修复：把 ovs.dns_resolve.resolve 换成同步 getaddrinfo。.pth 放进 venv 的
 # site-packages，对 venv 里所有进程(neutron-server/ovn-agent/db-manage)生效，
 # 不改上游 neutron 代码。
@@ -164,7 +192,9 @@ RUN export PYTHONDONTWRITEBYTECODE=1 \
  && python3 -c "import neutron_taas; print('tap-as-a-service OK')" \
  && test "$(command -v ironic-neutron-agent)" = "/var/lib/openstack/bin/ironic-neutron-agent" \
  && python3 -c "from networking_baremetal.plugins.ml2 import baremetal_mech, baremetal_l2vni_mapping; print('networking-baremetal ML2 OK')" \
- && python3 -c "from importlib.metadata import entry_points as e; n={x.name for x in e(group='neutron.ml2.mechanism_drivers')}; m={'baremetal','baremetal-l2vni'}-n; assert not m, 'ML2 entry points missing: %s' % m; print('ML2 entry points OK')" \
+ && python3 -c "from importlib.metadata import entry_points as e; n={x.name for x in e(group='neutron.ml2.mechanism_drivers')}; m={'baremetal','baremetal-l2vni','genericswitch'}-n; assert not m, 'ML2 entry points missing: %s' % m; print('ML2 entry points OK')" \
+ && python3 -c "import netmiko; from networking_generic_switch import generic_switch_mech; print('networking-generic-switch OK, netmiko', netmiko.__version__)" \
+ && python3 -c "from importlib.metadata import entry_points as e; n={x.name for x in e(group='generic_switch.devices')}; m={'netmiko_arista_eos','netmiko_ovs_linux','netmiko_fake','netconf_openconfig'}-n; assert not m, 'NGS device drivers missing: %s' % m; print('NGS device drivers OK (%d 种)' % len(n))" \
  && python3 -c "import json; from importlib.metadata import distribution as d; u=d('neutron').read_text('direct_url.json'); assert u and 'vcs_info' in json.loads(u), 'neutron is no longer the git build -- a dependency resolver replaced it'; print('neutron still the git build OK')" \
  && python3 -c "import psycopg2, confluent_kafka, pymysql; print('db+kafka drivers OK')" \
  && python3 -c "import ovs.dns_resolve as d; assert getattr(d, '_ovnic_dns_patched', False); print('DNS patch active')" \

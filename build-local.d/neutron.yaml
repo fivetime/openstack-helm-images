@@ -60,3 +60,6 @@
             # synthesize_master 的 `stable/2026.1`->`master` 改写对它是 no-op。
             - NETWORKING_BAREMETAL_REPO=https://github.com/fivetime/networking-baremetal.git
             - NETWORKING_BAREMETAL_REF=master
+            # networking-generic-switch 同理:fork 只有 master。
+            - NETWORKING_GENERIC_SWITCH_REPO=https://github.com/fivetime/networking-generic-switch.git
+            - NETWORKING_GENERIC_SWITCH_REF=master
