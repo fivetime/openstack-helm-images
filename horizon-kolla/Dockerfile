@@ -92,6 +92,7 @@ RUN curl -fsSL "https://releases.openstack.org/constraints/upper/${RELEASE}" \
 # src_repo_token (from CR_PAT); the token and the git url rewrite live only
 # inside this RUN and reach no image layer. With the secret absent (local
 # build, or the repo made public) it falls through to an anonymous clone.
+COPY check-raas-ui-enabled.py /tmp/check-raas-ui-enabled.py
 RUN --mount=type=secret,id=src_repo_token \
     if ! command -v git >/dev/null; then \
         apt-get update && apt-get install -y --no-install-recommends git \
@@ -119,19 +120,6 @@ RUN --mount=type=secret,id=src_repo_token \
     && /var/lib/kolla/venv/bin/python3 -m compileall -q \
          /var/lib/kolla/venv/lib/python3*/site-packages/raas_ui \
     && /var/lib/kolla/venv/bin/python3 -c "import raas_ui.enabled._2810_project_ci_panel_group, raas_ui.enabled._2820_project_runners_panel" \
- && python3 - <<'EOF'
-# 同一个 app 只能由一个 enabled 文件加进 INSTALLED_APPS。写两次 Django 直接
-# 拒绝启动("Application labels aren't unique"),整个 Horizon 起不来 —— 这种
-# 错只有活的 Horizon 才会报,镜像里必须提前拦。
-import importlib, pkgutil, collections
-import raas_ui.enabled as pkg
-seen = collections.defaultdict(list)
-for m in pkgutil.iter_modules(pkg.__path__):
-    mod = importlib.import_module("raas_ui.enabled." + m.name)
-    for app in getattr(mod, "ADD_INSTALLED_APPS", []):
-        seen[app].append(m.name)
-dup = {a: f for a, f in seen.items() if len(f) > 1}
-assert not dup, "ADD_INSTALLED_APPS declared in more than one enabled file: %r" % dup
-print("enabled files: %d, apps: %s" % (len(list(pkgutil.iter_modules(pkg.__path__))), dict(seen)))
-EOF
+    && python3 /tmp/check-raas-ui-enabled.py \
+    && rm -f /tmp/check-raas-ui-enabled.py
 USER horizon
