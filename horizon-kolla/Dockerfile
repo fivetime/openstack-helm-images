@@ -51,7 +51,7 @@ ARG ZAQAR_UI_VERSION=20.0.0
 # Same *_GIT (not *_REPO) naming as barbican-ui, for the same
 # generate_pydep.py reason.
 ARG RAAS_UI_GIT=https://github.com/fivetime/openstack-raas-ui
-ARG RAAS_UI_REF=92d6882796e60ab6ef91ff1ebbf2af62f31a56cb
+ARG RAAS_UI_REF=8be3c2d495b754dd6b48ca0ade53583a7d391a7e
 
 # A pip install from a moving branch is one unchanging RUN line, so the
 # layer is reused and the branch's new commits never arrive -- an image
