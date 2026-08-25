@@ -86,7 +86,7 @@ ARG CONSTRAINTS=https://opendev.org/openstack/requirements/raw/branch/stable/202
 #       而 `ADD <url>` 没法带 Authorization 头)。
 # 换驱动版本 = 改下面这行 SHA(或在 build-local.d/cinder.yaml 里传 build_arg)。
 ARG NVMEOF_DRIVER_REPO=https://github.com/fivetime/cinder-nvme-of.git
-ARG NVMEOF_DRIVER_REF=e199b10e85ea1efb69e2da5239bfbe458510fdfd
+ARG NVMEOF_DRIVER_REF=33015291cb42f063d6dc432f464604531519d821
 
 # 运行期工具/库 + 一次性 build 依赖(--virtual 装完即删)。
 #  - python3: venv 解释器(venv 的 bin/python 指向系统 python3，二者同为 3.12)
