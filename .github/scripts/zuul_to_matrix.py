@@ -49,7 +49,9 @@ RELEASE_PREFIX_RE = re.compile(r"^(\d{4}\.\d+)\b")
 # 这些 build-arg 一旦在 build-local.d 里 pin,就必须与 Dockerfile 的 ARG
 # 默认值完全一致 —— 否则本地构建(读 Dockerfile 默认值)与 CI 构建(读 pin)
 # 会装出不同的代码,而且两边都不会报错。都是私有仓库、钉 commit 的源。
-PINNED_BUILD_ARGS = frozenset({"NOVA_INCUS_REF", "RAAS_REF", "RAAS_UI_REF"})
+PINNED_BUILD_ARGS = frozenset(
+    {"INCUS_PROVIDER_REF", "NOVA_INCUS_REF", "RAAS_REF", "RAAS_UI_REF"}
+)
 
 # Foundation jobs build the layers everything else FROM s. They must build
 # before any service-tier cell. Names taken from upstream zuul.d/.

@@ -12,11 +12,41 @@ ARG OCTAVIA_REF=stable/2026.1
 ARG OVN_PROVIDER_REPO=https://opendev.org/openstack/ovn-octavia-provider
 ARG OVN_PROVIDER_REF=stable/2026.1
 ARG CONSTRAINTS=https://opendev.org/openstack/requirements/raw/branch/stable/2026.1/upper-constraints.txt
+ARG INCUS_PROVIDER_REPO=https://github.com/fivetime/octavia-incus-provider
+# Pinned to a commit, not a branch. A private repository cannot use the
+# ADD-the-ref-API trick to break the cache, so a branch name would let
+# the RUN layer below hit cache forever and quietly build old code.
+# Listed in zuul_to_matrix.py's PINNED_BUILD_ARGS, which enforces that
+# this default and the build-local.d pin stay equal.
+ARG INCUS_PROVIDER_REF=198b314e7ec8e48242d7c9abfd33f444f3ae0830
+# pbr derives a version from git; the shallow detached checkout below
+# has no tags, so it is stated instead. The commit is the real identity
+# and it is recorded in /etc/image_info/project.txt.
+ARG INCUS_PROVIDER_VERSION=0.1.0
 
 # Alpine 3.23 no longer packages ISC dhclient. That binary is used inside an
 # amphora agent image, not by the Octavia controller or the OVN provider roles
 # built here. librdkafka and libpq are retained at runtime for the Kafka and
 # PostgreSQL drivers.
+# Private repository: CI injects a PAT as a BuildKit secret
+# (id=src_repo_token, from the CR_PAT repository secret). The token and
+# the temporary git url rewrite exist only inside this RUN and never
+# land in a layer. With no secret (local builds, or the repo going
+# public) it falls through to an anonymous clone, hence the -s test.
+RUN --mount=type=secret,id=src_repo_token \
+    apk add --no-cache git \
+ && if [ -s /run/secrets/src_repo_token ]; then \
+        token="$(cat /run/secrets/src_repo_token)"; \
+        git config --global \
+          url."https://x-access-token:${token}@github.com/".insteadOf \
+          "https://github.com/"; \
+    fi \
+ && git init /tmp/incus-octavia-provider \
+ && git -C /tmp/incus-octavia-provider remote add origin "${INCUS_PROVIDER_REPO}" \
+ && git -C /tmp/incus-octavia-provider fetch --depth=1 --filter=blob:none origin "${INCUS_PROVIDER_REF}" \
+ && git -C /tmp/incus-octavia-provider checkout --detach FETCH_HEAD \
+ && rm -f /root/.gitconfig
+
 RUN apk add --no-cache \
         python3 \
         libffi libpq librdkafka \
@@ -42,12 +72,18 @@ RUN apk add --no-cache \
         /tmp/octavia /tmp/ovn-octavia-provider \
  && /var/lib/openstack/bin/pip install --no-cache-dir \
         psycopg2-binary 'confluent-kafka>=2.12,<2.13' \
+ && PBR_VERSION="${INCUS_PROVIDER_VERSION}" \
+    /var/lib/openstack/bin/pip install --no-cache-dir \
+        -c /tmp/upper-constraints.txt \
+        /tmp/incus-octavia-provider \
  && mkdir -p /etc/image_info \
  && { \
         printf 'octavia '; \
         git -C /tmp/octavia log --oneline -1; \
         printf 'ovn-octavia-provider '; \
         git -C /tmp/ovn-octavia-provider log --oneline -1; \
+        printf 'incus-octavia-provider %s\n' "${INCUS_PROVIDER_VERSION}"; \
+        printf 'incus-octavia-provider commit %s\n' "${INCUS_PROVIDER_REF}"; \
     } > /etc/image_info/project.txt \
  && /var/lib/openstack/bin/pip freeze > /etc/image_info/pip.txt \
  && cp /tmp/upper-constraints.txt /upper-constraints.txt \
@@ -73,5 +109,12 @@ RUN export PYTHONDONTWRITEBYTECODE=1 \
     done \
  && python3 -c "import octavia; print('octavia OK')" \
  && python3 -c "import importlib.metadata as m; eps=m.entry_points(group='octavia.api.drivers'); assert any(ep.name == 'ovn' for ep in eps), 'OVN provider entry point missing'; print('ovn-octavia-provider OK')" \
+ && python3 -c "import importlib.metadata as m; eps=m.entry_points(group='octavia.api.drivers'); assert any(ep.name == 'incus' for ep in eps), 'Incus provider entry point missing'; print('incus driver entry point OK')" \
+ && python3 -c "import importlib.metadata as m; eps=m.entry_points(group='octavia.driver_agent.provider_agents'); assert any(ep.name == 'incus' for ep in eps), 'Incus provider agent entry point missing'; print('incus agent entry point OK')" \
+ && python3 -c "from incus_octavia_provider.driver import IncusProviderDriver; print('incus driver imports OK')" \
+ && python3 -c "from incus_octavia_provider.agent import IncusProviderAgent; print('incus agent imports OK')" \
+ && for command in octavia-incus-admin octavia-incus-db-sync-util octavia-incus-release-util; do \
+        command -v "${command}" >/dev/null || { echo "MISSING ${command}"; exit 1; }; \
+    done \
  && python3 -c "import psycopg2, confluent_kafka, pymysql; print('db+kafka drivers OK')" \
  && echo "venv layout OK (octavia in /var/lib/openstack)"

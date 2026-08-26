@@ -22,4 +22,7 @@
           build_args:
             - OCTAVIA_REF=stable/2026.1
             - OVN_PROVIDER_REF=stable/2026.1
+            # 私有仓库,钉 commit;与 Dockerfile 的 ARG 默认值由
+            # PINNED_BUILD_ARGS 强制一致。发版时两处同改。
+            - INCUS_PROVIDER_REF=198b314e7ec8e48242d7c9abfd33f444f3ae0830
             - CONSTRAINTS=https://opendev.org/openstack/requirements/raw/branch/stable/2026.1/upper-constraints.txt
