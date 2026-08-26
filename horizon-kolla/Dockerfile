@@ -26,6 +26,17 @@ ARG ZUN_UI_REF=master
 ARG ZUNCLIENT_REPO=https://github.com/fivetime/openstack-zunclient
 ARG ZUNCLIENT_REF=master
 
+# blazar-dashboard ships in the kolla base, but that build has the panel look
+# the reservation service up itself instead of using the endpoint horizon
+# already resolved. That lookup goes through a keystoneauth adapter whose
+# interface defaults to 'public', so with OPENSTACK_ENDPOINT_TYPE=internalURL
+# every lease call still hits the public endpoint and fails wherever that name
+# does not resolve. Install the fork over it; drop once the fix is upstream.
+# Path is /fivetime/, not /openstack/, so ARG_REPO_RE in generate_pydep.py
+# does not take it for a backing service repo (same as ZUN_UI_REPO above).
+ARG BLAZAR_UI_REPO=https://github.com/fivetime/openstack-blazar-ui
+ARG BLAZAR_UI_REF=master
+
 # barbican-ui is never published to PyPI and its master carries no release
 # tags (pbr reports it as 0.0.1.devN), so it is pinned by commit. A SHA in
 # the RUN line is its own cache key, so it needs no ADD cache-buster the way
@@ -59,6 +70,7 @@ ARG RAAS_UI_REF=65d7bcca4f8996f6334d2d68b185a54200fe5b6b
 # layer depend on where the branch points.
 ADD https://api.github.com/repos/fivetime/openstack-zun-ui/git/refs/heads/master /tmp/zun-ui.ref
 ADD https://api.github.com/repos/fivetime/openstack-zunclient/git/refs/heads/master /tmp/zunclient.ref
+ADD https://api.github.com/repos/fivetime/openstack-blazar-ui/git/refs/heads/master /tmp/blazar-ui.ref
 
 USER root
 RUN curl -fsSL "https://releases.openstack.org/constraints/upper/${RELEASE}" \
@@ -69,10 +81,11 @@ RUN curl -fsSL "https://releases.openstack.org/constraints/upper/${RELEASE}" \
         "git+${ZUNCLIENT_REPO}@${ZUNCLIENT_REF}#egg=python-zunclient" \
         "git+${ZUN_UI_REPO}@${ZUN_UI_REF}#egg=zun-ui" \
         "git+${BARBICAN_UI_GIT}@${BARBICAN_UI_REF}#egg=barbican-ui" \
+        "git+${BLAZAR_UI_REPO}@${BLAZAR_UI_REF}#egg=blazar-dashboard" \
         "freezer-web-ui==${FREEZER_WEB_UI_VERSION}" \
         "zaqar-ui==${ZAQAR_UI_VERSION}" \
     && /var/lib/kolla/venv/bin/pip show zun-ui python-zunclient \
-        barbican-ui freezer-web-ui zaqar-ui | grep -E "Name|Version" \
+        barbican-ui blazar-dashboard freezer-web-ui zaqar-ui | grep -E "Name|Version" \
     && /var/lib/kolla/venv/bin/pip check \
     && rm -f /tmp/uc.txt \
     # guard: the fork must have fixed this, or compress dies at pod start
@@ -81,10 +94,15 @@ RUN curl -fsSL "https://releases.openstack.org/constraints/upper/${RELEASE}" \
     # from the pip name for every one of these (freezer-web-ui -> freezer_ui).
     # A plugin whose enabled/ files are missing is skipped in silence at pod
     # start, so fail the build here instead.
-    && for m in zun_ui barbican_ui freezer_ui zaqar_ui; do \
+    && for m in zun_ui barbican_ui blazar_dashboard freezer_ui zaqar_ui; do \
          ls /var/lib/kolla/venv/lib/python3*/site-packages/$m/enabled/_[1-9]*.py \
            >/dev/null || exit 1; \
-       done
+       done \
+       # guard: the only reason blazar-dashboard is installed here at all is
+       # the endpoint fix. pip reports success just as happily after
+       # reinstalling the same code, so check for the fix, not the package.
+       && grep -q 'endpoint_override=blazar_url' \
+            /var/lib/kolla/venv/lib/python3*/site-packages/blazar_dashboard/api/client.py
 
 # raas-ui goes in its own layer with the secret mount, kept apart from the
 # public plugins above so a token rotation or raas-ui bump does not
