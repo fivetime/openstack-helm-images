@@ -5,7 +5,13 @@ boto3                  [glance]
 # 本地不跑那个生成器,漏了它 aodh/ceilometer 连 Redpanda 会 DriverLoadFailure。
 # etcd3gw 生成器不管(它只看 oslo.db / oslo.messaging),tooz 的 etcd3 驱动只能手写。
 confluent-kafka        [aodh ceilometer]
-cryptography           [gnocchi placement]
+# 本地 docker build 走这份;CI 会用 .github/scripts/generate_pydep.py 的产物整个
+# 覆盖它,那边按 requirements.txt 里有没有 oslo.db 自动给全部 26 个服务加上。
+# 这里手写的是【生成器覆盖不到 / 曾实际踩过】的:gnocchi 不是 OpenStack 项目
+# (requirements 里没有 oslo.db,扫不出来);masakari 和 cloudkitty 是踩过的
+# —— 缺了它,PXC 的 caching_sha2_password 在服务端缓存未命中时要走 RSA 全认证,
+# PyMySQL 直接 RuntimeError,而缓存命中期间一切正常,极具迷惑性。
+cryptography           [gnocchi placement masakari cloudkitty]
 etcd3gw                [aodh ceilometer gnocchi]
 fluent-logger          [fluent]
 httplib2               [placement]

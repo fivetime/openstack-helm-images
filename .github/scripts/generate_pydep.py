@@ -1,9 +1,10 @@
 #!/usr/bin/env python3
-"""Augment upstream pydep.txt with PostgreSQL + Kafka driver entries.
+"""Augment upstream pydep.txt with PostgreSQL + MySQL auth + Kafka entries.
 
 Each OpenStack service that uses oslo.db / SQLAlchemy needs psycopg2-binary
-to talk to PostgreSQL (alongside the bundled MySQL driver), and each service
-using oslo.messaging needs confluent-kafka for the Kafka driver. Rather
+to talk to PostgreSQL (alongside the bundled MySQL driver) and cryptography
+to complete MySQL 8 / Percona XtraDB caching_sha2_password authentication,
+and each service using oslo.messaging needs confluent-kafka. Rather
 than maintaining a hand-edited list, this generator scans each service's
 upstream requirements.txt at the active release ref and emits a single
 augmented pydep.txt that downstream Dockerfiles consume verbatim.
@@ -159,6 +160,23 @@ def emit_pydep(
     if pg_services:
         out += (
             "psycopg2-binary  ["
+            + " ".join(sorted(pg_services))
+            + "]\n"
+        )
+        # Same population, different reason: MySQL 8 and Percona XtraDB
+        # default to caching_sha2_password. That auth method has a fast path
+        # (server-side hash cache hit) which needs nothing extra, and a full
+        # path (cache miss) which must send the password either over TLS or
+        # RSA-encrypted. Without TLS on the DB connection the RSA branch runs,
+        # and PyMySQL's sha2_rsa_encrypt() raises
+        #   RuntimeError: 'cryptography' package is required for
+        #   sha256_password or caching_sha2_password auth methods
+        # The nasty part is that a cache hit masks it: a service works until
+        # the server's cache entry for its user goes away (PXC restart, user
+        # recreated), and then every connection fails at once while the pods
+        # still look healthy. Ship it for everything that talks to a DB.
+        out += (
+            "cryptography  ["
             + " ".join(sorted(pg_services))
             + "]\n"
         )
