@@ -51,7 +51,7 @@ ARG ZAQAR_UI_VERSION=20.0.0
 # Same *_GIT (not *_REPO) naming as barbican-ui, for the same
 # generate_pydep.py reason.
 ARG RAAS_UI_GIT=https://github.com/fivetime/openstack-raas-ui
-ARG RAAS_UI_REF=be712c6138abf02eb3dfb444717cc7fcc0db048c
+ARG RAAS_UI_REF=65d7bcca4f8996f6334d2d68b185a54200fe5b6b
 
 # A pip install from a moving branch is one unchanging RUN line, so the
 # layer is reused and the branch's new commits never arrive -- an image
@@ -121,6 +121,9 @@ RUN --mount=type=secret,id=src_repo_token \
     && /var/lib/kolla/venv/bin/python3 -m compileall -q \
          /var/lib/kolla/venv/lib/python3*/site-packages/raas_ui \
     && /var/lib/kolla/venv/bin/python3 -c "import raas_ui.enabled._2810_project_ci_panel_group, raas_ui.enabled._2820_project_runners_panel" \
+    # pyflakes 只在构建期用:装、跑、卸,不留在镜像里
+    && /var/lib/kolla/venv/bin/pip install --no-cache-dir pyflakes \
     && python3 /tmp/check-raas-ui-enabled.py \
+    && /var/lib/kolla/venv/bin/pip uninstall -y pyflakes \
     && rm -f /tmp/check-raas-ui-enabled.py
 USER horizon
