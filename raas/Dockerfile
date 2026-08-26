@@ -15,7 +15,7 @@ ARG RAAS_REPO=https://github.com/fivetime/openstack-raas.git
 #   ② SHA 在 build_args 里可见,部署后能直接对上跑的是哪个提交。
 # 这个 ARG 在 zuul_to_matrix.py 的 PINNED_BUILD_ARGS 里,校验器会强制
 # build-local.d 的 pin 与这里的默认值一致,不会各写各的。
-ARG RAAS_REF=4c4f93f4a06201a797555ab3b74d3003533c143d
+ARG RAAS_REF=5206b88d3a68a2820af3f1cd35d11eb4077b6c2a
 
 # 私有仓库:CI 用 BuildKit secret(id=src_repo_token,取自仓库 secret CR_PAT)
 # 注入 PAT。token 与临时的 git url 重写只存在于本 RUN,不落进任何镜像层。
