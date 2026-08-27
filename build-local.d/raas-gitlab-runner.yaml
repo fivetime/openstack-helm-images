@@ -1,0 +1,28 @@
+---
+# Fork-only:GitLab CI 那条链路的 runner。
+#
+# 它把 gitlab-runner 与我们自己的 fleeting 插件装在一起,**并在构建期强制
+# 两者的 fleeting 版本一致** —— 接口在演进(Heartbeat/Suspend/Resume 都是
+# 2026 年中加进主接口的),错配的表现是 go-plugin 握手直接失败,
+# 而那要等部署到线上才看得见。
+#
+# tag 不带 OpenStack 版本号:这条链路不跟随 OpenStack 的发布周期。
+
+- job:
+    name: build-local-raas-gitlab-runner
+    description: Build the RaaS GitLab runner image (gitlab-runner + fleeting plugin).
+    vars:
+      container_images:
+        - context: raas-gitlab-runner
+          repository: openstackhelm/raas-gitlab-runner
+          container_filename: Dockerfile
+          arch:
+            - linux/amd64
+          tags:
+            - latest
+          build_args:
+            # 钉已发布的 tag。曾用 master 编过一次 —— git describe 给的是
+            # v18.3.0-1879-g73349bfb7,即未发布代码。
+            - RUNNER_REF=v19.3.1
+            # 与 raas 镜像同一个 pin:两个镜像装的是同一份代码的不同入口。
+            - RAAS_REF=5206b88d3a68a2820af3f1cd35d11eb4077b6c2a
