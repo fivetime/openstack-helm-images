@@ -2,7 +2,11 @@
 # RaaS 编排器(Runner-as-a-Service)。纯 Go 静态二进制,不是 OpenStack 的
 # Python 服务,所以不走 loci/venv_builder 那套,直接两段式构建。
 
-ARG GOLANG_VERSION=1.25
+# 必须 ≥ openstack-raas 的 go.mod 里那条 go 指令。**这两处会各自漂移**:
+# 本地 Go 通常更新,所以抬高 go.mod 之后本地照样编得过,只有 CI 才暴露
+# `go.mod requires go >= X (running go Y; GOTOOLCHAIN=local)`。
+# 改 go.mod 的 go 指令时,记得同步这一行。
+ARG GOLANG_VERSION=1.26
 ARG ALPINE_VERSION=3.22
 
 FROM docker.io/library/golang:${GOLANG_VERSION}-alpine AS build

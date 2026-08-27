@@ -8,7 +8,14 @@
 # 里从同一份 go.mod 约束下构建,让版本对不上时**构建期就炸**,
 # 而不是等部署到线上握手失败。
 
-ARG GOLANG_VERSION=1.25
+# 两段构建对 Go 版本的要求**不同**,所以分开钉。
+#
+# gitlab-runner v19.3.1 的 go.mod 要求 go >= 1.26.5;沿用编排器那边的 1.25
+# 会得到 `go.mod requires go >= 1.26.5 (running go 1.25.14; GOTOOLCHAIN=local)`。
+# 本地编得过是因为本机 Go 更新 —— 镜像里钉死了版本,这类差异只有 CI 才暴露。
+ARG RUNNER_GOLANG_VERSION=1.26
+# 插件与编排器同源,所以跟着 openstack-raas 的 go.mod 走(当前 1.26.0)。
+ARG PLUGIN_GOLANG_VERSION=1.26
 ARG ALPINE_VERSION=3.22
 
 # ---- gitlab-runner ---------------------------------------------------------
@@ -16,7 +23,7 @@ ARG ALPINE_VERSION=3.22
 # v18.3.0-1879-g73349bfb7,即未发布代码。拿它做验证本身就不到位。
 ARG RUNNER_REF=v19.3.1
 
-FROM docker.io/library/golang:${GOLANG_VERSION}-alpine AS runner-build
+FROM docker.io/library/golang:${RUNNER_GOLANG_VERSION}-alpine AS runner-build
 ARG RUNNER_REF
 RUN apk add --no-cache git make bash
 RUN git clone --depth=1 --branch "${RUNNER_REF}" \
@@ -31,7 +38,7 @@ RUN grep -E '^\s+gitlab\.com/gitlab-org/fleeting/fleeting ' go.mod \
       | awk '{print $2}' > /out/fleeting-version
 
 # ---- fleeting 插件 ---------------------------------------------------------
-FROM docker.io/library/golang:${GOLANG_VERSION}-alpine AS plugin-build
+FROM docker.io/library/golang:${PLUGIN_GOLANG_VERSION}-alpine AS plugin-build
 
 ARG RAAS_REPO=https://github.com/fivetime/openstack-raas.git
 # 与 raas 镜像同一个 pin。两个镜像装的是同一份代码的不同入口,
