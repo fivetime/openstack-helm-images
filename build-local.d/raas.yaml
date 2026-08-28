@@ -27,4 +27,4 @@
             # 会让 RUN 层永远命中缓存、静默构建旧代码。发版时改这一行,
             # 并同步 raas/Dockerfile 里 ARG RAAS_REF 的默认值 ——
             # PINNED_BUILD_ARGS 校验器会强制两者一致。
-            - RAAS_REF=ab4523ecf25f97e8f31ef27fc9914a2f113fa09e
+            - RAAS_REF=7b82690ec554da072da9589a5b00a161668d0f0f
