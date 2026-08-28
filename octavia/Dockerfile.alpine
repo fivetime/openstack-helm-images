@@ -27,7 +27,9 @@ ARG INCUS_PROVIDER_VERSION=0.1.0
 # Alpine 3.23 no longer packages ISC dhclient. That binary is used inside an
 # amphora agent image, not by the Octavia controller or the OVN provider roles
 # built here. librdkafka and libpq are retained at runtime for the Kafka and
-# PostgreSQL drivers.
+# PostgreSQL drivers. redis is the client for taskflow's jobboard, which
+# octavia needs whenever [task_flow] jobboard_enabled is true -- without it
+# the workers come up Ready and then nothing consumes the flows.
 # Private repository: CI injects a PAT as a BuildKit secret
 # (id=src_repo_token, from the CR_PAT repository secret). The token and
 # the temporary git url rewrite exist only inside this RUN and never
@@ -68,7 +70,7 @@ RUN apk add --no-cache \
         "${OVN_PROVIDER_REPO}" /tmp/ovn-octavia-provider \
  && /var/lib/openstack/bin/pip install --no-cache-dir \
         -c /tmp/upper-constraints.txt \
-        uwsgi PyMySQL python-memcached \
+        uwsgi PyMySQL python-memcached redis \
         /tmp/octavia /tmp/ovn-octavia-provider \
  && /var/lib/openstack/bin/pip install --no-cache-dir \
         psycopg2-binary 'confluent-kafka>=2.12,<2.13' \
@@ -117,4 +119,5 @@ RUN export PYTHONDONTWRITEBYTECODE=1 \
         command -v "${command}" >/dev/null || { echo "MISSING ${command}"; exit 1; }; \
     done \
  && python3 -c "import psycopg2, confluent_kafka, pymysql; print('db+kafka drivers OK')" \
+ && python3 -c "import redis, redis.sentinel; print('taskflow jobboard redis client OK')" \
  && echo "venv layout OK (octavia in /var/lib/openstack)"
