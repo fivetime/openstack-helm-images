@@ -47,9 +47,13 @@ RUN apk add --no-cache \
 
 WORKDIR /build
 
-# 克隆 OVN 及 OVS 子模块
+# 克隆 OVN 及 OVS 子模块,然后应用本目录的补丁。
+# 补丁按文件名顺序应用;每个补丁的文件头写明它改了什么、为什么、以及上游状态。
+# 上游合入后把对应文件删掉即可。
+COPY *.patch /build/patches/
 RUN git clone --depth 1 --branch ${OVN_BRANCH} https://github.com/ovn-org/ovn.git && \
-    cd ovn && git submodule update --init --depth 1
+    cd ovn && git submodule update --init --depth 1 && \
+    for p in /build/patches/*.patch; do echo "applying $p" && git apply --index "$p"; done
 
 # 编译并安装 OVS
 WORKDIR /build/ovn/ovs
