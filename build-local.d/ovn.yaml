@@ -33,6 +33,10 @@
           # reproducible/stable image, pin OVN_BRANCH to a release tag
           # (e.g. branch-26.03) instead of the moving main branch.
           build_args:
+            # fork main = upstream main + our commits, rebased onto upstream.
+            # Never a patch file here: patches cannot follow upstream.
+            - OVN_REPO=https://github.com/fivetime/ovn.git
+            - OVN_REPO_API=https://api.github.com/repos/fivetime/ovn
             - OVN_BRANCH=main
 
 - job:
