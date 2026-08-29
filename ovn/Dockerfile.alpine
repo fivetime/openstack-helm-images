@@ -29,6 +29,9 @@ ARG ALPINE_VERSION=3.23
 FROM alpine:${ALPINE_VERSION} AS builder
 
 ARG OVN_BRANCH=main
+ARG OVN_REPO=https://github.com/ovn-org/ovn.git
+# GitHub API base of OVN_REPO, for the cache-busting ADD below.
+ARG OVN_REPO_API=https://api.github.com/repos/ovn-org/ovn
 
 RUN apk add --no-cache \
     git \
@@ -47,13 +50,13 @@ RUN apk add --no-cache \
 
 WORKDIR /build
 
-# 克隆 OVN 及 OVS 子模块,然后应用本目录的补丁。
-# 补丁按文件名顺序应用;每个补丁的文件头写明它改了什么、为什么、以及上游状态。
-# 上游合入后把对应文件删掉即可。
-COPY *.patch /build/patches/
-RUN git clone --depth 1 --branch ${OVN_BRANCH} https://github.com/ovn-org/ovn.git && \
-    cd ovn && git submodule update --init --depth 1 && \
-    for p in /build/patches/*.patch; do echo "applying $p" && git apply --index "$p"; done
+# 克隆 OVN 及 OVS 子模块。OVN_REPO 默认上游;fork 的改动走 fork 仓库,
+# 不在这里打补丁 —— 补丁跟不上上游,fork 分支可以 rebase。
+# 下面的 ADD 只为击破缓存:分支的 HEAD 变了这一层才会重跑,
+# 否则 `git clone --branch main` 永远命中旧层、静默装旧代码。
+ADD ${OVN_REPO_API}/git/refs/heads/${OVN_BRANCH} /tmp/ovn.ref
+RUN git clone --depth 1 --branch ${OVN_BRANCH} ${OVN_REPO} && \
+    cd ovn && git submodule update --init --depth 1
 
 # 编译并安装 OVS
 WORKDIR /build/ovn/ovs
