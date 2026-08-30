@@ -18,7 +18,7 @@
             - 2026.1-alpine_3.23
           build_args:
             - NOVA_REF=8595b8eed4d0cabf6a7db04b0d946cf764187965
-            - NOVA_INCUS_REF=b0970dc4fb9817743035bbb0973af1cf529f256b
+            - NOVA_INCUS_REF=cb5ba1ba4753fe4984ad8ab215878c9ec8de9eae
             - INCUS_SDK_REF=4078fd46ae955e87c2fbd8eb3e75a283c60a594b
             - REQUIREMENTS_REF=06cd4e8523cbade25fb93efc4f8ea77d6d97064f
 
@@ -35,4 +35,4 @@
           tags:
             - 2026.1-ubuntu_noble
           build_args:
-            - NOVA_INCUS_REF=b0970dc4fb9817743035bbb0973af1cf529f256b
+            - NOVA_INCUS_REF=cb5ba1ba4753fe4984ad8ab215878c9ec8de9eae
