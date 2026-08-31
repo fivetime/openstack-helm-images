@@ -8,20 +8,27 @@
 set -eu
 root=$(dirname "$(dirname "$(readlink -f "$0")")")
 
-repin() { # <当前钉的值> <新值> <文件...>
-    old=$1; new=$2; shift 2
-    [ "$old" = "$new" ] && { echo "  = $new (未变)"; return 0; }
-    sed -i "s|$old|$new|g" "$@"
-    echo "  → $new"
+# **逐文件按各自的旧值替换。** 旧版拿 raas/Dockerfile 的旧值去替换全部四个
+# 文件 —— 一旦某文件已经不同步(2026-08-31 审计:raas-gitlab-runner 落后
+# 9 个提交),它的旧值匹配不上,漂移就永久固化,而 CI 的 PINNED_BUILD_ARGS
+# 校验只查 build-local.d↔同镜像 Dockerfile,跨镜像永远不报。
+repin_file() { # <新值> <文件>
+    new=$1; f=$2
+    old=$(grep -oE '[0-9a-f]{40}' "$f" | head -1)
+    if [ "$old" = "$new" ]; then echo "  $f = $new (未变)"; return 0; fi
+    sed -i "s|$old|$new|g" "$f"
+    echo "  $f → $new"
 }
 
 raas=$(git -C "$root/openstack-raas" rev-parse HEAD)
 ui=$(git -C "$root/openstack-raas-ui" rev-parse HEAD)
 
 echo "raas:"
-repin "$(grep -oE '[0-9a-f]{40}' raas/Dockerfile | head -1)" "$raas" \
-    raas/Dockerfile build-local.d/raas.yaml \
-    raas-gitlab-runner/Dockerfile build-local.d/raas-gitlab-runner.yaml
+for f in raas/Dockerfile build-local.d/raas.yaml \
+         raas-gitlab-runner/Dockerfile build-local.d/raas-gitlab-runner.yaml; do
+    repin_file "$raas" "$f"
+done
 echo "raas-ui:"
-repin "$(grep -oE 'RAAS_UI_REF=[0-9a-f]{40}' horizon-kolla/Dockerfile | head -1 | cut -d= -f2)" "$ui" \
-    horizon-kolla/Dockerfile build-local.d/horizon-kolla.yaml
+for f in horizon-kolla/Dockerfile build-local.d/horizon-kolla.yaml; do
+    repin_file "$ui" "$f"
+done

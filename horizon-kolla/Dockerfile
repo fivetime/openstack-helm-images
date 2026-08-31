@@ -48,7 +48,7 @@ ARG BLAZAR_UI_REF=master
 # fails the whole build. horizon-kolla has no business in that scan anyway --
 # it consumes no pydep.txt and needs neither psycopg2 nor confluent-kafka.
 ARG BARBICAN_UI_GIT=https://opendev.org/openstack/barbican-ui
-ARG BARBICAN_UI_REF=f962e455b529580c2bb0e924a6fd39185a77ec16
+ARG BARBICAN_UI_REF=8a096309c2a6d1c8a0b1fc1543fa26787f63f43b
 # These two are on PyPI; 18.0.0 and 20.0.0 are the 2026.1 releases.
 ARG FREEZER_WEB_UI_VERSION=18.0.0
 ARG ZAQAR_UI_VERSION=20.0.0
