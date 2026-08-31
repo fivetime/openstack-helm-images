@@ -25,7 +25,7 @@ ARG PROFILES=""
 # python-zunclient>=4.2.0 that daas asks for -- so pip would quietly put
 # the released version back on top of the fork.
 ARG ZUNCLIENT_REPO=https://github.com/fivetime/openstack-zunclient
-ARG ZUNCLIENT_REF=4fbe3280cd631a2d307fd0d134400eaff483c620
+ARG ZUNCLIENT_REF=7e226f0233ca89b7cf95a2f7c1b81c9379165cc4
 
 COPY bindep.txt pydep.txt /opt/
 RUN mkdir -p /etc/image_info && \
