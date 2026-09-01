@@ -18,7 +18,7 @@ ARG INCUS_PROVIDER_REPO=https://github.com/fivetime/octavia-incus-provider
 # the RUN layer below hit cache forever and quietly build old code.
 # Listed in zuul_to_matrix.py's PINNED_BUILD_ARGS, which enforces that
 # this default and the build-local.d pin stay equal.
-ARG INCUS_PROVIDER_REF=4eb19143f161daaf5fa46729ecbad146b6dc5916
+ARG INCUS_PROVIDER_REF=e59200b6274704652a82fdfdf368a97a45cf481c
 # pbr derives a version from git; the shallow detached checkout below
 # has no tags, so it is stated instead. The commit is the real identity
 # and it is recorded in /etc/image_info/project.txt.
