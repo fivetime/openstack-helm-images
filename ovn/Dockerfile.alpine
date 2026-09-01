@@ -86,10 +86,16 @@ RUN ./boot.sh && \
     make -j$(nproc) && \
     make DESTDIR=/install install
 
-# 从 OVS 复制必要的工具到安装目录
+# 从 OVS 复制必要的工具到安装目录。
+# 这里是【白名单】:上面 make install 把整个 OVS 装进了 builder 的 /usr,
+# 但只有列在下面的才会进最终镜像。加工具时改这里,不用另外装包。
+# ovs-ofctl 是 ovn chart 的 ovn-controller liveness 探针要用的
+# (`ovs-ofctl show br-int`),它检测 ovn-controller "活着但卡在对 br-int 的
+# rconn 重连循环里"——readiness 探针看不出来这种状态。
 RUN mkdir -p /install/usr/bin /install/usr/sbin /install/usr/share/openvswitch/scripts && \
     cp /usr/bin/ovs-vsctl /install/usr/bin/ && \
     cp /usr/bin/ovs-appctl /install/usr/bin/ && \
+    cp /usr/bin/ovs-ofctl /install/usr/bin/ && \
     cp /usr/bin/ovsdb-tool /install/usr/bin/ && \
     cp /usr/bin/ovsdb-client /install/usr/bin/ && \
     cp /usr/sbin/ovsdb-server /install/usr/sbin/ && \
