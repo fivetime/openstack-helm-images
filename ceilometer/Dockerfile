@@ -12,6 +12,12 @@ ENV PATH=/var/lib/openstack/bin:$PATH
 # entry passes the same REPO; master rows are synthesized from it.
 ARG CEILOMETER_REPO=https://github.com/fivetime/openstack-ceilometer
 ARG CEILOMETER_REF=stable/2026.1
+# python-gnocchiclient fork: percent-encodes resource ids in URL paths.
+# Cinder pool names are "<host>@<backend>#<pool>"; upstream 7.2.0 puts the
+# raw id in the path, '#' becomes a URL fragment and every resource
+# update/show/delete on a pool lands on a nonexistent resource (404).
+ARG GNOCCHICLIENT_REPO=https://github.com/fivetime/python-gnocchiclient
+ARG GNOCCHICLIENT_REF=master
 ARG PROFILES="fluent apache"
 
 # Use bindep to determine packages needed for this profile set
@@ -31,6 +37,7 @@ RUN if [ -s /etc/image_info/bindep_build.txt ]; then \
 # branch name would silently reuse the layer with stale code. The branch head
 # JSON changes on every push and forces the clone to re-run.
 ADD https://api.github.com/repos/fivetime/openstack-ceilometer/git/refs/heads/${CEILOMETER_REF} /tmp/ceilometer.ref
+ADD https://api.github.com/repos/fivetime/python-gnocchiclient/git/refs/heads/${GNOCCHICLIENT_REF} /tmp/gnocchiclient.ref
 
 RUN sed -i '/^ceilometer===/d' /upper-constraints.txt \
     && git clone --filter=blob:none -b ${CEILOMETER_REF} ${CEILOMETER_REPO} /tmp/ceilometer \
@@ -41,6 +48,11 @@ RUN sed -i '/^ceilometer===/d' /upper-constraints.txt \
          /tmp/ceilometer \
     && git -C /tmp/ceilometer log --oneline -1 > /etc/image_info/project.txt \
     && rm -rf /tmp/ceilometer \
+    && sed -i '/^gnocchiclient===/d' /upper-constraints.txt \
+    && git clone --filter=blob:none -b ${GNOCCHICLIENT_REF} ${GNOCCHICLIENT_REPO} /tmp/gnocchiclient \
+    && uv pip install --no-deps -c /upper-constraints.txt /tmp/gnocchiclient \
+    && git -C /tmp/gnocchiclient log --oneline -1 > /etc/image_info/gnocchiclient.txt \
+    && rm -rf /tmp/gnocchiclient \
     && uv pip freeze > /etc/image_info/pip.txt
 
 FROM ${BASE_RUNTIME} AS runtime
