@@ -63,6 +63,11 @@
           build_args:
             - "BASE_VENV_BUILDER=quay.io/airshipit/venv_builder:2026.1-ubuntu_noble"
             - "BASE_RUNTIME=quay.io/airshipit/base:2026.1-ubuntu_noble"
+            # fivetime fork: upstream stable/2026.1 + the volume_provider_pool
+            # ``provider`` metadata fix (see ceilometer/Dockerfile). The master
+            # row is synthesized from this entry, so the fork's master carries
+            # the same patch rebased on upstream master.
+            - "CEILOMETER_REPO=https://github.com/fivetime/openstack-ceilometer"
             - "CEILOMETER_REF=stable/2026.1"
     files: &ceilometer_files
       - ceilometer/.*

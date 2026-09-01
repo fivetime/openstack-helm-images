@@ -5,7 +5,12 @@ FROM ${BASE_VENV_BUILDER} AS build
 
 ENV PATH=/var/lib/openstack/bin:$PATH
 
-ARG CEILOMETER_REPO=https://opendev.org/openstack/ceilometer
+# fivetime fork (upstream stable/2026.1 + patches; see the fork's git log).
+# Currently carries: volume.provider.pool.* pollsters emit the ``provider``
+# metadata that gnocchi_resources.yaml requires (upstream inconsistency --
+# every polled pool capacity sample was rejected by Gnocchi). The zuul.d
+# entry passes the same REPO; master rows are synthesized from it.
+ARG CEILOMETER_REPO=https://github.com/fivetime/openstack-ceilometer
 ARG CEILOMETER_REF=stable/2026.1
 ARG PROFILES="fluent apache"
 
@@ -21,6 +26,11 @@ RUN if [ -s /etc/image_info/bindep_build.txt ]; then \
         && DEBIAN_FRONTEND=noninteractive xargs --no-run-if-empty apt-get install -y --no-install-recommends < /etc/image_info/bindep_build.txt \
         && rm -rf /var/lib/apt/lists/*; \
     fi
+
+# Cache-bust: the RUN below is keyed on its text, so a rebuild against the same
+# branch name would silently reuse the layer with stale code. The branch head
+# JSON changes on every push and forces the clone to re-run.
+ADD https://api.github.com/repos/fivetime/openstack-ceilometer/git/refs/heads/${CEILOMETER_REF} /tmp/ceilometer.ref
 
 RUN sed -i '/^ceilometer===/d' /upper-constraints.txt \
     && git clone --filter=blob:none -b ${CEILOMETER_REF} ${CEILOMETER_REPO} /tmp/ceilometer \
