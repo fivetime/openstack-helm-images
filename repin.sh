@@ -12,12 +12,16 @@ root=$(dirname "$(dirname "$(readlink -f "$0")")")
 # 文件 —— 一旦某文件已经不同步(2026-08-31 审计:raas-gitlab-runner 落后
 # 9 个提交),它的旧值匹配不上,漂移就永久固化,而 CI 的 PINNED_BUILD_ARGS
 # 校验只查 build-local.d↔同镜像 Dockerfile,跨镜像永远不报。
-repin_file() { # <新值> <文件>
-    new=$1; f=$2
-    old=$(grep -oE '[0-9a-f]{40}' "$f" | head -1)
-    if [ "$old" = "$new" ]; then echo "  $f = $new (未变)"; return 0; fi
-    sed -i "s|$old|$new|g" "$f"
-    echo "  $f → $new"
+repin_file() { # <键名> <新值> <文件>
+    key=$1; new=$2; f=$3
+    # **按键名定位,绝不按位置。** "文件里第一个 40 位 hex"在 horizon-kolla 的
+    # Dockerfile 里先命中的是 BARBICAN_UI_REF —— 2026-09-01 就这么把别的组件的
+    # pin 换成了 raas-ui 的 sha,还留下键值不一致让 CI 校验器炸(幸而它炸了)。
+    old=$(grep -oE "${key}=[0-9a-f]{40}" "$f" | head -1 | cut -d= -f2)
+    if [ -z "$old" ]; then echo "  $f: 没找到 ${key}=<sha>,跳过"; return 1; fi
+    if [ "$old" = "$new" ]; then echo "  $f ${key} = $new (未变)"; return 0; fi
+    sed -i "s|${key}=${old}|${key}=${new}|g" "$f"
+    echo "  $f ${key} → $new"
 }
 
 raas=$(git -C "$root/openstack-raas" rev-parse HEAD)
@@ -26,9 +30,9 @@ ui=$(git -C "$root/openstack-raas-ui" rev-parse HEAD)
 echo "raas:"
 for f in raas/Dockerfile build-local.d/raas.yaml \
          raas-gitlab-runner/Dockerfile build-local.d/raas-gitlab-runner.yaml; do
-    repin_file "$raas" "$f"
+    repin_file RAAS_REF "$raas" "$f"
 done
 echo "raas-ui:"
 for f in horizon-kolla/Dockerfile build-local.d/horizon-kolla.yaml; do
-    repin_file "$ui" "$f"
+    repin_file RAAS_UI_REF "$ui" "$f"
 done

@@ -48,7 +48,7 @@ ARG BLAZAR_UI_REF=master
 # fails the whole build. horizon-kolla has no business in that scan anyway --
 # it consumes no pydep.txt and needs neither psycopg2 nor confluent-kafka.
 ARG BARBICAN_UI_GIT=https://opendev.org/openstack/barbican-ui
-ARG BARBICAN_UI_REF=340c375c0c4cf497f108dd14e080f3111816da6f
+ARG BARBICAN_UI_REF=f962e455b529580c2bb0e924a6fd39185a77ec16
 # These two are on PyPI; 18.0.0 and 20.0.0 are the 2026.1 releases.
 ARG FREEZER_WEB_UI_VERSION=18.0.0
 ARG ZAQAR_UI_VERSION=20.0.0
@@ -62,7 +62,7 @@ ARG ZAQAR_UI_VERSION=20.0.0
 # Same *_GIT (not *_REPO) naming as barbican-ui, for the same
 # generate_pydep.py reason.
 ARG RAAS_UI_GIT=https://github.com/fivetime/openstack-raas-ui
-ARG RAAS_UI_REF=0892999f8c47e1f06b9e89758c262d61cc36f1d3
+ARG RAAS_UI_REF=340c375c0c4cf497f108dd14e080f3111816da6f
 
 # A pip install from a moving branch is one unchanging RUN line, so the
 # layer is reused and the branch's new commits never arrive -- an image
