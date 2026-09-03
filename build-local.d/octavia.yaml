@@ -24,5 +24,5 @@
             - OVN_PROVIDER_REF=stable/2026.1
             # 私有仓库,钉 commit;与 Dockerfile 的 ARG 默认值由
             # PINNED_BUILD_ARGS 强制一致。发版时两处同改。
-            - INCUS_PROVIDER_REF=8e34dd0e97909fc4253d4b7660a37d6e5c3b9d46
+            - INCUS_PROVIDER_REF=6525e1305fdc64decf6ad60ca088f06fca54a4d4
             - CONSTRAINTS=https://opendev.org/openstack/requirements/raw/branch/stable/2026.1/upper-constraints.txt
