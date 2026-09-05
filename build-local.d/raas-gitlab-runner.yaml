@@ -25,4 +25,4 @@
             # v18.3.0-1879-g73349bfb7,即未发布代码。
             - RUNNER_REF=v19.3.1
             # 与 raas 镜像同一个 pin:两个镜像装的是同一份代码的不同入口。
-            - RAAS_REF=ed800259715ffbdc58f2101e0af3d95c93b8edd1
+            - RAAS_REF=e973bb3a8851f4eb7ab4bc22153e3f13f49ca4a5
