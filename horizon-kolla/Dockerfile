@@ -69,7 +69,7 @@ ARG RAAS_UI_REF=e6ffd0ce555c143ef9525761db4637c374397574
 # Private and pinned by commit for the same reasons as raas-ui above, and
 # DAAS_UI_REF is likewise in PINNED_BUILD_ARGS.
 ARG DAAS_UI_GIT=https://github.com/fivetime/openstack-daas-ui
-ARG DAAS_UI_REF=6bfcf41ede99f88973cfe258e11d16abcd953b65
+ARG DAAS_UI_REF=898105c1c0d23c0f4b90818d053461d1b621adb2
 
 # A pip install from a moving branch is one unchanging RUN line, so the
 # layer is reused and the branch's new commits never arrive -- an image
