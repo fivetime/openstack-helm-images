@@ -26,4 +26,4 @@
             # Dockerfile's ARG default (PINNED_BUILD_ARGS enforces it).
             - RAAS_UI_REF=e6ffd0ce555c143ef9525761db4637c374397574
             # daas-ui: same rules as raas-ui (private, pinned by commit).
-            - DAAS_UI_REF=c87f0f10c4e3d836752f703a037252ff346b5ce4
+            - DAAS_UI_REF=fa02e66f7a1e54afa48dbfdb14c283c1c78c68a1
