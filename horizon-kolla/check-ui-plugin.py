@@ -1,26 +1,32 @@
-"""Build-time guard for the raas-ui Horizon plugin.
+"""Build-time guard for a Horizon plugin in this image.
 
-Runs inside the horizon-kolla image after raas-ui is installed. Fails the
-build if any app is added to INSTALLED_APPS by more than one enabled file:
-Django refuses to start on a duplicate label, which takes all of Horizon
-down, and only a live Horizon would otherwise report it (2026-08-25).
+Takes the plugin's module name (``raas_ui``, ``daas_ui``) and runs
+inside horizon-kolla after it is installed. Fails the build if any app
+is added to INSTALLED_APPS by more than one enabled file: Django refuses
+to start on a duplicate label, which takes all of Horizon down, and only
+a live Horizon would otherwise report it (2026-08-25).
+
+One checker for every plugin rather than one per plugin: the second copy
+is where the check quietly stops matching what the first one learned.
 """
 import collections
 import importlib
 import pkgutil
 import sys
 
-import raas_ui.enabled as pkg
+module = sys.argv[1] if len(sys.argv) > 1 else "raas_ui"
+pkg = importlib.import_module(module + ".enabled")
 
 seen = collections.defaultdict(list)
 names = [m.name for m in pkgutil.iter_modules(pkg.__path__)]
 for name in names:
-    mod = importlib.import_module("raas_ui.enabled." + name)
+    mod = importlib.import_module(module + ".enabled." + name)
     for app in getattr(mod, "ADD_INSTALLED_APPS", []):
         seen[app].append(name)
 dup = {a: f for a, f in seen.items() if len(f) > 1}
 if dup:
-    sys.exit("raas-ui: ADD_INSTALLED_APPS declared in more than one enabled file: %r" % dup)
+    sys.exit("%s: ADD_INSTALLED_APPS declared in more than one enabled "
+             "file: %r" % (module, dup))
 # 未定义的名字(比如用了 api.raas.* 却忘了 import api)只有**运行到那一行**
 # 才会 NameError:compileall 过、导入 enabled 也过,直到租户在面板上点了按钮才炸。
 # 2026-08-26 就是这样:admin 面板批量删除的 62 条全部失败,提示只有一句
@@ -33,5 +39,7 @@ proc = subprocess.run([sys.executable, "-m", "pyflakes", pkg.__path__[0].rsplit(
                       capture_output=True, text=True)
 undefined = [ln for ln in proc.stdout.splitlines() if "undefined name" in ln]
 if undefined:
-    sys.exit("raas-ui: undefined names (would NameError at runtime):\n  " + "\n  ".join(undefined))
-print("raas-ui guard: %d enabled files, apps=%s, no undefined names" % (len(names), dict(seen)))
+    sys.exit("%s: undefined names (would NameError at runtime):\n  %s"
+             % (module, "\n  ".join(undefined)))
+print("%s guard: %d enabled files, apps=%s, no undefined names"
+      % (module, len(names), dict(seen)))

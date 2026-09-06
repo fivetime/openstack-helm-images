@@ -64,6 +64,13 @@ ARG ZAQAR_UI_VERSION=20.0.0
 ARG RAAS_UI_GIT=https://github.com/fivetime/openstack-raas-ui
 ARG RAAS_UI_REF=ec5d560d140b9d9098b018a07dc103bc953cfc05
 
+# daas-ui: the DaaS (Docker-as-a-Service) Horizon panels -- how a tenant
+# opens an account and gets the certificate their docker client needs.
+# Private and pinned by commit for the same reasons as raas-ui above, and
+# DAAS_UI_REF is likewise in PINNED_BUILD_ARGS.
+ARG DAAS_UI_GIT=https://github.com/fivetime/openstack-daas-ui
+ARG DAAS_UI_REF=6bfcf41ede99f88973cfe258e11d16abcd953b65
+
 # A pip install from a moving branch is one unchanging RUN line, so the
 # layer is reused and the branch's new commits never arrive -- an image
 # that looks rebuilt and is not. Fetching the ref itself first makes the
@@ -104,14 +111,15 @@ RUN curl -fsSL "https://releases.openstack.org/constraints/upper/${RELEASE}" \
        && grep -q 'endpoint_override=blazar_url' \
             /var/lib/kolla/venv/lib/python3*/site-packages/blazar_dashboard/api/client.py
 
-# raas-ui goes in its own layer with the secret mount, kept apart from the
-# public plugins above so a token rotation or raas-ui bump does not
-# invalidate their (slow, constraint-resolving) layer. CI supplies
+# The fivetime panels (raas-ui, daas-ui) go in their own layer with the
+# secret mount, kept apart from the public plugins above so a token
+# rotation or a panel bump does not invalidate their (slow,
+# constraint-resolving) layer. CI supplies
 # src_repo_token (from CR_PAT); the token and the git url rewrite live only
 # inside this RUN and reach no image layer. With the secret absent (local
 # build, or the repo made public) it falls through to an anonymous clone.
 # build context is the repo root (build-local.d: context: .), so the source path is qualified
-COPY horizon-kolla/check-raas-ui-enabled.py /tmp/check-raas-ui-enabled.py
+COPY horizon-kolla/check-ui-plugin.py /tmp/check-ui-plugin.py
 RUN --mount=type=secret,id=src_repo_token \
     if ! command -v git >/dev/null; then \
         apt-get update && apt-get install -y --no-install-recommends git \
@@ -124,10 +132,12 @@ RUN --mount=type=secret,id=src_repo_token \
     fi \
     && PBR_VERSION=0.1.0 /var/lib/kolla/venv/bin/pip install --no-cache-dir \
         "raas-ui @ git+${RAAS_UI_GIT}@${RAAS_UI_REF}" \
+        "daas-ui @ git+${DAAS_UI_GIT}@${DAAS_UI_REF}" \
     && rm -f /root/.gitconfig \
-    && /var/lib/kolla/venv/bin/pip show raas-ui | grep -E "Name|Version" \
+    && /var/lib/kolla/venv/bin/pip show raas-ui daas-ui | grep -E "Name|Version" \
     # same silent-skip guard as the four above: extra_panels needs enabled/
     && ls /var/lib/kolla/venv/lib/python3*/site-packages/raas_ui/enabled/_[1-9]*.py >/dev/null \
+    && ls /var/lib/kolla/venv/lib/python3*/site-packages/daas_ui/enabled/_[1-9]*.py >/dev/null \
     # and the plugin must at least compile and its enabled/ modules import.
     # A *full* import (panel, api) is deliberately NOT attempted at build
     # time: it drags in openstack_dashboard.api -> openstack_auth -> Django
@@ -138,10 +148,13 @@ RUN --mount=type=secret,id=src_repo_token \
     # whether the panel actually renders was verified against a live Horizon.
     && /var/lib/kolla/venv/bin/python3 -m compileall -q \
          /var/lib/kolla/venv/lib/python3*/site-packages/raas_ui \
+         /var/lib/kolla/venv/lib/python3*/site-packages/daas_ui \
     && /var/lib/kolla/venv/bin/python3 -c "import raas_ui.enabled._2810_project_ci_panel_group, raas_ui.enabled._2820_project_runners_panel" \
+    && /var/lib/kolla/venv/bin/python3 -c "import daas_ui.enabled._2910_project_daas_panel_group, daas_ui.enabled._2920_project_daas_overview_panel" \
     # pyflakes 只在构建期用:装、跑、卸,不留在镜像里
     && /var/lib/kolla/venv/bin/pip install --no-cache-dir pyflakes \
-    && python3 /tmp/check-raas-ui-enabled.py \
+    && /var/lib/kolla/venv/bin/python3 /tmp/check-ui-plugin.py raas_ui \
+    && /var/lib/kolla/venv/bin/python3 /tmp/check-ui-plugin.py daas_ui \
     && /var/lib/kolla/venv/bin/pip uninstall -y pyflakes \
-    && rm -f /tmp/check-raas-ui-enabled.py
+    && rm -f /tmp/check-ui-plugin.py
 USER horizon
