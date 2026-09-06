@@ -24,4 +24,4 @@
             - RELEASE=2026.1
             # raas-ui is private and pinned by commit; must equal the
             # Dockerfile's ARG default (PINNED_BUILD_ARGS enforces it).
-            - RAAS_UI_REF=afe9bf386366b4ca9eb29663beb7707da34f1769
+            - RAAS_UI_REF=7ab575e4c6987c7f54ba56ca5474e9cd6c191661
