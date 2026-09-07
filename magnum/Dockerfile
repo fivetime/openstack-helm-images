@@ -13,12 +13,16 @@ ARG MAGNUM_REF=stable/2026.1
 # the Rust extension with include_dir!, so the CSI controller-plugin DNS fix only
 # takes effect if the wheel itself is rebuilt -- patching the chart files that land
 # in site-packages does nothing at all. That is why the Rust toolchain is here.
-# The branch is cut at the 0.38.1 release commit plus that one chart fix.
+# The tag is cut at the 0.38.2 release commit plus that chart fix and the
+# RuntimeClass addon: the driver creates a RuntimeClass for every handler the
+# node image ships, so a tenant can name one in their own YAML. Without it the
+# handlers are installed on the node and unusable -- RuntimeClass is a
+# cluster-scoped object and the image cannot ship one.
 ARG MAGNUM_CLUSTER_API_REPO=https://github.com/fivetime/magnum-cluster-api.git
 # Must be a tag, not a branch: build.rs feeds git describe into VERGEN_GIT_DESCRIBE,
 # which names the ClusterClass and is asserted non-empty at compile time. A shallow
 # branch clone carries no tags and the build fails there.
-ARG MAGNUM_CLUSTER_API_REF=v0.38.1-fivetime.2
+ARG MAGNUM_CLUSTER_API_REF=v0.38.2-fivetime.1
 ARG PROFILES=""
 
 # Use bindep to determine packages needed for this profile set
