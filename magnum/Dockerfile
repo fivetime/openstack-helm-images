@@ -13,16 +13,25 @@ ARG MAGNUM_REF=stable/2026.1
 # the Rust extension with include_dir!, so the CSI controller-plugin DNS fix only
 # takes effect if the wheel itself is rebuilt -- patching the chart files that land
 # in site-packages does nothing at all. That is why the Rust toolchain is here.
-# The tag is cut at the 0.38.2 release commit plus that chart fix and the
-# RuntimeClass addon: the driver creates a RuntimeClass for every handler the
-# node image ships, so a tenant can name one in their own YAML. Without it the
-# handlers are installed on the node and unusable -- RuntimeClass is a
-# cluster-scoped object and the image cannot ship one.
+# The tag is cut at the 0.38.2 release commit plus that chart fix and two
+# additions:
+#   - the RuntimeClass addon: the driver creates a RuntimeClass for every handler
+#     the node image ships, so a tenant can name one in their own YAML. Without
+#     it the handlers are installed on the node and unusable -- RuntimeClass is a
+#     cluster-scoped object and the image cannot ship one.
+#   - the Manila StorageClass gate: it used to publish a StorageClass only when
+#     the cluster carried a manila_csi_share_network_id label, so on this
+#     DHSS=False cloud the Manila CSI plugin was installed, running and unusable
+#     -- no StorageClass, so no RWX, while every component reported healthy. Now
+#     it gates on driver_handles_share_servers instead.
+# The StorageClass half only became safe to ship once Manila actually served NFS,
+# which needed ceph/ceph#69250 (see Rook-Ceph-Deploy.md 6.9). Before that it would
+# have published a StorageClass whose PVCs could never bind.
 ARG MAGNUM_CLUSTER_API_REPO=https://github.com/fivetime/magnum-cluster-api.git
 # Must be a tag, not a branch: build.rs feeds git describe into VERGEN_GIT_DESCRIBE,
 # which names the ClusterClass and is asserted non-empty at compile time. A shallow
 # branch clone carries no tags and the build fails there.
-ARG MAGNUM_CLUSTER_API_REF=v0.38.2-fivetime.1
+ARG MAGNUM_CLUSTER_API_REF=v0.38.2-fivetime.2
 ARG PROFILES=""
 
 # Use bindep to determine packages needed for this profile set
