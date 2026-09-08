@@ -43,7 +43,7 @@ FROM docker.io/library/golang:${PLUGIN_GOLANG_VERSION}-alpine AS plugin-build
 ARG RAAS_REPO=https://github.com/fivetime/openstack-raas.git
 # 与 raas 镜像同一个 pin。两个镜像装的是同一份代码的不同入口,
 # 版本对不上时插件与编排器的 HTTP 契约可能已经改了。
-ARG RAAS_REF=ba0f9efa3789f23f6688b425c68150b74a6c3499
+ARG RAAS_REF=bf2b3b12ca2dfffdf072e6ce3bfef8b73151fe91
 
 RUN --mount=type=secret,id=src_repo_token \
     apk add --no-cache git \
