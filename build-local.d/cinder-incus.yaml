@@ -13,4 +13,4 @@
           tags:
             - 2026.1-alpine_3.23
           build_args:
-            - NOVA_INCUS_REF=1fd037c4794cbc46bc1448b948d887ff215591de
+            - NOVA_INCUS_REF=1bcd15f5c789631152924e6bdcea4fb249b2bcb8

@@ -5,7 +5,7 @@ FROM ${CINDER_BASE}
 
 USER root
 ARG NOVA_INCUS_REPO=https://github.com/fivetime/nova-incus-driver.git
-ARG NOVA_INCUS_REF=1fd037c4794cbc46bc1448b948d887ff215591de
+ARG NOVA_INCUS_REF=1bcd15f5c789631152924e6bdcea4fb249b2bcb8
 
 RUN --mount=type=secret,id=src_repo_token \
     grep -q d884fdaeb78cc9fcd331cc9426844d0ef2d9890e /etc/image_info/project.txt \
