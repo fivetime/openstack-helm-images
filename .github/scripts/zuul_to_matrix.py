@@ -145,6 +145,7 @@ def render_image(img: dict, owner: str, job_name: str = "") -> dict | None:
         "primary_tag": full_tags[0],
         "release": extract_release(raw_tags),
         "repository": repo,
+        "synthesize_master": img.get("synthesize_master", True),
     }
 
 
@@ -200,7 +201,8 @@ def synthesize_master(row: dict, owner: str) -> dict | None:
        workflow ``needs:`` chain), but it makes the master image set
        genuinely independent of upstream Periodic.
     """
-    if row["release"] != "2026.1":
+    if (row["release"] != "2026.1" or
+            not row.get("synthesize_master", True)):
         return None
 
     # Synthesize only the 2026.1-bearing tags (rewritten to master). Tags

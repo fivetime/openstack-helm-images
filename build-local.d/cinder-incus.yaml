@@ -1,0 +1,16 @@
+---
+- job:
+    name: build-local-cinder-incus
+    description: Add idempotent service attachment reservations to pinned Cinder.
+    vars:
+      container_images:
+        - context: cinder
+          repository: openstackhelm/cinder-incus
+          container_filename: Dockerfile.incus
+          synthesize_master: false
+          arch:
+            - linux/amd64
+          tags:
+            - 2026.1-alpine_3.23
+          build_args:
+            - NOVA_INCUS_REF=1fd037c4794cbc46bc1448b948d887ff215591de
