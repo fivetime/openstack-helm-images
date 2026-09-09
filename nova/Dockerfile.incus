@@ -10,7 +10,7 @@ ENV PATH=/var/lib/openstack/bin:$PATH
 ARG NOVA_REPO=https://opendev.org/openstack/nova
 ARG NOVA_REF=8595b8eed4d0cabf6a7db04b0d946cf764187965
 ARG NOVA_INCUS_REPO=https://github.com/fivetime/nova-incus-driver.git
-ARG NOVA_INCUS_REF=f4756c6c826e403e07ebe696fb2db226ca569bfe
+ARG NOVA_INCUS_REF=c37b5430a3d2dcbf15c0bca5b6e28be673540182
 ARG INCUS_SDK_REPO=https://github.com/fivetime/incus-python-sdk.git
 ARG INCUS_SDK_REF=4078fd46ae955e87c2fbd8eb3e75a283c60a594b
 ARG REQUIREMENTS_REPO=https://opendev.org/openstack/requirements
@@ -64,6 +64,8 @@ RUN --mount=type=secret,id=src_repo_token \
         /tmp/nova-incus/patches/nova/0005-compute-add-failed-build-allocation-policy.patch \
  && git -C /tmp/nova apply \
         /tmp/nova-incus/patches/nova/0006-sdk-user-token-honor-service-config.patch \
+ && git -C /tmp/nova apply \
+        /tmp/nova-incus/patches/nova/0007-compute-add-rebuild-attachment-hooks.patch \
  && mkdir -p /tmp/nova/nova/virt/incus \
  && cp -a /tmp/nova-incus/nova/virt/incus/. /tmp/nova/nova/virt/incus/ \
  && git -C /tmp/nova add -f nova/virt/incus \
