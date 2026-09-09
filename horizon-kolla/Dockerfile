@@ -62,7 +62,7 @@ ARG ZAQAR_UI_VERSION=20.0.0
 # Same *_GIT (not *_REPO) naming as barbican-ui, for the same
 # generate_pydep.py reason.
 ARG RAAS_UI_GIT=https://github.com/fivetime/openstack-raas-ui
-ARG RAAS_UI_REF=b584b423f25257c8449d407c16e85db05c53e256
+ARG RAAS_UI_REF=ff376ab96a420275608bd667f714ef698d55b51b
 
 # daas-ui: the DaaS (Docker-as-a-Service) Horizon panels -- how a tenant
 # opens an account and gets the certificate their docker client needs.
