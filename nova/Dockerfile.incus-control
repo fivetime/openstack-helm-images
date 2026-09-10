@@ -3,7 +3,7 @@
 FROM alpine:3.23 AS source
 
 ARG NOVA_INCUS_REPO=https://github.com/fivetime/nova-incus-driver.git
-ARG NOVA_INCUS_REF=64c43eb702be3300f5e6a5ba1e52791e6cda79fc
+ARG NOVA_INCUS_REF=593efb36718ddac53d11316cc7096e09a5597b17
 
 RUN apk add --no-cache git
 RUN --mount=type=secret,id=src_repo_token \
@@ -34,6 +34,8 @@ COPY --from=source /src/patches/nova/0003-compute-allow-incus-manila-live-migrat
     /tmp/0003-compute-allow-incus-manila-live-migration.patch
 COPY --from=source /src/patches/nova/0006-sdk-user-token-honor-service-config.patch \
     /tmp/0006-sdk-user-token-honor-service-config.patch
+COPY --from=source /src/patches/nova/0008-compute-allow-container-bfv-rescue.patch \
+    /tmp/0008-compute-allow-container-bfv-rescue.patch
 
 RUN cd /var/lib/openstack/lib/python3.12/site-packages \
  && git apply --no-index \
@@ -47,9 +49,13 @@ RUN cd /var/lib/openstack/lib/python3.12/site-packages \
  && git apply --no-index \
       --include=nova/utils.py \
       /tmp/0006-sdk-user-token-honor-service-config.patch \
+ && git apply --no-index \
+      --include=nova/compute/api.py \
+      /tmp/0008-compute-allow-container-bfv-rescue.patch \
  && rm -f /tmp/0002-hardware-accept-incus-manila-share-trait.patch \
       /tmp/0003-compute-allow-incus-manila-live-migration.patch \
-      /tmp/0006-sdk-user-token-honor-service-config.patch
+      /tmp/0006-sdk-user-token-honor-service-config.patch \
+      /tmp/0008-compute-allow-container-bfv-rescue.patch
 
 RUN python3 - <<'PY'
 from pathlib import Path
@@ -85,6 +91,7 @@ assert 'CUSTOM_INCUS_MANILA_LIVE_MIGRATION' in inspect.getsource(
 assert hasattr(manager.ComputeManager, '_prepare_live_migration_check_data')
 assert hasattr(manager.ComputeManager, '_complete_live_migration_rollback')
 assert 'oslo_conf=CONF' in inspect.getsource(utils.get_sdk_adapter)
+assert 'CUSTOM_INCUS_SYSTEM_CONTAINER' in inspect.getsource(api.API.rescue)
 print('Nova Incus control-plane migrate-data 1.6 OK')
 print('Nova Incus control-plane Manila migration contract OK')
 print('Nova user-token SDK service configuration OK')
