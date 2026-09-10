@@ -125,6 +125,14 @@ RUN apk add --no-cache \
         sudo util-linux \
  && rm -rf /var/cache/apk/* /etc/machine-id
 
+# Alpine's ctypes lookup maps crypt to c, while the musl runtime package only
+# installs the architecture-qualified loader name. Expose that native libc
+# through the lookup name used by oslo.utils without adding development tools.
+RUN set -- /lib/ld-musl-*.so.1 \
+ && test "$#" = 1 \
+ && test -f "$1" \
+ && ln -s "$1" /usr/lib/libc.so
+
 COPY --from=build --link /var/lib/openstack /var/lib/openstack
 COPY --from=build /etc/image_info /etc/image_info
 COPY --from=build /upper-constraints.txt /
@@ -174,6 +182,7 @@ RUN export PYTHONDONTWRITEBYTECODE=1 \
           { echo "MISSING ${command}"; exit 1; }; \
     done \
  && /usr/bin/timeout --version | grep -q '^timeout (GNU coreutils)' \
+ && python3 -c "from oslo_utils import secretutils; salt = secretutils.crypt_mksalt('SHA-512'); hashed = secretutils.crypt_password('incus-rescue-build-probe', salt); assert hashed.startswith(salt); assert len(hashed.split(chr(36))[-1]) == 86; assert secretutils.crypt_password('incus-rescue-build-probe', hashed) == hashed; print('Nova Incus rescue SHA-512 password hashing OK')" \
  && python3 -c "from nova.virt.incus.driver import IncusDriver; print('Nova Incus driver OK')" \
  && python3 -c "from nova.virt.incus.manager import IncusComputeManager; assert IncusComputeManager.__module__ == 'nova.virt.incus.manager'; print('Nova Incus compute manager OK')" \
  && python3 -c "from nova.virt.incus.migrate_data import IncusLiveMigrateData; assert IncusLiveMigrateData.VERSION == '1.6'; print('Nova Incus migrate-data 1.6 OK')" \
