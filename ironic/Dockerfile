@@ -7,7 +7,7 @@ ENV PATH=/var/lib/openstack/bin:$PATH
 
 ARG IRONIC_REPO=https://opendev.org/openstack/ironic
 ARG IRONIC_REF=stable/2026.1
-ARG PROFILES="fluent ipxe ipmi qemu tftp configdrive"
+ARG PROFILES="fluent ipxe ipmi qemu tftp configdrive bios"
 
 # Use bindep to determine packages needed for this profile set
 COPY bindep.txt pydep.txt /opt/
