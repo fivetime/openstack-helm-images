@@ -30,5 +30,5 @@ RUN echo "125dc2fbdbad8a65e89c4139d43e650ed84fe60985907fd723a8f2adc597385e  ${SI
 COPY --from=source /src/vif_plug_ovs/linux_net.py ${SITE}/vif_plug_ovs/linux_net.py
 RUN echo "7a882494ae558758b771c5baaa8c628b2ad414df4567c8adcf78752be162215d  ${SITE}/vif_plug_ovs/linux_net.py" | sha256sum -c - \
  && find ${SITE}/vif_plug_ovs -name '__pycache__' -type d -prune -exec rm -rf {} + \
- && /var/lib/openstack/bin/python3 -c "import inspect, vif_plug_ovs.linux_net as l; s = inspect.getsource(l.create_tap); i = s.index('_disable_ipv6(dev)'); j = s.index(\"ip_lib.set(dev, state='up'\"); assert i < j, 'IPv6 must be disabled before the tap goes up'; print('os-vif create_tap patch active')" \
+ && /var/lib/openstack/bin/python3 -c "import vif_plug_ovs.linux_net as l; s = open(l.__file__).read(); f = s[s.index('def create_tap('):]; f = f[:f.index('\ndef ', 1)]; assert f.index('_disable_ipv6(dev)') < f.index(\"ip_lib.set(dev, state='up'\"), 'IPv6 must be disabled before the tap goes up'; print('os-vif create_tap patch active')" \
  && echo "os-vif vif_plug_ovs/linux_net.py from fivetime/openstack-os-vif@${OS_VIF_REF}" >> /etc/image_info/project.txt
