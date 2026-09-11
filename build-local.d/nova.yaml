@@ -23,6 +23,25 @@
             - REQUIREMENTS_REF=06cd4e8523cbade25fb93efc4f8ea77d6d97064f
 
 - job:
+    name: build-local-nova-osvif
+    description: >-
+      Upstream Nova compute image with os-vif's create_tap disabling IPv6 on the
+      tap before bringing it up (the tap carries the instance MAC, so the host's
+      DAD NS for the guest link-local otherwise lands in the guest queue).
+      Only nova_compute uses it; see OpenStack-Helm-Deploy.md §9.4.
+    vars:
+      container_images:
+        - context: nova
+          repository: openstackhelm/nova-osvif
+          container_filename: Dockerfile.osvif
+          arch:
+            - linux/amd64
+          tags:
+            - 2026.1-ubuntu_noble
+          build_args:
+            - OS_VIF_REF=4dafdda9b259ad4334344bb2ad8bc8758516a21f
+
+- job:
     name: build-local-nova-incus-control
     description: Add the Incus RPC and Manila contracts to the Nova control image.
     vars:

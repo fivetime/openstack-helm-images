@@ -1,0 +1,34 @@
+# syntax=docker/dockerfile:1
+# Upstream Nova compute image plus one os-vif fix (OpenStack-Helm-Deploy.md §9.4,
+# "os-vif 建的 tap 必须关 IPv6").
+#
+# With Neutron [ovn] ovs_create_tap (default on in 2026.1) os-vif creates the tap
+# itself, gives it the instance's MAC and brings it up with IPv6 on. The host then
+# runs DAD for the instance's own link-local address and that NS is queued towards
+# the guest; ~40% of Ubuntu 26.04 boots marked their link-local dadfailed. The fork
+# commit disables IPv6 on the tap before bringing it up.
+#
+# Only vif_plug_ovs/linux_net.py changes. Everything else is byte-for-byte the image
+# already running on the compute nodes, pinned by digest because the Airship tag is
+# mutable (on 2026-09-11 five nodes ran three digests of it, all nova 68fdaf29e6).
+
+FROM alpine:3.23 AS source
+ARG OS_VIF_REPO=https://github.com/fivetime/openstack-os-vif.git
+ARG OS_VIF_REF=4dafdda9b259ad4334344bb2ad8bc8758516a21f
+RUN apk add --no-cache git
+RUN git init /src \
+ && git -C /src remote add origin "${OS_VIF_REPO}" \
+ && git -C /src fetch --depth=1 origin "${OS_VIF_REF}" \
+ && git -C /src checkout --detach FETCH_HEAD
+
+FROM quay.io/airshipit/nova@sha256:026e89b48edb4252e465d6c2d5e184a5d84c6ed75add3556a1b87dc6459abbd9
+ARG OS_VIF_REF=4dafdda9b259ad4334344bb2ad8bc8758516a21f
+ARG SITE=/var/lib/openstack/lib/python3.12/site-packages
+# The base must still carry os-vif 4.3.0's linux_net.py, otherwise overlaying the
+# forked file would silently swap more than this one fix.
+RUN echo "125dc2fbdbad8a65e89c4139d43e650ed84fe60985907fd723a8f2adc597385e  ${SITE}/vif_plug_ovs/linux_net.py" | sha256sum -c -
+COPY --from=source /src/vif_plug_ovs/linux_net.py ${SITE}/vif_plug_ovs/linux_net.py
+RUN echo "7a882494ae558758b771c5baaa8c628b2ad414df4567c8adcf78752be162215d  ${SITE}/vif_plug_ovs/linux_net.py" | sha256sum -c - \
+ && find ${SITE}/vif_plug_ovs -name '__pycache__' -type d -prune -exec rm -rf {} + \
+ && /var/lib/openstack/bin/python3 -c "import inspect, vif_plug_ovs.linux_net as l; s = inspect.getsource(l.create_tap); i = s.index('_disable_ipv6(dev)'); j = s.index(\"ip_lib.set(dev, state='up'\"); assert i < j, 'IPv6 must be disabled before the tap goes up'; print('os-vif create_tap patch active')" \
+ && echo "os-vif vif_plug_ovs/linux_net.py from fivetime/openstack-os-vif@${OS_VIF_REF}" >> /etc/image_info/project.txt
