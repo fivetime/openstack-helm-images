@@ -8,4 +8,4 @@
           arch: [linux/amd64, linux/arm64]
           tags: [latest]
           build_args:
-            - NETWORK_EXPORTER_REF=903e487e655489bdf1b0b3c89a6872416f09e8b3
+            - NETWORK_EXPORTER_REF=80735ae4d9573b559af164f4de63cf645381d428
