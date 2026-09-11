@@ -1,0 +1,11 @@
+- job:
+    name: build-local-openstack-exporter
+    vars:
+      container_images:
+        - context: openstack-exporter
+          repository: openstackhelm/openstack-exporter
+          container_filename: Dockerfile
+          arch: [linux/amd64, linux/arm64]
+          tags: [latest]
+          build_args:
+            - OPENSTACK_EXPORTER_REF=3a618e3477808360a09a398a418d51a93c617179

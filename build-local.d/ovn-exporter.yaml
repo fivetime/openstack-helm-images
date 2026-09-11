@@ -1,0 +1,11 @@
+- job:
+    name: build-local-ovn-exporter
+    vars:
+      container_images:
+        - context: ovn-exporter
+          repository: openstackhelm/ovn-exporter
+          container_filename: Dockerfile
+          arch: [linux/amd64, linux/arm64]
+          tags: [latest]
+          build_args:
+            - OVN_EXPORTER_REF=37a6c153dc42412b1fa1c9e89d88aad31f425c47

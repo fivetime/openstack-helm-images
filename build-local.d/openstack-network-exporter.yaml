@@ -1,0 +1,11 @@
+- job:
+    name: build-local-openstack-network-exporter
+    vars:
+      container_images:
+        - context: openstack-network-exporter
+          repository: openstackhelm/openstack-network-exporter
+          container_filename: Dockerfile
+          arch: [linux/amd64, linux/arm64]
+          tags: [latest]
+          build_args:
+            - NETWORK_EXPORTER_REF=903e487e655489bdf1b0b3c89a6872416f09e8b3

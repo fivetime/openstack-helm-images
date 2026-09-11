@@ -1,0 +1,11 @@
+- job:
+    name: build-local-ovs-exporter
+    vars:
+      container_images:
+        - context: ovs-exporter
+          repository: openstackhelm/ovs-exporter
+          container_filename: Dockerfile
+          arch: [linux/amd64, linux/arm64]
+          tags: [latest]
+          build_args:
+            - OVS_EXPORTER_REF=451d360dab8c76fa01c0c511102e3d42e16a0a92
