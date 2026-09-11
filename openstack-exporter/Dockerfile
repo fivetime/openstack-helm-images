@@ -1,11 +1,10 @@
 # openstack-exporter for Prometheus. Built from the fivetime fork, which
-# tolerates the legacy Nova security groups endpoint being gone and string
-# typed cpu_info fields (nova-incus) in the hypervisor listing.
+# tolerates the legacy Nova security groups endpoint being gone.
 ARG GOLANG_VERSION=1.26
 ARG ALPINE_VERSION=3.22
 FROM docker.io/library/golang:${GOLANG_VERSION}-alpine AS build
 ARG OPENSTACK_EXPORTER_REPO=https://github.com/fivetime/openstack-exporter.git
-ARG OPENSTACK_EXPORTER_REF=3a618e3477808360a09a398a418d51a93c617179
+ARG OPENSTACK_EXPORTER_REF=5efc4796af8b312a605c01c35856afee3d3bac25
 RUN apk add --no-cache git \
  && git init /src && git -C /src remote add origin "${OPENSTACK_EXPORTER_REPO}" \
  && git -C /src fetch --depth=1 origin "${OPENSTACK_EXPORTER_REF}" \
