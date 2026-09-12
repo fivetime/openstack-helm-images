@@ -5,7 +5,7 @@ ARG GOLANG_VERSION=1.26
 ARG ALPINE_VERSION=3.22
 FROM docker.io/library/golang:${GOLANG_VERSION}-alpine AS build
 ARG NETWORK_EXPORTER_REPO=https://github.com/fivetime/openstack-network-exporter.git
-ARG NETWORK_EXPORTER_REF=b29a6192e2597234fceb01b96d58edfc9b99d8f5
+ARG NETWORK_EXPORTER_REF=343e2278a4943a0c5b151192ed7797bb0be2f7cb
 RUN apk add --no-cache git \
  && git init /src && git -C /src remote add origin "${NETWORK_EXPORTER_REPO}" \
  && git -C /src fetch --depth=1 origin "${NETWORK_EXPORTER_REF}" \
