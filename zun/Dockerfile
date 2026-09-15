@@ -1,6 +1,25 @@
 # syntax=docker/dockerfile:1
 ARG BASE_VENV_BUILDER=quay.io/airshipit/venv_builder:2025.2-ubuntu_noble
 ARG BASE_RUNTIME=quay.io/airshipit/base:2025.2-ubuntu_noble
+ARG GOLANG_VERSION=1.26
+
+# The CNI plugin binary the container runtime executes on the *host*
+# (tools/zun-cni-shim in the fork). zun's own `zun-cni` console script cannot
+# serve there: its shebang points at this image's Python, which the host does
+# not have. The shim is static, forwards the call to zun-cni-daemon's /cni
+# endpoint, and needs nothing on the host. The chart's cni-daemon DaemonSet
+# copies it to the host's CNI bin dir.
+FROM docker.io/library/golang:${GOLANG_VERSION}-alpine AS cni-shim
+ARG ZUN_REPO=https://opendev.org/openstack/zun
+ARG ZUN_REF=stable/2026.1
+ADD https://api.github.com/repos/fivetime/openstack-zun/git/refs/heads/master /tmp/zun.ref
+RUN apk add --no-cache git \
+ && git clone --depth 1 -b ${ZUN_REF} ${ZUN_REPO} /src \
+ && cd /src/tools/zun-cni-shim \
+ && CGO_ENABLED=0 go test ./... \
+ && CGO_ENABLED=0 go build -trimpath -ldflags "-s -w" -o /out/zun-cni . \
+ && git -C /src log --oneline -1 > /out/zun-cni.txt
+
 FROM ${BASE_VENV_BUILDER} AS build
 
 ENV PATH=/var/lib/openstack/bin:$PATH
@@ -49,6 +68,11 @@ ENV PATH=/var/lib/openstack/bin:$PATH
 COPY --from=build --link /var/lib/openstack /var/lib/openstack
 COPY --from=build /etc/image_info /etc/image_info
 COPY --from=build /upper-constraints.txt /
+COPY --from=cni-shim /out/zun-cni /usr/local/libexec/zun/zun-cni
+COPY --from=cni-shim /out/zun-cni.txt /etc/image_info/zun-cni.txt
+# Fails the build if the shim does not run as-is (it must, on any host).
+RUN CNI_COMMAND=VERSION /usr/local/libexec/zun/zun-cni </dev/null \
+      | grep -q '"supportedVersions":\["0.3.1"\]'
 
 # Install packages determined by bindep in build stage
 RUN if [ -s /etc/image_info/bindep_runtime.txt ]; then \
