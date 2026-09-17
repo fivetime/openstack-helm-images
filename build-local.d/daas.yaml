@@ -22,4 +22,4 @@
             # Bumped per build: the repository is private, so a moving branch
             # cannot be watched from the build and the commit is what makes the
             # layer change.
-            - DAAS_REF=94a66c346410251403fbfb336b7a443ab6e993db
+            - DAAS_REF=807f67251722dfbcfb3cd5a80d6c6886982f547b
