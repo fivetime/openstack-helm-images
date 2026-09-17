@@ -11,7 +11,7 @@ ARG DAAS_REPO=https://github.com/fivetime/openstack-daas
 # changes when the branch moves -- cannot authenticate. Naming the
 # commit makes the build reproducible and invalidates the layer by
 # itself.
-ARG DAAS_REF=de61e2db2ece035d7234f356c6c56e3eb874852a
+ARG DAAS_REF=bc7b6f24ade817bf6f0c21bda80b82dff4dd0add
 ARG PROFILES=""
 
 # The gateway sends a container's resolvers to zun, and zunclient checks
@@ -25,7 +25,7 @@ ARG PROFILES=""
 # python-zunclient>=4.2.0 that daas asks for -- so pip would quietly put
 # the released version back on top of the fork.
 ARG ZUNCLIENT_REPO=https://github.com/fivetime/openstack-zunclient
-ARG ZUNCLIENT_REF=c2d90ce09ec6af199bc484ca5bae24d2d11284e8
+ARG ZUNCLIENT_REF=9b6e3683dcb70ba58724b05c172bf9bbc5433cca
 
 COPY bindep.txt pydep.txt /opt/
 RUN mkdir -p /etc/image_info && \
