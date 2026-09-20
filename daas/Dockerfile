@@ -11,7 +11,7 @@ ARG DAAS_REPO=https://github.com/fivetime/openstack-daas
 # changes when the branch moves -- cannot authenticate. Naming the
 # commit makes the build reproducible and invalidates the layer by
 # itself.
-ARG DAAS_REF=b68e58510f156d47d481ef7cfcc648972471a2ea
+ARG DAAS_REF=c6bba7e6c716baa252fe79b581285f45f7c3902f
 ARG PROFILES=""
 
 # The gateway sends a container's resolvers to zun, and zunclient checks
