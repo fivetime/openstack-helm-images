@@ -63,7 +63,14 @@
           build_args:
             - "BASE_VENV_BUILDER=quay.io/airshipit/venv_builder:2026.1-ubuntu_noble"
             - "BASE_RUNTIME=quay.io/airshipit/base:2026.1-ubuntu_noble"
-            - "TROVE_REF=stable/2026.1"
+            # Build from our fork's 2026.1-fivetime branch: opendev's
+            # stable/2026.1 plus the datastores that aa1d4d22 (Datastore
+            # containerization) removed, ported to the container model.
+            # The guest image must come from the same branch; it is built
+            # by fivetime/openstack-trove-images. Keep the fork free of
+            # tags: pbr takes the version from them.
+            - "TROVE_REPO=https://github.com/fivetime/openstack-trove"
+            - "TROVE_REF=2026.1-fivetime"
     files: &trove_files
       - trove/.*
       - zuul.d/trove.yaml
