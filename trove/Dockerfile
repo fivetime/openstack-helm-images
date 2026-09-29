@@ -26,7 +26,7 @@ RUN if [ -s /etc/image_info/bindep_build.txt ]; then \
 # and quietly builds yesterday's code. The 2026.1 cell builds from the
 # fivetime fork branch below; when it moves, this ref file changes and the
 # clone layer rebuilds.
-ADD https://api.github.com/repos/fivetime/openstack-trove/git/refs/heads/2026.1-fivetime /tmp/trove.ref
+ADD https://api.github.com/repos/fivetime/openstack-trove/git/refs/heads/master-fivetime /tmp/trove.ref
 
 RUN sed -i '/^trove===/d' /upper-constraints.txt \
     && git clone --filter=blob:none -b ${TROVE_REF} ${TROVE_REPO} /tmp/trove \
