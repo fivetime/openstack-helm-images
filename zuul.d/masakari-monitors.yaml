@@ -63,7 +63,13 @@
           build_args:
             - "BASE_VENV_BUILDER=quay.io/airshipit/venv_builder:2026.1-ubuntu_noble"
             - "BASE_RUNTIME=quay.io/airshipit/base:2026.1-ubuntu_noble"
-            - "MASAKARI_MONITORS_REF=stable/2026.1"
+            # Build from our fork's 2026.1-fivetime branch: opendev's
+            # stable/2026.1 plus the masakari-incus-exporter and
+            # masakari-incus-notifier commands, which the masakari chart
+            # runs on the Incus compute nodes. Keep the fork free of tags:
+            # pbr takes the version from them.
+            - "MASAKARI_MONITORS_REPO=https://github.com/fivetime/openstack-masakari-monitors"
+            - "MASAKARI_MONITORS_REF=2026.1-fivetime"
     files: &masakari_monitors_files
       - masakari-monitors/.*
       - zuul.d/masakari-monitors.yaml

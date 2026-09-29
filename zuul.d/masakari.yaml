@@ -63,7 +63,14 @@
           build_args:
             - "BASE_VENV_BUILDER=quay.io/airshipit/venv_builder:2026.1-ubuntu_noble"
             - "BASE_RUNTIME=quay.io/airshipit/base:2026.1-ubuntu_noble"
-            - "MASAKARI_REF=stable/2026.1"
+            # Build from our fork's 2026.1-fivetime branch: opendev's
+            # stable/2026.1 plus the INCUS_GUEST_ERROR instance event. The
+            # engine ignores a notification whose event it does not list,
+            # so without it the Incus monitor of masakari-monitors asks
+            # for recoveries that never happen. Keep the fork free of tags:
+            # pbr takes the version from them.
+            - "MASAKARI_REPO=https://github.com/fivetime/openstack-masakari"
+            - "MASAKARI_REF=2026.1-fivetime"
     files: &masakari_files
       - masakari/.*
       - zuul.d/masakari.yaml
