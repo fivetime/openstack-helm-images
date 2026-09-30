@@ -53,6 +53,7 @@ PINNED_BUILD_ARGS = frozenset(
     {
         "INCUS_PROVIDER_REF",
         "NOVA_INCUS_REF",
+        "INCUS_SDK_REF",
         "RAAS_REF",
         "RAAS_UI_REF",
         "DAAS_UI_REF",
