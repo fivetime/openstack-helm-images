@@ -37,6 +37,18 @@ ARG ZUNCLIENT_REF=master
 ARG BLAZAR_UI_REPO=https://github.com/fivetime/openstack-blazar-ui
 ARG BLAZAR_UI_REF=master
 
+# trove-dashboard ships in the kolla base, but without any page for Trove
+# modules. Vertica and Db2 take the license a tenant bought as a module of
+# type vertica_license / db2_license, and the fork adds the Licenses panel,
+# the license choice at launch and the Apply License action. Install it
+# over the kolla build. Same /fivetime/ path rule as above.
+# The repository keeps only .po files (*.mo is gitignored, as everywhere in
+# OpenStack); the release tarball kolla installs has them compiled. A git
+# install would leave Horizon with no translation of the Trove panels at
+# all, so they are compiled below.
+ARG TROVE_UI_REPO=https://github.com/fivetime/openstack-trove-dashboard
+ARG TROVE_UI_REF=master-fivetime
+
 # barbican-ui is never published to PyPI and its master carries no release
 # tags (pbr reports it as 0.0.1.devN), so it is pinned by commit. A SHA in
 # the RUN line is its own cache key, so it needs no ADD cache-buster the way
@@ -78,6 +90,7 @@ ARG DAAS_UI_REF=4e1991393b745d4c9818f613b0c21061357c680f
 ADD https://api.github.com/repos/fivetime/openstack-zun-ui/git/refs/heads/master /tmp/zun-ui.ref
 ADD https://api.github.com/repos/fivetime/openstack-zunclient/git/refs/heads/master /tmp/zunclient.ref
 ADD https://api.github.com/repos/fivetime/openstack-blazar-ui/git/refs/heads/master /tmp/blazar-ui.ref
+ADD https://api.github.com/repos/fivetime/openstack-trove-dashboard/git/refs/heads/master-fivetime /tmp/trove-ui.ref
 
 USER root
 RUN curl -fsSL "https://releases.openstack.org/constraints/upper/${RELEASE}" \
@@ -89,19 +102,30 @@ RUN curl -fsSL "https://releases.openstack.org/constraints/upper/${RELEASE}" \
         "git+${ZUN_UI_REPO}@${ZUN_UI_REF}#egg=zun-ui" \
         "git+${BARBICAN_UI_GIT}@${BARBICAN_UI_REF}#egg=barbican-ui" \
         "git+${BLAZAR_UI_REPO}@${BLAZAR_UI_REF}#egg=blazar-dashboard" \
+        "git+${TROVE_UI_REPO}@${TROVE_UI_REF}#egg=trove-dashboard" \
         "freezer-web-ui==${FREEZER_WEB_UI_VERSION}" \
         "zaqar-ui==${ZAQAR_UI_VERSION}" \
     && /var/lib/kolla/venv/bin/pip show zun-ui python-zunclient \
-        barbican-ui blazar-dashboard freezer-web-ui zaqar-ui | grep -E "Name|Version" \
+        barbican-ui blazar-dashboard trove-dashboard freezer-web-ui zaqar-ui \
+        | grep -E "Name|Version" \
     && /var/lib/kolla/venv/bin/pip check \
     && rm -f /tmp/uc.txt \
+    # compile the trove-dashboard catalogs the git install left uncompiled;
+    # pybabel skips a locale that lacks the domain (cs has no djangojs).
+    # python3.* not python3*: lib/python3 is a symlink to lib/python3.12,
+    # and -d takes one directory.
+    && for d in django djangojs; do \
+         /var/lib/kolla/venv/bin/pybabel compile -D $d \
+           -d "$(echo /var/lib/kolla/venv/lib/python3.*/site-packages/trove_dashboard/locale)" \
+           || exit 1; \
+       done \
     # guard: the fork must have fixed this, or compress dies at pod start
     && ! grep -rq '\$gray-lighter' /var/lib/kolla/venv/lib/python3*/site-packages/zun_ui/static \
     # guard: extra_panels matches on the *module* directory, which differs
     # from the pip name for every one of these (freezer-web-ui -> freezer_ui).
     # A plugin whose enabled/ files are missing is skipped in silence at pod
     # start, so fail the build here instead.
-    && for m in zun_ui barbican_ui blazar_dashboard freezer_ui zaqar_ui; do \
+    && for m in zun_ui barbican_ui blazar_dashboard trove_dashboard freezer_ui zaqar_ui; do \
          ls /var/lib/kolla/venv/lib/python3*/site-packages/$m/enabled/_[1-9]*.py \
            >/dev/null || exit 1; \
        done \
@@ -109,7 +133,12 @@ RUN curl -fsSL "https://releases.openstack.org/constraints/upper/${RELEASE}" \
        # the endpoint fix. pip reports success just as happily after
        # reinstalling the same code, so check for the fix, not the package.
        && grep -q 'endpoint_override=blazar_url' \
-            /var/lib/kolla/venv/lib/python3*/site-packages/blazar_dashboard/api/client.py
+            /var/lib/kolla/venv/lib/python3*/site-packages/blazar_dashboard/api/client.py \
+       # guard: likewise for trove-dashboard -- the Licenses panel must be
+       # there, and its Chinese catalog compiled
+       && ls /var/lib/kolla/venv/lib/python3*/site-packages/trove_dashboard/enabled/_1770_project_database_licenses_panel.py \
+       && grep -q '许可证' \
+            /var/lib/kolla/venv/lib/python3*/site-packages/trove_dashboard/locale/zh_Hans/LC_MESSAGES/django.mo
 
 # The fivetime panels (raas-ui, daas-ui) go in their own layer with the
 # secret mount, kept apart from the public plugins above so a token
