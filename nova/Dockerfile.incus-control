@@ -83,7 +83,7 @@ from nova.virt import hardware
 
 objects.register_all()
 versions = base.NovaObjectRegistry.obj_classes().get('IncusLiveMigrateData', [])
-assert versions and versions[0].VERSION == '1.6', versions
+assert versions and versions[0].VERSION == '1.7', versions
 assert 'CUSTOM_INCUS_MANILA_SHARE' in inspect.getsource(
     hardware.check_shares_supported)
 assert 'CUSTOM_INCUS_MANILA_LIVE_MIGRATION' in inspect.getsource(
@@ -92,7 +92,7 @@ assert hasattr(manager.ComputeManager, '_prepare_live_migration_check_data')
 assert hasattr(manager.ComputeManager, '_complete_live_migration_rollback')
 assert 'oslo_conf=CONF' in inspect.getsource(utils.get_sdk_adapter)
 assert 'CUSTOM_INCUS_SYSTEM_CONTAINER' in inspect.getsource(api.API.rescue)
-print('Nova Incus control-plane migrate-data 1.6 OK')
+print('Nova Incus control-plane migrate-data 1.7 OK')
 print('Nova Incus control-plane Manila migration contract OK')
 print('Nova user-token SDK service configuration OK')
 PY
