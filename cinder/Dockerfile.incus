@@ -34,4 +34,21 @@ RUN --mount=type=secret,id=src_repo_token \
  && rm -rf /tmp/incus-cinder-patches \
  && apk del .incus-patch-tools
 
+# OpenTelemetry exporter for osprofiler's otlp driver, which the image already
+# ships (osprofiler 4.3.0) but cannot load without these packages. Versions
+# are the stable/2026.1 upper-constraints; protobuf and
+# googleapis-common-protos are already installed at the constrained versions,
+# so nothing else moves. Requests are traced only when signed with one of
+# [profiler]/hmac_keys, so the packages are inert until a client asks.
+RUN /var/lib/openstack/bin/pip install --no-cache-dir \
+        opentelemetry-api==1.39.1 \
+        opentelemetry-sdk==1.39.1 \
+        opentelemetry-semantic-conventions==0.60b1 \
+        opentelemetry-proto==1.39.1 \
+        opentelemetry-exporter-otlp-proto-common==1.39.1 \
+        opentelemetry-exporter-otlp-proto-http==1.39.1 \
+ && /var/lib/openstack/bin/python3 -c "from osprofiler.drivers import otlp; from opentelemetry.exporter.otlp.proto.http.trace_exporter import OTLPSpanExporter; from opentelemetry.sdk.trace import TracerProvider" \
+ && /var/lib/openstack/bin/pip check \
+ && printf 'opentelemetry-exporter-otlp-proto-http 1.39.1\n' >> /etc/image_info/project.txt
+
 CMD ["cinder-api"]
