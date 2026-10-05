@@ -61,6 +61,15 @@
             # fields in a nested capabilities dict; the fix is adapted to
             # that on master. The master row is synthesized from this entry
             # and lands on the same ref.
+            #
+            # Master also switches the default cinder service type from
+            # volumev3 to block-storage (49463a05). That needs no catalog or
+            # config change: block-storage is the official type in the
+            # service-types authority and volumev3 one of its aliases, and
+            # keystoneauth resolves aliases, so asking for block-storage
+            # against a catalog that registers volumev3 returns the same
+            # endpoint. Checked against this deployment's live catalog with
+            # the built image's own keystoneauth.
             - "CEILOMETER_REPO=https://github.com/fivetime/openstack-ceilometer"
             - "CEILOMETER_REF=master"
             # The cache-busting ADD has to follow the repo, not just the ref.
