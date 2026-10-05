@@ -2,8 +2,8 @@ name: Build All Images
 
 on:
   schedule:
-    # Daily at 03:00 UTC -- 2h after the sync-upstream cron so any pulled-in
-    # zuul.d/ changes are already on master before we build.
+    # Daily at 03:00 UTC. Upstream is merged by hand, so whatever zuul.d/
+    # content is on master at that time is what gets built.
     - cron: "0 3 * * *"
   workflow_dispatch:
     inputs:

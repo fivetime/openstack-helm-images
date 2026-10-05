@@ -14,12 +14,18 @@ features:
     same ``--build-arg`` / ``--platform`` / ``--tag`` values the Zuul role
     would pass, so behaviour stays aligned with upstream.
   - |
-    A companion workflow ``.github/workflows/sync-upstream.yml`` pulls the
-    latest changes from
-    https://github.com/openstack/openstack-helm-images.git every day at
-    01:00 UTC and fast-forwards/merges them into the fork's ``master``.
-    ``build-all-images.yml`` then runs at 03:00 UTC, picking up whatever
-    new ``zuul.d/`` content has been merged in.
+    Upstream changes are merged into the fork's ``master`` by hand::
+
+      git fetch https://github.com/openstack/openstack-helm-images.git master
+      git merge --no-ff FETCH_HEAD
+
+    An earlier ``.github/workflows/sync-upstream.yml`` did this on a daily
+    cron, but every upstream release rotation collides with the fork's
+    ``*_REPO``/``*_REF`` build args in ``zuul.d/`` and with ``pydep.txt``, so
+    the job failed on conflicts more often than it merged anything, and an
+    unattended merge is not something to run against the branch the daily
+    build publishes from. ``build-all-images.yml`` runs at 03:00 UTC and
+    builds whatever ``zuul.d/`` content is on ``master`` at that time.
   - |
     The build matrix supports synthesizing ``master``-tagged image variants
     from each 2026.1 entry, so ``ghcr.io/<owner>/openstackhelm/<svc>:master-ubuntu_noble``
