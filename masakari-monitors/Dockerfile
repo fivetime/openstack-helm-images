@@ -22,12 +22,6 @@ RUN if [ -s /etc/image_info/bindep_build.txt ]; then \
         && rm -rf /var/lib/apt/lists/*; \
     fi
 
-# A clone of a moving branch inside an unchanging RUN gets its layer reused
-# and quietly builds yesterday's code. The 2026.1 cell builds from the
-# fivetime fork branch below; when it moves, this ref file changes and the
-# clone layer rebuilds.
-ADD https://api.github.com/repos/fivetime/openstack-masakari-monitors/git/refs/heads/2026.1-fivetime /tmp/masakari-monitors.ref
-
 RUN sed -i '/^masakari-monitors===/d' /upper-constraints.txt \
     && git clone --filter=blob:none -b ${MASAKARI_MONITORS_REF} ${MASAKARI_MONITORS_REPO} /tmp/masakari-monitors \
     && uv pip install \
@@ -36,8 +30,34 @@ RUN sed -i '/^masakari-monitors===/d' /upper-constraints.txt \
          -r /etc/image_info/python_packages.txt \
          /tmp/masakari-monitors \
     && git -C /tmp/masakari-monitors log --oneline -1 > /etc/image_info/project.txt \
-    && rm -rf /tmp/masakari-monitors \
-    && uv pip freeze > /etc/image_info/pip.txt
+    && rm -rf /tmp/masakari-monitors
+
+# The Incus exporter and notifier, masakari-incus-exporter and
+# masakari-incus-notifier, come from their own package. A cell that leaves
+# INCUS_MONITOR_REF empty builds plain masakari-monitors. The ref is a commit,
+# so a new one changes the build argument and rebuilds this layer. The
+# repository is private: CI supplies src_repo_token as a BuildKit secret, used
+# only by the fetch below and never written to git config or a layer. Its
+# dependencies (masakari-monitors, openstacksdk, oslo.*) are installed above.
+ARG INCUS_MONITOR_REPO=https://github.com/fivetime/incus-monitor.git
+ARG INCUS_MONITOR_REF=""
+RUN --mount=type=secret,id=src_repo_token \
+    if [ -n "${INCUS_MONITOR_REF}" ]; then \
+        set -e; \
+        auth=""; \
+        if [ -s /run/secrets/src_repo_token ]; then \
+            auth="url.https://x-access-token:$(cat /run/secrets/src_repo_token)@github.com/.insteadOf=https://github.com/"; \
+        fi; \
+        git init -q /tmp/incus-monitor; \
+        git -C /tmp/incus-monitor ${auth:+-c "$auth"} fetch -q --depth=1 \
+            "${INCUS_MONITOR_REPO}" "${INCUS_MONITOR_REF}"; \
+        git -C /tmp/incus-monitor checkout -q --detach FETCH_HEAD; \
+        uv pip install --no-deps /tmp/incus-monitor; \
+        git -C /tmp/incus-monitor log --oneline -1 > /etc/image_info/incus-monitor.txt; \
+        rm -rf /tmp/incus-monitor; \
+    fi
+
+RUN uv pip freeze > /etc/image_info/pip.txt
 
 FROM ${BASE_RUNTIME} AS runtime
 
