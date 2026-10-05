@@ -8,7 +8,7 @@ on:
   workflow_dispatch:
     inputs:
       releases:
-        description: "Release filter (comma-separated, empty = default 2026.1+master+rolling). Available: 2025.1,2025.2,2026.1,master,rolling"
+        description: "Release filter (comma-separated, empty = default 2026.1+master+rolling). Available: 2025.2,2026.1,2026.2,master,rolling"
         default: ""
       platforms:
         description: "Platform filter (comma-separated, empty = all). Available: linux/amd64,linux/arm64"
@@ -71,10 +71,12 @@ jobs:
           # them on demand via workflow_dispatch when a backport merge or
           # CVE refresh needs it. workflow_dispatch with a non-empty
           # releases input takes precedence and can build any subset
-          # (including the older 2025.1 / 2025.2 stable branches).
+          # (including the older 2025.2 stable branch, or 2026.2, which
+          # upstream builds on Ubuntu Resolute and nothing here deploys).
           # workflow_dispatch with an empty releases input defaults to
-          # 2026.1 + master + rolling -- 2025.x are intentionally excluded
-          # from the default since they're frozen and need explicit opt-in.
+          # 2026.1 + master + rolling -- 2025.x and 2026.2 are intentionally
+          # excluded from the default: the former are frozen, the latter is
+          # upstream's new Resolute line, and both need explicit opt-in.
           if [ "${{ github.event_name }}" = "schedule" ]; then
             common_args+=( --releases "master,rolling" )
           elif [ -n "${{ inputs.releases }}" ]; then

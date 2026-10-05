@@ -115,7 +115,7 @@ def extract_release(tags: list[str]) -> str:
     """Classify the release a container_images entry belongs to.
 
     Some upstream entries declare multiple tags for the same image (e.g.
-    libvirt declares ``epoxy-ubuntu_noble`` and ``2025.1-ubuntu_noble`` on
+    libvirt declares ``gazpacho-ubuntu_noble`` and ``2026.1-ubuntu_noble`` on
     the same row). Prefer the OpenStack-numbered form so the image is
     correctly classified to its release; only fall back to ``master`` or
     ``rolling`` when no tag carries a release number.
