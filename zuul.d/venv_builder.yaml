@@ -57,13 +57,15 @@
             - "REQUIREMENTS_REF=stable/2026.2"
             - "SETUPTOOLS_CONSTRAINT=''"
             # fivetime: oslo.messaging with rabbit_server_queues_ttl (per-server
-            # RPC queues that expire), proposed upstream as Change-Id
-            # I0e12a2008b16ea468929fa5ef4ef6adee488016a. Every 2026.2 service
-            # image is built FROM this venv_builder (zuul_to_matrix.py points
-            # them at it), so they all get it. Drop these two lines once a
-            # release that has it is in the stable/2026.2 constraints.
+            # RPC queues that expire, review.opendev.org/c/openstack/
+            # oslo.messaging/+/1008824) and delete_rpc_server_queues (remove
+            # the queues of a topic that is not used again, +/1008831). Every
+            # 2026.2 service image is built FROM this venv_builder
+            # (zuul_to_matrix.py points them at it), so they all get them.
+            # Drop these two lines once a release that has both is in the
+            # stable/2026.2 constraints.
             - "OSLO_MESSAGING_REPO=https://github.com/fivetime/oslo.messaging"
-            - "OSLO_MESSAGING_REF=3e0efb5a2c3fca421eec7474f51675089744f4c4"
+            - "OSLO_MESSAGING_REF=ca9a82c25fcb82071e7aca05f4462e4a3962877c"
 
 - job:
     name: openstack-helm-images-upload-venv-builder
