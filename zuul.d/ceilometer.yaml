@@ -50,12 +50,21 @@
           build_args:
             - "BASE_VENV_BUILDER=quay.io/airshipit/venv_builder:2026.1-ubuntu_noble"
             - "BASE_RUNTIME=quay.io/airshipit/base:2026.1-ubuntu_noble"
-            # fivetime fork: upstream stable/2026.1 + the volume_provider_pool
-            # ``provider`` metadata fix (see ceilometer/Dockerfile). The master
-            # row is synthesized from this entry, so the fork's master carries
-            # the same patch rebased on upstream master.
+            # This cell is tagged 2026.1 but its content is ceilometer
+            # master. The fork's stable/2026.1 branch, which carried the
+            # volume_provider_pool ``provider`` metadata fix (see
+            # ceilometer/Dockerfile) on top of upstream's release branch, was
+            # merged into master and deleted on 2026-10-05, so master is the
+            # only branch the fork has left. Note that upstream moved the
+            # volume pollsters from cinderclient to openstacksdk after
+            # 2026.1, so a pool is now a cinder_stats.Pools with its driver
+            # fields in a nested capabilities dict; the fix is adapted to
+            # that on master. The master row is synthesized from this entry
+            # and lands on the same ref.
             - "CEILOMETER_REPO=https://github.com/fivetime/openstack-ceilometer"
-            - "CEILOMETER_REF=stable/2026.1"
+            - "CEILOMETER_REF=master"
+            # The cache-busting ADD has to follow the repo, not just the ref.
+            - "CEILOMETER_REF_URL=https://api.github.com/repos/fivetime/openstack-ceilometer/git/refs/heads/master"
         - context: .
           registry: quay.io
           repository: quay.io/airshipit/ceilometer
