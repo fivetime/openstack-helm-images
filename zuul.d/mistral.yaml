@@ -50,10 +50,16 @@
           build_args:
             - "BASE_VENV_BUILDER=quay.io/airshipit/venv_builder:2026.1-ubuntu_noble"
             - "BASE_RUNTIME=quay.io/airshipit/base:2026.1-ubuntu_noble"
-            # mistral/Dockerfile derives MISTRAL_EXTRA_REF from this ref,
-            # so the fork branch has to keep the stable/<release> name.
+            # This cell is tagged 2026.1 but its content is mistral
+            # master. The fork's stable/2026.1 branch, upstream's release
+            # branch plus the two event-engine patches, was merged into
+            # master and deleted on 2026-10-05, so master is the only place
+            # those patches live. Master's requirements all fit the 2026.1
+            # upper-constraints, so it still builds on the 2026.1 base, the
+            # way trove's master-fivetime does. mistral-extra follows this
+            # ref (see mistral/Dockerfile), so it is master as well.
             - "MISTRAL_REPO=https://github.com/fivetime/openstack-mistral.git"
-            - "MISTRAL_REF=stable/2026.1"
+            - "MISTRAL_REF=master"
         - context: .
           registry: quay.io
           repository: quay.io/airshipit/mistral

@@ -15,10 +15,12 @@ ARG MISTRAL_REF=stable/2026.1
 # mistral-extra for every cell that does not override it, which is what
 # happened to the 2026.2 cell the moment upstream added it.
 #
-# This holds as long as a mistral fork branch keeps the upstream branch name
-# (fivetime/openstack-mistral tracks stable/<release>), since the ref has to
-# exist in opendev's mistral-extra too. A fork branch named otherwise must
-# pass MISTRAL_EXTRA_REF explicitly; an explicit value still wins.
+# This holds as long as the ref names a branch that exists in opendev's
+# mistral-extra too. It does for every cell today: the fork of mistral keeps
+# only master, so the 2026.1 cell passes MISTRAL_REF=master and pairs with
+# mistral-extra master, and the opendev cells pass stable/<release>. A ref
+# that mistral-extra does not carry must pass MISTRAL_EXTRA_REF explicitly;
+# an explicit value still wins.
 ARG MISTRAL_EXTRA_REPO=https://opendev.org/openstack/mistral-extra
 ARG MISTRAL_EXTRA_REF=${MISTRAL_REF}
 ARG PROFILES="fluent apache"
@@ -38,9 +40,9 @@ RUN if [ -s /etc/image_info/bindep_build.txt ]; then \
 
 # Same reason as zun: a clone of a moving branch inside an unchanging RUN
 # gets its layer reused and quietly builds yesterday's code. The 2026.1 cell
-# builds from the fivetime fork branch below; when it moves, this ref file
-# changes and the clone layer rebuilds (which also refreshes mistral-extra).
-ADD https://api.github.com/repos/fivetime/openstack-mistral/git/refs/heads/stable/2026.1 /tmp/mistral.ref
+# builds from the fivetime fork's master; when it moves, this ref file changes
+# and the clone layer rebuilds (which also refreshes mistral-extra).
+ADD https://api.github.com/repos/fivetime/openstack-mistral/git/refs/heads/master /tmp/mistral.ref
 
 RUN sed -i '/^mistral===/d;/^mistral-extra===/d' /upper-constraints.txt \
     && git clone --filter=blob:none -b ${MISTRAL_REF} ${MISTRAL_REPO} /tmp/mistral \
