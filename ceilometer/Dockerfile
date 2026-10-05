@@ -5,17 +5,16 @@ FROM ${BASE_VENV_BUILDER} AS build
 
 ENV PATH=/var/lib/openstack/bin:$PATH
 
-# Upstream by default. The 2026.1 cell overrides this with the fivetime fork
-# (and its REF with master, the only branch the fork has: its stable/2026.1
-# was merged into master and deleted on 2026-10-05). The fork carries:
-# volume.provider.pool.* pollsters emit the ``provider`` metadata that
-# gnocchi_resources.yaml requires (upstream inconsistency -- every polled pool
-# capacity sample was rejected by Gnocchi). Master rows are synthesized from
-# that cell, so they land on the fork too.
+# Upstream. Every cell builds opendev ceilometer and passes only
+# CEILOMETER_REF; the 2026.1 cell passes master (see zuul.d/ceilometer.yaml
+# for why). The fivetime fork this used to default to carried one fix, the
+# ``provider`` metadata on volume.provider.pool.* samples, which upstream
+# merged as f067b91d; once the fork's tree matched opendev master it was
+# dropped from the build.
 #
-# This default has to be upstream: the cells that build a release branch pass
-# only CEILOMETER_REF, so a fork default sent them to a fork branch that does
-# not exist, and both the ADD below and the clone failed on it.
+# The default has to be upstream regardless: the release cells pass only
+# CEILOMETER_REF, and a fork default sent them to fork branches that do not
+# exist, so both the ADD below and the clone failed on them.
 ARG CEILOMETER_REPO=https://opendev.org/openstack/ceilometer
 ARG CEILOMETER_REF=master
 # python-gnocchiclient fork: percent-encodes resource ids in URL paths.
@@ -44,9 +43,10 @@ RUN if [ -s /etc/image_info/bindep_build.txt ]; then \
 # JSON changes on every push and forces the clone to re-run.
 #
 # The URL has to follow CEILOMETER_REPO, not just CEILOMETER_REF: the default
-# is opendev's Gitea API for the branch being built, and the cell that builds
-# the fork passes GitHub's ref API instead. Both return only the branch head,
-# so the file is byte-identical until the branch moves.
+# is opendev's Gitea API for the branch being built, so a cell that builds
+# from somewhere else must pass its own (GitHub's ref API for a GitHub repo).
+# Both return only the branch head, so the file is byte-identical until the
+# branch moves.
 ARG CEILOMETER_REF_URL=https://opendev.org/api/v1/repos/openstack/ceilometer/branches/${CEILOMETER_REF}
 ADD ${CEILOMETER_REF_URL} /tmp/ceilometer.ref
 ADD https://api.github.com/repos/fivetime/python-gnocchiclient/git/refs/heads/${GNOCCHICLIENT_REF} /tmp/gnocchiclient.ref
