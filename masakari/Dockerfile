@@ -22,12 +22,6 @@ RUN if [ -s /etc/image_info/bindep_build.txt ]; then \
         && rm -rf /var/lib/apt/lists/*; \
     fi
 
-# A clone of a moving branch inside an unchanging RUN gets its layer reused
-# and quietly builds yesterday's code. The 2026.1 cell builds from the
-# fivetime fork branch below; when it moves, this ref file changes and the
-# clone layer rebuilds.
-ADD https://api.github.com/repos/fivetime/openstack-masakari/git/refs/heads/2026.1-fivetime /tmp/masakari.ref
-
 RUN sed -i '/^masakari===/d' /upper-constraints.txt \
     && git clone --filter=blob:none -b ${MASAKARI_REF} ${MASAKARI_REPO} /tmp/masakari \
     && uv pip install \
