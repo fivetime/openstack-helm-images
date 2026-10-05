@@ -1,8 +1,8 @@
 ---
 # Fork-only neutron Alpine variant. Upstream zuul.d/neutron.yaml builds only the
 # Dockerfile (venv/loci) ubuntu_noble variants. This entry adds an Alpine variant
-# built from the fivetime Neutron fork and ships ovsdb_dns_patch -- a synchronous
-# getaddrinfo replacement for ovs.dns_resolve.resolve.
+# built from opendev neutron and ships ovsdb_dns_patch (neutron/patches/ovsdb_dns.py)
+# -- a synchronous getaddrinfo replacement for ovs.dns_resolve.resolve.
 #
 # Why: the stock python `ovs` library only resolves DNS via the (async) unbound
 # library, so a one-shot OVSDB connect to a hostname fails and ovn_nb_connection
@@ -41,9 +41,13 @@
             - linux/arm64
           tags:
             - 2026.1-alpine_3.23
-          # The fork tracks upstream stable/master and carries production fixes
-          # needed by this deployment. For a reproducible image, pin NEUTRON_REF
-          # to a tag/sha and OVN_IMAGE to a digest.
+          # Neutron itself comes from opendev (the Dockerfile's NEUTRON_REPO
+          # default). This entry used to point NEUTRON_REPO at the fivetime
+          # fork, but by 2026-10-05 the fork carried no change of its own --
+          # its master was opendev master as of 2026-09-25, 51 commits behind
+          # -- and it had no stable/2026.1 at all, so this 2026.1 cell could
+          # not clone and had not built since 2026-07-20. For a reproducible
+          # image, pin NEUTRON_REF to a tag/sha and OVN_IMAGE to a digest.
           #
           # CONSTRAINTS is surfaced as a build_arg (not left to the Dockerfile
           # default) specifically so synthesize_master's blanket
@@ -52,7 +56,6 @@
           # neutron@master (needs neutron-lib>=4.0.0) against stable/2026.1
           # constraints (neutron-lib===3.24.0) -> ResolutionImpossible.
           build_args:
-            - NEUTRON_REPO=https://github.com/fivetime/openstack-neutron.git
             - NEUTRON_REF=stable/2026.1
             - CONSTRAINTS=https://opendev.org/openstack/requirements/raw/branch/stable/2026.1/upper-constraints.txt
             # networking-baremetal 只有 master 带 L2VNI mechanism driver(fork 自有),
