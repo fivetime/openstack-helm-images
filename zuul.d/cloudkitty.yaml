@@ -50,19 +50,24 @@
           build_args:
             - "BASE_VENV_BUILDER=quay.io/airshipit/venv_builder:2026.1-ubuntu_noble"
             - "BASE_RUNTIME=quay.io/airshipit/base:2026.1-ubuntu_noble"
-            # Build from our fork's 2026.1-fivetime branch: opendev's
-            # stable/2026.1 (f5d0186) plus the InfluxDB v2 None-handling
-            # fixes. Without them GET /v2/dataframes (no filters) returns 500
-            # and PUT /v2/scope never resets a scope -- both unfixed on
-            # opendev master as of 2026-08-25.
+            # This cell is tagged 2026.1 but its content is cloudkitty
+            # master, from the fivetime fork: opendev master plus the three
+            # InfluxDB v2 fixes. Without them GET /v2/dataframes (no filters)
+            # returns 500 and PUT /v2/scope never resets a scope -- both still
+            # unfixed upstream as of 2026-10-05. The fork's 2026.1-fivetime
+            # branch, which carried the same fixes on top of opendev's
+            # stable/2026.1, was merged into the fork's master and deleted on
+            # 2026-10-05, so master is the only branch the fork has.
+            # Master's requirements all fit the 2026.1 upper-constraints, so
+            # it builds on the 2026.1 base.
             # It has to be a branch, not a tag: cloudkitty builds with pbr,
             # which derives the package version from git tags via
             # max(tags, key=parse_version) and dies on anything that is not
             # PEP 440 (`2026.1-fivetime.2` -> InvalidVersion). Keep this fork
-            # free of tags. Drop the two build args below once the fix lands
+            # free of tags. Drop the two build args below once the fixes land
             # upstream.
             - "CLOUDKITTY_REPO=https://github.com/fivetime/openstack-cloudkitty"
-            - "CLOUDKITTY_REF=2026.1-fivetime"
+            - "CLOUDKITTY_REF=master"
         - context: .
           registry: quay.io
           repository: quay.io/airshipit/cloudkitty
