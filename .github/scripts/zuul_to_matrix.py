@@ -248,6 +248,32 @@ def synthesize_master(row: dict, owner: str) -> dict | None:
     return new_row
 
 
+# Releases whose service images build FROM our own venv_builder rather than
+# quay.io/airshipit's. Ours is the same venv_builder/Dockerfile, built by the
+# foundation tier, plus whatever that release's zuul.d/venv_builder.yaml
+# entry adds through build args (for 2026.2: oslo.messaging from our fork,
+# see the OSLO_MESSAGING_* args there). Keyed by release, valued by the
+# image tag both registries use for it.
+OWN_VENV_BUILDER_RELEASES = {
+    "2026.2": "2026.2-ubuntu_resolute",
+}
+
+
+def use_own_venv_builder(row: dict, owner: str) -> dict:
+    """Point a service row of an OWN_VENV_BUILDER_RELEASES release at ours.
+
+    Foundation rows are left alone: they build the venv_builder itself.
+    """
+    tag = OWN_VENV_BUILDER_RELEASES.get(row["release"])
+    if tag is None or row.get("tier") == "foundation":
+        return row
+    row["build_args_cli"] = row["build_args_cli"].replace(
+        f"quay.io/airshipit/venv_builder:{tag}",
+        f"ghcr.io/{owner}/openstackhelm/venv_builder:{tag}",
+    )
+    return row
+
+
 def classify_tier(job_name: str) -> str:
     if any(job_name.endswith(suf) for suf in FOUNDATION_JOB_SUFFIXES):
         return "foundation"
@@ -404,6 +430,7 @@ def main() -> int:
                 continue
             row["job"] = j["name"]
             row["tier"] = tier
+            row = use_own_venv_builder(row, args.owner)
             rows.append(row)
             if args.include_master:
                 m = synthesize_master(row, args.owner)
