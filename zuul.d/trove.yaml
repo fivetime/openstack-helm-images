@@ -32,19 +32,6 @@
           arch:
             - linux/amd64
           tags:
-            - "2025.1-ubuntu_noble"
-            - "2025.1-ubuntu_noble-{{ currentdate }}"
-          build_args:
-            - "BASE_VENV_BUILDER=quay.io/airshipit/venv_builder:2025.1-ubuntu_noble"
-            - "BASE_RUNTIME=quay.io/airshipit/base:2025.1-ubuntu_noble"
-            - "TROVE_REF=stable/2025.1"
-        - context: .
-          registry: quay.io
-          repository: quay.io/airshipit/trove
-          container_filename: trove/Dockerfile
-          arch:
-            - linux/amd64
-          tags:
             - "2025.2-ubuntu_noble"
             - "2025.2-ubuntu_noble-{{ currentdate }}"
           build_args:
@@ -74,6 +61,21 @@
             # fork free of tags: pbr takes the version from them.
             - "TROVE_REPO=https://github.com/fivetime/openstack-trove"
             - "TROVE_REF=master-fivetime"
+        - context: .
+          registry: quay.io
+          repository: quay.io/airshipit/trove
+          container_filename: trove/Dockerfile
+          arch:
+            - linux/amd64
+          tags:
+            - "2026.2-ubuntu_resolute"
+            - "2026.2-ubuntu_resolute-{{ currentdate }}"
+          build_args:
+            - "BASE_VENV_BUILDER=quay.io/airshipit/venv_builder:2026.2-ubuntu_resolute"
+            - "BASE_RUNTIME=quay.io/airshipit/base:2026.2-ubuntu_resolute"
+            # No 2026.2 branch of the fork yet, so this builds opendev's
+            # stable/2026.2, without the restored datastores above.
+            - "TROVE_REF=stable/2026.2"
     files: &trove_files
       - trove/.*
       - zuul.d/trove.yaml
