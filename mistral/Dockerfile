@@ -9,9 +9,18 @@ ARG MISTRAL_REPO=https://opendev.org/openstack/mistral
 ARG MISTRAL_REF=stable/2026.1
 # mistral-extra delivers the OpenStack actions (nova.*, glance.*, ...);
 # split out of the mistral tree since 2023.1, so without it the image only
-# has the std.* actions.
+# has the std.* actions. It is versioned alongside mistral, so its ref
+# follows MISTRAL_REF instead of carrying a default of its own: a hardcoded
+# default silently pairs one release of mistral with another release of
+# mistral-extra for every cell that does not override it, which is what
+# happened to the 2026.2 cell the moment upstream added it.
+#
+# This holds as long as a mistral fork branch keeps the upstream branch name
+# (fivetime/openstack-mistral tracks stable/<release>), since the ref has to
+# exist in opendev's mistral-extra too. A fork branch named otherwise must
+# pass MISTRAL_EXTRA_REF explicitly; an explicit value still wins.
 ARG MISTRAL_EXTRA_REPO=https://opendev.org/openstack/mistral-extra
-ARG MISTRAL_EXTRA_REF=stable/2026.1
+ARG MISTRAL_EXTRA_REF=${MISTRAL_REF}
 ARG PROFILES="fluent apache"
 
 # Use bindep to determine packages needed for this profile set
@@ -41,7 +50,9 @@ RUN sed -i '/^mistral===/d;/^mistral-extra===/d' /upper-constraints.txt \
          -c /upper-constraints.txt \
          -r /etc/image_info/python_packages.txt \
          /tmp/mistral /tmp/mistral-extra \
-    && git -C /tmp/mistral log --oneline -1 > /etc/image_info/project.txt \
+    && echo "mistral ${MISTRAL_REF} (${MISTRAL_REPO})" > /etc/image_info/project.txt \
+    && git -C /tmp/mistral log --oneline -1 >> /etc/image_info/project.txt \
+    && echo "mistral-extra ${MISTRAL_EXTRA_REF} (${MISTRAL_EXTRA_REPO})" >> /etc/image_info/project.txt \
     && git -C /tmp/mistral-extra log --oneline -1 >> /etc/image_info/project.txt \
     && rm -rf /tmp/mistral /tmp/mistral-extra \
     && uv pip freeze > /etc/image_info/pip.txt
