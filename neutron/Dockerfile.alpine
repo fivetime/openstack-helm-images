@@ -22,17 +22,23 @@
 #   5. networking-generic-switch —— 把 VLAN 落到物理交换机端口上的 genericswitch
 #      ML2 driver(+netmiko)。没有它裸机端口只能停在 binding_failed。
 #
-# FROM alpine:${ALPINE_VERSION}. The ovs-vsctl/ovsdb-client/ovs-ofctl/ovs-appctl the
-# agents run come from Alpine's openvswitch package: they only talk OVSDB/OpenFlow
-# to the node's OVS, which does not need the same OVS build. This image used to be
-# FROM the fork's ovn:alpine_latest for those tools, which tied neutron's Alpine
+# FROM the fork's openvswitch:alpine_latest (openvswitch/Dockerfile.alpine), for the
+# ovs-vsctl/ovsdb-client/ovs-ofctl/ovs-appctl the server and agents run. Not
+# Alpine's openvswitch package: it is built without libunbound, and OVS's C tools
+# only resolve host names in connection strings (tcp:<name>:<port>) with it, so
+# neutron-server's ovsdb-client could not reach the OVN NB database by its service
+# name ("Address family not supported by protocol"). Both images are on the same
+# Alpine release (ALPINE_VERSION), so the FRR APKs below install here too. This
+# image used to be FROM the fork's ovn:alpine_latest, which tied neutron's Alpine
 # release to the one the production OVN runs (moving OVN is a data-plane change).
 #
 # 构建 (context = neutron/，与 build-local.d/neutron.yaml 一致)：
 #   cd neutron && docker build -f Dockerfile.alpine -t neutron:alpine-test .
 # =============================================================================
 
+# The Alpine release of OVS_IMAGE and FRR_IMAGE; they must match.
 ARG ALPINE_VERSION=3.24
+ARG OVS_IMAGE=ghcr.io/fivetime/openstackhelm/openvswitch:alpine_latest
 
 # vtysh for the OVN agent's ovn-evpn extension, from the same FRR build the
 # chart's ovn-evpn-frr daemonset runs (openstack-helm-images frr/, built on the
@@ -41,7 +47,10 @@ ARG ALPINE_VERSION=3.24
 ARG FRR_IMAGE=ghcr.io/fivetime/openstackhelm/frr:10.7.1-alpine_3.24
 FROM ${FRR_IMAGE} AS frr
 
-FROM alpine:${ALPINE_VERSION}
+FROM ${OVS_IMAGE}
+ARG ALPINE_VERSION
+RUN grep -q "^${ALPINE_VERSION}\." /etc/alpine-release \
+ && ldd /usr/lib/libopenvswitch*.so.* | grep -q libunbound
 
 # 对齐官方布局：venv 在 /var/lib/openstack，PATH 优先指向它(再到基底的 /usr/bin)。
 ENV PATH=/var/lib/openstack/bin:$PATH
@@ -51,7 +60,7 @@ ARG NEUTRON_REF=stable/2026.1
 ARG CONSTRAINTS=https://opendev.org/openstack/requirements/raw/branch/stable/2026.1/upper-constraints.txt
 
 # 运行期：
-#  - openvswitch: ovs-vsctl / ovsdb-client / ovs-ofctl / ovs-appctl
+#  - (ovs-vsctl / ovsdb-client / ovs-ofctl / ovs-appctl 来自基础镜像 OVS_IMAGE)
 #  - bash/coreutils/util-linux/iproute2/ca-certificates/jq: 原先随 OVN 基底带来,
 #    chart 的脚本要用
 #  - python3: venv 解释器(venv 的 bin/python 指向系统 python3)
@@ -69,7 +78,6 @@ ARG CONSTRAINTS=https://opendev.org/openstack/requirements/raw/branch/stable/202
 # 后续自检 RUN 用 PYTHONDONTWRITEBYTECODE=1,避免 import 把字节码又写回新层。
 RUN apk add --no-cache \
         python3 \
-        openvswitch \
         bash coreutils util-linux iproute2 ca-certificates jq \
         haproxy \
         iptables ip6tables conntrack-tools keepalived dnsmasq \

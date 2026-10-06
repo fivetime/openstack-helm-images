@@ -15,7 +15,7 @@
 #   docker run --rm openvswitch:latest ovs-vsctl --version
 # =============================================================================
 
-ARG ALPINE_VERSION=3.23
+ARG ALPINE_VERSION=3.24
 
 # -----------------------------------------------------------------------------
 # 阶段 1: 编译 OVS
@@ -35,7 +35,10 @@ RUN apk add --no-cache \
     python3-dev \
     openssl-dev \
     libcap-ng-dev \
-    linux-headers
+    linux-headers \
+    # libunbound: lets the OVS tools resolve host names in connection
+    # strings (tcp:<name>:<port>); configure enables it when found.
+    unbound-dev
 
 WORKDIR /build
 
@@ -79,6 +82,7 @@ RUN apk add --no-cache \
     # 运行时库
     libssl3 \
     libcap-ng \
+    unbound-libs \
     # 脚本依赖
     bash \
     ca-certificates \
@@ -100,6 +104,7 @@ RUN mkdir -p /var/run/openvswitch /var/log/openvswitch /etc/openvswitch /var/lib
 
 # 验证安装
 RUN ovs-vswitchd --version && \
+    ldd /usr/lib/libopenvswitch*.so.* | grep -q libunbound && \
     ovsdb-server --version && \
     ovs-vsctl --version && \
     ovs-appctl --version

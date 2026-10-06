@@ -37,7 +37,7 @@
 #   docker run --rm openvswitch:alpine_latest-dpdk ovsdb-server --version
 # =============================================================================
 
-ARG ALPINE_VERSION=3.23
+ARG ALPINE_VERSION=3.24
 
 # -----------------------------------------------------------------------------
 # 阶段 1: 编译 DPDK 和 OVS
@@ -72,7 +72,10 @@ RUN apk add --no-cache \
     elfutils-dev \
     zlib-dev \
     libbsd-dev \
-    libxdp-dev
+    libxdp-dev \
+    # libunbound: lets the OVS tools resolve host names in connection
+    # strings (tcp:<name>:<port>); configure enables it when found.
+    unbound-dev
 
 WORKDIR /build
 
@@ -135,6 +138,7 @@ RUN apk add --no-cache \
     # 运行时库
     libssl3 \
     libcap-ng \
+    unbound-libs \
     numactl \
     numactl-tools \
     jansson \
@@ -171,6 +175,7 @@ RUN mkdir -p /var/run/openvswitch /var/log/openvswitch /etc/openvswitch /var/lib
 
 # 验证安装 (ovs-vswitchd 需要 DPDK 运行时环境，跳过)
 RUN ovsdb-server --version && \
+    ldd /usr/lib/libopenvswitch*.so.* | grep -q libunbound && \
     ovs-vsctl --version && \
     ovs-appctl --version && \
     echo "ovs-vswitchd installed: $(which ovs-vswitchd)"
