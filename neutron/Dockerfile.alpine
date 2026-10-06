@@ -29,16 +29,6 @@
 #   cd neutron && docker build -f Dockerfile.alpine --build-arg OVN_IMAGE=ovn:alpine-test -t neutron:alpine-test .
 # =============================================================================
 
-# vtysh for the OVN agent's ovn-evpn extension comes from the same FRR image
-# the chart runs the FRR daemons from, so vtysh and the daemons it drives are
-# one version; Alpine's frr package lags (10.5.3 in 3.23 and edge when FRR
-# was at 10.7.1). Bump this together with the chart's
-# images.tags.neutron_ovn_evpn_frr.
-# Pinned to the multi-arch index (not one platform's manifest): the image is
-# built for amd64 and arm64.
-ARG FRR_IMAGE=quay.io/frrouting/frr:10.7.1@sha256:e995beaa50fdc9edb35eadcfefa29b7f062cc06f2b812613789b68fa541554d2
-FROM ${FRR_IMAGE} AS frr
-
 ARG OVN_IMAGE=ghcr.io/fivetime/openstackhelm/ovn:alpine_latest
 FROM ${OVN_IMAGE}
 
@@ -70,6 +60,7 @@ RUN apk add --no-cache \
         iptables ip6tables conntrack-tools keepalived dnsmasq \
         sudo \
         lshw \
+        frr \
         libffi libxml2 libxslt pcre2 librdkafka libpq \
  && apk add --no-cache --virtual .build-deps \
         py3-virtualenv \
@@ -168,17 +159,10 @@ RUN SP=$(PYTHONDONTWRITEBYTECODE=1 /var/lib/openstack/bin/python3 -c "import sys
 #     (fork commit 7255bbeeeb on fivetime/openstack-neutron evpn-gateway-chassis).
 # A patch that stops applying fails the build on purpose: upstream has changed
 # the code, so the patch has to be rebased (or dropped once merged).
+# The `frr` package above provides vtysh, which the OVN agent's ovn-evpn
+# extension runs (through privsep) against the FRR of the chart's
+# daemonset_ovn_evpn_frr; FRR itself runs in that daemonset, not here.
 COPY patches/neutron/ /tmp/neutron-patches/
-
-# vtysh, which the OVN agent's ovn-evpn extension runs (through privsep)
-# against the FRR of the chart's daemonset_ovn_evpn_frr; the FRR daemons run
-# in that daemonset, not here. Only vtysh and the two libraries this Alpine
-# does not carry in the needed version are taken from the FRR image (its
-# libyang is 2.x, Alpine 3.23 ships 3.x); they go to /usr/local so they
-# cannot shadow the system's. The rest of vtysh's libraries come from apk.
-COPY --from=frr /usr/bin/vtysh /usr/local/bin/vtysh
-COPY --from=frr /usr/lib/libfrr.so.0 /usr/lib/libyang.so.2 /usr/local/lib/
-RUN apk add --no-cache readline libcap2 pcre2 json-c ncurses-libs lua5.3-libs
 RUN apk add --no-cache --virtual .patch-deps patch \
  && SP=$(PYTHONDONTWRITEBYTECODE=1 /var/lib/openstack/bin/python3 -c "import sysconfig; print(sysconfig.get_paths()['purelib'])") \
  && for p in /tmp/neutron-patches/*.patch; do \
@@ -238,9 +222,7 @@ RUN export PYTHONDONTWRITEBYTECODE=1 \
  && python3 -c "import psycopg2, confluent_kafka, pymysql; print('db+kafka drivers OK')" \
  && python3 -c "import ovs.dns_resolve as d; assert getattr(d, '_ovnic_dns_patched', False); print('DNS patch active')" \
  && python3 -c "from neutron.common.ovn import constants as c; from neutron.plugins.ml2.drivers.ovn.mech_driver.ovsdb import impl_idl_ovn as i; assert c.CMS_OPT_CHASSIS_AS_EVPN_GW == 'enable-chassis-as-evpn-gw'; assert hasattr(i.OvsdbSbOvnIdl, 'get_evpn_gateway_chassis'); print('EVPN gateway chassis patch active')" \
- && vtysh --help > /dev/null \
- && ! ldd /usr/local/bin/vtysh | grep -q 'not found' \
- && grep -q '10\.7\.1' /usr/local/lib/libfrr.so.0 && echo "vtysh (FRR 10.7.1) OK" \
+ && vtysh --help > /dev/null && echo "vtysh OK" \
  && echo "venv layout OK (neutron in /var/lib/openstack)"
 
 CMD ["neutron-ovn-agent"]
