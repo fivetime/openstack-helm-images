@@ -1,0 +1,59 @@
+From 2a3714411422531b42c11b5d325b95c0540582f8 Mon Sep 17 00:00:00 2001
+From: Simon Zhou <jp.zdm2008@gmail.com>
+Date: Tue, 6 Oct 2026 17:29:36 +0000
+Subject: [PATCH] bridge: accept 24 bit tunnel ids in vlan_tunnel_info
+
+vlan_filter(vlan_tunnel_info={'vid': ..., 'id': ...}) maps a VLAN to a
+tunnel id, which is a VXLAN VNI (24 bit), but a single mapping only
+accepted ids below 4095, the VLAN id range. For a larger id the tunnel
+info was silently left out of the request: the call succeeds, and the
+VLAN is added without the mapping. A range only accepted ids below
+16777215, leaving out the largest VNI.
+
+Accept ids up to 0xFFFFFF in both cases, and test the mappings with
+`bridge vlan tunnelshow`.
+
+This breaks, for example, the single VXLAN device (SVD) EVPN setup of
+the Neutron OVN agent, which maps one VLAN per VNI: FRR does not see
+the L3 VNI of a VRF whose VNI is above 4094.
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+---
+ pyroute2/requests/bridge.py | 7 +++++--
+ 1 file changed, 5 insertions(+), 2 deletions(-)
+
+diff --git a/pyroute2/requests/bridge.py b/pyroute2/requests/bridge.py
+index c5bb6304..09dc07c4 100644
+--- a/pyroute2/requests/bridge.py
++++ b/pyroute2/requests/bridge.py
+@@ -2,6 +2,9 @@ from pyroute2.netlink.rtnl.ifinfmsg import ifinfmsg, protinfo_bridge
+ 
+ from .common import Index, IPRouteFilter, NLAKeyTransform
+ 
++# Tunnel ids are VXLAN VNIs, 24 bit.
++TUNNEL_ID_MAX = 0xFFFFFF
++
+ 
+ class BridgeFieldFilter(Index, NLAKeyTransform):
+     _nla_prefix = ifinfmsg.prefix
+@@ -46,7 +49,7 @@ class BridgeIPRouteFilter(IPRouteFilter):
+         vlan_info_spec = self.build_vlan_info_spec(orig_spec)
+         range_ids = [int(i) for i in str(orig_spec['id']).split('-')]
+         if len(range_ids) == 2 and len(vlan_info_spec) == 2:
+-            if 0 < range_ids[0] < range_ids[1] < 16777215:
++            if 0 < range_ids[0] < range_ids[1] <= TUNNEL_ID_MAX:
+                 # vid to id mapping range must be the same length
+                 if (
+                     vlan_info_spec[1]['vid'] - vlan_info_spec[0]['vid']
+@@ -59,7 +62,7 @@ class BridgeIPRouteFilter(IPRouteFilter):
+                         self.create_nla_spec(vlan_info_spec[1]),
+                     ]
+         elif len(range_ids) == 1 and len(vlan_info_spec) == 1:
+-            if 0 < range_ids[0] < 4095:
++            if 0 < range_ids[0] <= TUNNEL_ID_MAX:
+                 vlan_info_spec[0]['id'] = range_ids[0]
+                 # Delete flags because vlan_tunnel_info doesn't seem
+                 #  to use them, except for the RANGE.
+-- 
+2.53.0
+

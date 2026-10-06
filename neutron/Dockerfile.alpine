@@ -174,14 +174,22 @@ RUN SP=$(PYTHONDONTWRITEBYTECODE=1 /var/lib/openstack/bin/python3 -c "import sys
  && printf 'import ovsdb_dns_patch\n' > "${SP}/zzz_ovsdb_dns_patch.pth" \
  && rm /tmp/ovsdb_dns_patch.py
 
-# Neutron changes carried until they merge upstream, applied to the installed
-# package (runtime files only; the tests and release notes stay in the change):
-#   0001-evpn-gateway-chassis.patch -- ovn-cms-options enable-chassis-as-evpn-gw
-#     picks the chassis for EVPN router ports instead of every gateway chassis
-#     (fork commit 7255bbeeeb on fivetime/openstack-neutron evpn-gateway-chassis).
+# Changes carried until they merge upstream, applied to the installed packages
+# in site-packages (runtime files only; the tests and release notes stay in the
+# change), one directory per project under patches/:
+#   neutron/0001-evpn-gateway-chassis.patch -- ovn-cms-options
+#     enable-chassis-as-evpn-gw picks the chassis for EVPN router ports instead
+#     of every gateway chassis (fork commit 7255bbeeeb on
+#     fivetime/openstack-neutron evpn-gateway-chassis).
+#   pyroute2/0001-bridge-accept-24-bit-tunnel-ids.patch -- vlan_tunnel_info
+#     silently dropped tunnel ids (VNIs) above 4094, so the OVN agent's EVPN
+#     SVD got no VLAN-to-VNI mapping and FRR saw no L3 VNI (fivetime/pyroute2
+#     fix-vlan-tunnel-id-range; this is its backport to 0.8.1, the version
+#     upper-constraints pins).
 # A patch that stops applying fails the build on purpose: upstream has changed
 # the code, so the patch has to be rebased (or dropped once merged).
-COPY patches/neutron/ /tmp/neutron-patches/
+COPY patches/neutron/ /tmp/patches/neutron/
+COPY patches/pyroute2/ /tmp/patches/pyroute2/
 
 # vtysh, which the OVN agent's ovn-evpn extension runs (through privsep)
 # against the FRR of the chart's daemonset_ovn_evpn_frr. It is the frr APK the
@@ -194,14 +202,15 @@ RUN apk add --no-cache /tmp/frr-apk/frr-[0-9]*.apk \
  && rm -rf /tmp/frr-apk
 RUN apk add --no-cache --virtual .patch-deps patch \
  && SP=$(PYTHONDONTWRITEBYTECODE=1 /var/lib/openstack/bin/python3 -c "import sysconfig; print(sysconfig.get_paths()['purelib'])") \
- && for p in /tmp/neutron-patches/*.patch; do \
-        echo "applying ${p##*/}"; \
+ && for p in /tmp/patches/*/*.patch; do \
+        project=${p%/*}; project=${project##*/}; \
+        echo "applying ${project}/${p##*/}"; \
         patch -p1 -d "${SP}" < "${p}" || exit 1; \
-        echo "neutron patch ${p##*/}" >> /etc/image_info/patches.txt; \
+        echo "${project} patch ${p##*/}" >> /etc/image_info/patches.txt; \
+        find "${SP}/${project}" -type d -name '__pycache__' -prune -exec rm -rf {} +; \
     done \
- && find "${SP}/neutron" -type d -name '__pycache__' -prune -exec rm -rf {} + \
  && apk del .patch-deps \
- && rm -rf /tmp/neutron-patches /var/cache/apk/*
+ && rm -rf /tmp/patches /var/cache/apk/*
 
 # neutron 运行目录 + 属主 (chart 以 uid 42424 运行容器)。
 RUN mkdir -p /etc/neutron /var/log/neutron /var/lib/neutron /var/cache/neutron \
