@@ -14,20 +14,23 @@
 # alpine/APKBUILD.in from the release, with two differences: the Alpine
 # release (ALPINE_VERSION) and Alpine's libyang instead of a separately built
 # libyang 2 (FRR 10.7 builds against libyang 3, as Alpine's own package does).
-# To upgrade FRR, change FRR_VERSION and FRR_SHA512.
+# To upgrade FRR, change FRR_VERSION and FRR_COMMIT (the commit the
+# frr-<version> tag points to).
 ARG ALPINE_VERSION=3.24
 ARG FRR_VERSION=10.7.1
-ARG FRR_SHA512=c7e171ae1a30669fb6e027977af77125e233ad8e9b7ca8612725b426c52600164e7b69db8c6b4280276c30a3ad1f0b7b9cf51fc7a4593fe30cc219eec4c7a957
+# The source is checked out at the release tag and must be this commit.
+# (GitHub's archive tarballs are generated per request and are not
+# byte-stable, so a tarball checksum does not pin it.)
+ARG FRR_COMMIT=f8c0b08dcb0c78f9e42b9b86ae70b049e4e617c1
 
 # A dist tarball and a configured APKBUILD from the release source.
 FROM alpine:${ALPINE_VERSION} AS source-builder
 ARG FRR_VERSION
-ARG FRR_SHA512
-ADD --checksum=sha512:${FRR_SHA512} \
-    https://github.com/FRRouting/frr/archive/frr-${FRR_VERSION}.tar.gz /tmp/frr.tar.gz
-RUN mkdir -p /src \
- && tar -xzf /tmp/frr.tar.gz -C /src --strip-components=1 \
- && rm /tmp/frr.tar.gz
+ARG FRR_COMMIT
+RUN apk add --no-cache --update-cache git \
+ && git clone --quiet --depth 1 --branch frr-${FRR_VERSION} \
+        https://github.com/FRRouting/frr.git /src \
+ && test "$(git -C /src rev-parse HEAD)" = "${FRR_COMMIT}"
 # APKBUILD.in leaves libyang out of makedepends: FRR's own image builds and
 # installs a libyang APK beforehand. Here it is Alpine's, so add it.
 RUN source /src/alpine/APKBUILD.in \

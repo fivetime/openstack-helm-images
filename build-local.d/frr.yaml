@@ -4,8 +4,8 @@
 # neutron Alpine image's vtysh (it installs the frr APK this image keeps in
 # /pkgs/apk). FRR older than 10.6 handles IPv4 over IPv6 peering badly and
 # Alpine's own frr lags, hence the source build. The tag names the FRR version
-# and the Alpine release; the source is pinned by version and sha512 in the
-# Dockerfile, so rebuilds produce the same FRR.
+# and the Alpine release; the source is pinned to the release tag's commit in
+# the Dockerfile, so rebuilds produce the same FRR.
 
 - job:
     name: build-local-frr-alpine
