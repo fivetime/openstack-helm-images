@@ -60,6 +60,7 @@ RUN apk add --no-cache \
         iptables ip6tables conntrack-tools keepalived dnsmasq \
         sudo \
         lshw \
+        frr \
         libffi libxml2 libxslt pcre2 librdkafka libpq \
  && apk add --no-cache --virtual .build-deps \
         py3-virtualenv \
@@ -151,6 +152,28 @@ RUN SP=$(PYTHONDONTWRITEBYTECODE=1 /var/lib/openstack/bin/python3 -c "import sys
  && printf 'import ovsdb_dns_patch\n' > "${SP}/zzz_ovsdb_dns_patch.pth" \
  && rm /tmp/ovsdb_dns_patch.py
 
+# Neutron changes carried until they merge upstream, applied to the installed
+# package (runtime files only; the tests and release notes stay in the change):
+#   0001-evpn-gateway-chassis.patch -- ovn-cms-options enable-chassis-as-evpn-gw
+#     picks the chassis for EVPN router ports instead of every gateway chassis
+#     (fork commit 7255bbeeeb on fivetime/openstack-neutron evpn-gateway-chassis).
+# A patch that stops applying fails the build on purpose: upstream has changed
+# the code, so the patch has to be rebased (or dropped once merged).
+# The `frr` package above provides vtysh, which the OVN agent's ovn-evpn
+# extension runs (through privsep) against the FRR of the chart's
+# daemonset_ovn_evpn_frr; FRR itself runs in that daemonset, not here.
+COPY patches/neutron/ /tmp/neutron-patches/
+RUN apk add --no-cache --virtual .patch-deps patch \
+ && SP=$(PYTHONDONTWRITEBYTECODE=1 /var/lib/openstack/bin/python3 -c "import sysconfig; print(sysconfig.get_paths()['purelib'])") \
+ && for p in /tmp/neutron-patches/*.patch; do \
+        echo "applying ${p##*/}"; \
+        patch -p1 -d "${SP}" < "${p}" || exit 1; \
+        echo "neutron patch ${p##*/}" >> /etc/image_info/patches.txt; \
+    done \
+ && find "${SP}/neutron" -type d -name '__pycache__' -prune -exec rm -rf {} + \
+ && apk del .patch-deps \
+ && rm -rf /tmp/neutron-patches /var/cache/apk/*
+
 # neutron 运行目录 + 属主 (chart 以 uid 42424 运行容器)。
 RUN mkdir -p /etc/neutron /var/log/neutron /var/lib/neutron /var/cache/neutron \
  && chown -R 42424:42424 /etc/neutron /var/log/neutron /var/lib/neutron /var/cache/neutron
@@ -198,6 +221,8 @@ RUN export PYTHONDONTWRITEBYTECODE=1 \
  && python3 -c "import json; from importlib.metadata import distribution as d; u=d('neutron').read_text('direct_url.json'); assert u and 'vcs_info' in json.loads(u), 'neutron is no longer the git build -- a dependency resolver replaced it'; print('neutron still the git build OK')" \
  && python3 -c "import psycopg2, confluent_kafka, pymysql; print('db+kafka drivers OK')" \
  && python3 -c "import ovs.dns_resolve as d; assert getattr(d, '_ovnic_dns_patched', False); print('DNS patch active')" \
+ && python3 -c "from neutron.common.ovn import constants as c; from neutron.plugins.ml2.drivers.ovn.mech_driver.ovsdb import impl_idl_ovn as i; assert c.CMS_OPT_CHASSIS_AS_EVPN_GW == 'enable-chassis-as-evpn-gw'; assert hasattr(i.OvsdbSbOvnIdl, 'get_evpn_gateway_chassis'); print('EVPN gateway chassis patch active')" \
+ && vtysh --help > /dev/null && echo "vtysh OK" \
  && echo "venv layout OK (neutron in /var/lib/openstack)"
 
 CMD ["neutron-ovn-agent"]
