@@ -16,11 +16,11 @@ ARG MISTRAL_REF=stable/2026.1
 # happened to the 2026.2 cell the moment upstream added it.
 #
 # This holds as long as the ref names a branch that exists in opendev's
-# mistral-extra too. It does for every cell today: the fork of mistral keeps
-# only master, so the 2026.1 cell passes MISTRAL_REF=master and pairs with
+# mistral-extra too. The 2026.1 cell passes MISTRAL_REF=master and pairs with
 # mistral-extra master, and the opendev cells pass stable/<release>. A ref
-# that mistral-extra does not carry must pass MISTRAL_EXTRA_REF explicitly;
-# an explicit value still wins.
+# that mistral-extra does not carry must pass MISTRAL_EXTRA_REF explicitly
+# (the 2026.2 cell does, for the fork's fivetime/stable/2026.2); an explicit
+# value still wins.
 ARG MISTRAL_EXTRA_REPO=https://opendev.org/openstack/mistral-extra
 ARG MISTRAL_EXTRA_REF=${MISTRAL_REF}
 ARG PROFILES="fluent apache"
@@ -39,10 +39,15 @@ RUN if [ -s /etc/image_info/bindep_build.txt ]; then \
     fi
 
 # Same reason as zun: a clone of a moving branch inside an unchanging RUN
-# gets its layer reused and quietly builds yesterday's code. The 2026.1 cell
-# builds from the fivetime fork's master; when it moves, this ref file changes
-# and the clone layer rebuilds (which also refreshes mistral-extra).
-ADD https://api.github.com/repos/fivetime/openstack-mistral/git/refs/heads/master /tmp/mistral.ref
+# gets its layer reused and quietly builds yesterday's code. When the branch
+# moves, this ref file changes and the clone layer rebuilds (which also
+# refreshes mistral-extra).
+#
+# The default tracks the fork's master, which the 2026.1 cell builds. A cell
+# that builds another fork branch passes the ref URL for that branch, or it
+# would only rebuild when master happens to move.
+ARG MISTRAL_REF_URL=https://api.github.com/repos/fivetime/openstack-mistral/git/refs/heads/master
+ADD ${MISTRAL_REF_URL} /tmp/mistral.ref
 
 RUN sed -i '/^mistral===/d;/^mistral-extra===/d' /upper-constraints.txt \
     && git clone --filter=blob:none -b ${MISTRAL_REF} ${MISTRAL_REPO} /tmp/mistral \

@@ -72,9 +72,22 @@
           build_args:
             - "BASE_VENV_BUILDER=quay.io/airshipit/venv_builder:2026.2-ubuntu_resolute"
             - "BASE_RUNTIME=quay.io/airshipit/base:2026.2-ubuntu_resolute"
-            # Upstream's entry as is: opendev's mistral, not the fork
-            # pinned on 2026.1 above. mistral-extra follows this ref.
-            - "MISTRAL_REF=stable/2026.2"
+            # The fork's fivetime/stable/2026.2: upstream stable/2026.2 plus
+            # the same two event-engine patches the 2026.1 cell carries
+            # (event listeners on the notification transport, Gerrit
+            # 1008740; no busy-wait on the event queue, Gerrit 1008741).
+            # Without the first, event triggers never see notifications
+            # once they live on a separate bus; without the second, the
+            # event engine spins a whole core while idle. Drop the fork
+            # here once both merge and reach stable/2026.2.
+            #
+            # mistral-extra has no fivetime/ branch, so its ref is passed
+            # explicitly instead of following MISTRAL_REF, and the cache
+            # bust has to track this branch rather than the fork's master.
+            - "MISTRAL_REPO=https://github.com/fivetime/openstack-mistral.git"
+            - "MISTRAL_REF=fivetime/stable/2026.2"
+            - "MISTRAL_REF_URL=https://api.github.com/repos/fivetime/openstack-mistral/git/refs/heads/fivetime/stable/2026.2"
+            - "MISTRAL_EXTRA_REF=stable/2026.2"
     files: &mistral_files
       - mistral/.*
       - zuul.d/mistral.yaml
