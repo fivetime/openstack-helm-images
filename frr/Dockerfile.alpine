@@ -1,0 +1,82 @@
+# syntax=docker/dockerfile:1
+# FRR built from source on Alpine, for the neutron chart's ovn-evpn-frr
+# daemonset; the neutron Alpine image installs vtysh from the same APKs (it
+# takes them from this image's /pkgs/apk), so vtysh and the daemons it drives
+# are one build.
+#
+# Why not the FRR project's image or Alpine's package: FRR older than 10.6
+# handles IPv4 over IPv6 peering (extended-nexthop, RFC 5549) badly, which the
+# fabric uses, and Alpine's frr lags (10.5.3 in 3.23, 10.6.1 in 3.24); the
+# FRR project's image is built on another Alpine release with its own
+# libyang 2, so its binaries do not belong in an Alpine 3.24 image.
+#
+# This follows FRR's own docker/alpine/Dockerfile and builds with FRR's own
+# alpine/APKBUILD.in from the release, with two differences: the Alpine
+# release (ALPINE_VERSION) and Alpine's libyang instead of a separately built
+# libyang 2 (FRR 10.7 builds against libyang 3, as Alpine's own package does).
+# To upgrade FRR, change FRR_VERSION and FRR_SHA512.
+ARG ALPINE_VERSION=3.24
+ARG FRR_VERSION=10.7.1
+ARG FRR_SHA512=c7e171ae1a30669fb6e027977af77125e233ad8e9b7ca8612725b426c52600164e7b69db8c6b4280276c30a3ad1f0b7b9cf51fc7a4593fe30cc219eec4c7a957
+
+# A dist tarball and a configured APKBUILD from the release source.
+FROM alpine:${ALPINE_VERSION} AS source-builder
+ARG FRR_VERSION
+ARG FRR_SHA512
+ADD --checksum=sha512:${FRR_SHA512} \
+    https://github.com/FRRouting/frr/archive/frr-${FRR_VERSION}.tar.gz /tmp/frr.tar.gz
+RUN mkdir -p /src \
+ && tar -xzf /tmp/frr.tar.gz -C /src --strip-components=1 \
+ && rm /tmp/frr.tar.gz
+# APKBUILD.in leaves libyang out of makedepends: FRR's own image builds and
+# installs a libyang APK beforehand. Here it is Alpine's, so add it.
+RUN source /src/alpine/APKBUILD.in \
+ && apk add --no-cache --update-cache $makedepends libyang-dev
+RUN cd /src \
+ && ./bootstrap.sh \
+ && ./configure \
+ && make dist
+
+# The APKs.
+FROM alpine:${ALPINE_VERSION} AS apk-builder
+RUN apk add --no-cache --update-cache abuild alpine-sdk \
+ && mkdir -p /pkgs/apk \
+ && adduser -D -G abuild builder \
+ && su builder -c 'abuild-keygen -a -n' \
+ && cp /home/builder/.abuild/*.rsa.pub /etc/apk/keys/
+COPY --from=source-builder /src/frr-*.tar.gz /src/alpine/* /dist/
+RUN source /dist/APKBUILD.in \
+ && apk add --no-cache --update-cache $makedepends $depends libyang-dev \
+ && chown -R builder /dist /pkgs
+USER builder
+# The FRR test suite takes far longer than the build and FRR runs it on the
+# release itself, so the package skips it.
+RUN cd /dist \
+ && sed -i 's/^pkgrel=0$/pkgrel=0\noptions="!check"/' APKBUILD \
+ && grep -q '^options="!check"$' APKBUILD \
+ && abuild checksum \
+ && git init -q \
+ && abuild -P /pkgs/apk
+USER root
+# Only the main package: the neutron image needs vtysh from it, and the
+# -dbg/-dev/-doc subpackages would only make both images bigger.
+RUN mkdir -p /pkgs/out \
+ && find /pkgs/apk -name 'frr-[0-9]*.apk' -exec cp {} /pkgs/out/ \; \
+ && ls /pkgs/out
+
+# The runtime: FRR from those APKs. The APKs stay in /pkgs/apk so the neutron
+# image can install the identical vtysh from them.
+FROM alpine:${ALPINE_VERSION}
+ARG FRR_VERSION
+COPY --from=apk-builder /pkgs/out/ /pkgs/apk/
+COPY --from=apk-builder /home/builder/.abuild/*.rsa.pub /etc/apk/keys/
+COPY --from=source-builder /src/docker/alpine/docker-start /usr/lib/frr/docker-start
+RUN apk add --no-cache --update-cache tini \
+ && apk add --no-cache /pkgs/apk/frr-${FRR_VERSION}-r0.apk \
+ && mkdir -p /var/run/frr \
+ && chown -R frr:frr /etc/frr /var/run/frr \
+ && vtysh --help > /dev/null \
+ && /usr/lib/frr/bgpd --version | grep -q "version ${FRR_VERSION}" \
+ && echo "FRR ${FRR_VERSION} OK"
+ENTRYPOINT ["/sbin/tini", "--"]
+CMD ["/usr/lib/frr/docker-start"]

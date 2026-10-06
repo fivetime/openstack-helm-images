@@ -1,0 +1,25 @@
+---
+# Fork-only FRR image, built from source on Alpine (frr/Dockerfile.alpine): the
+# FRR the neutron chart's ovn-evpn-frr daemonset runs, and the source of the
+# neutron Alpine image's vtysh (it installs the frr APK this image keeps in
+# /pkgs/apk). FRR older than 10.6 handles IPv4 over IPv6 peering badly and
+# Alpine's own frr lags, hence the source build. The tag names the FRR version
+# and the Alpine release; the source is pinned by version and sha512 in the
+# Dockerfile, so rebuilds produce the same FRR.
+
+- job:
+    name: build-local-frr-alpine
+    description: Build FRR from source on Alpine for the neutron ovn-evpn-frr daemonset and neutron's vtysh.
+    vars:
+      container_images:
+        - context: frr
+          repository: openstackhelm/frr
+          container_filename: Dockerfile.alpine
+          arch:
+            - linux/amd64
+            - linux/arm64
+          tags:
+            - 10.7.1-alpine_3.24
+          build_args:
+            - ALPINE_VERSION=3.24
+            - FRR_VERSION=10.7.1

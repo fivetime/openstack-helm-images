@@ -22,15 +22,26 @@
 #   5. networking-generic-switch —— 把 VLAN 落到物理交换机端口上的 genericswitch
 #      ML2 driver(+netmiko)。没有它裸机端口只能停在 binding_failed。
 #
-# FROM ovn alpine 镜像 (= alpine 3.23 + ovs-vsctl/ovsdb 工具，neutron-ovn-agent 需要)。
+# FROM alpine:${ALPINE_VERSION}. The ovs-vsctl/ovsdb-client/ovs-ofctl/ovs-appctl the
+# agents run come from Alpine's openvswitch package: they only talk OVSDB/OpenFlow
+# to the node's OVS, which does not need the same OVS build. This image used to be
+# FROM the fork's ovn:alpine_latest for those tools, which tied neutron's Alpine
+# release to the one the production OVN runs (moving OVN is a data-plane change).
 #
 # 构建 (context = neutron/，与 build-local.d/neutron.yaml 一致)：
 #   cd neutron && docker build -f Dockerfile.alpine -t neutron:alpine-test .
-#   cd neutron && docker build -f Dockerfile.alpine --build-arg OVN_IMAGE=ovn:alpine-test -t neutron:alpine-test .
 # =============================================================================
 
-ARG OVN_IMAGE=ghcr.io/fivetime/openstackhelm/ovn:alpine_latest
-FROM ${OVN_IMAGE}
+ARG ALPINE_VERSION=3.24
+
+# vtysh for the OVN agent's ovn-evpn extension, from the same FRR build the
+# chart's ovn-evpn-frr daemonset runs (openstack-helm-images frr/, built on the
+# same Alpine release): that image keeps its APKs in /pkgs/apk. Bump together
+# with the chart's images.tags.neutron_ovn_evpn_frr.
+ARG FRR_IMAGE=ghcr.io/fivetime/openstackhelm/frr:10.7.1-alpine_3.24
+FROM ${FRR_IMAGE} AS frr
+
+FROM alpine:${ALPINE_VERSION}
 
 # 对齐官方布局：venv 在 /var/lib/openstack，PATH 优先指向它(再到基底的 /usr/bin)。
 ENV PATH=/var/lib/openstack/bin:$PATH
@@ -40,7 +51,9 @@ ARG NEUTRON_REF=stable/2026.1
 ARG CONSTRAINTS=https://opendev.org/openstack/requirements/raw/branch/stable/2026.1/upper-constraints.txt
 
 # 运行期：
-#  - ovs-vsctl / ovsdb 工具由 OVN 基底提供
+#  - openvswitch: ovs-vsctl / ovsdb-client / ovs-ofctl / ovs-appctl
+#  - bash/coreutils/util-linux/iproute2/ca-certificates/jq: 原先随 OVN 基底带来,
+#    chart 的脚本要用
 #  - python3: venv 解释器(venv 的 bin/python 指向系统 python3)
 #  - haproxy: neutron-ovn-agent 的 metadata 代理
 #  - iptables/.../keepalived/dnsmasq: L3/安全组/HA/DHCP 兜底
@@ -48,7 +61,7 @@ ARG CONSTRAINTS=https://opendev.org/openstack/requirements/raw/branch/stable/202
 #  - sudo: 非 root(uid 42424)进程经 sudo 提权跑 rootwrap/privsep
 #  - lshw: 官方 neutron-core 自带的硬件清单工具(诊断用,非 OVN 专属)
 # neutron(+tap-as-a-service 端口镜像扩展)及 uwsgi/驱动全装进 /var/lib/openstack venv。confluent-kafka 在 musl 上
-# 无 wheel,需对 alpine 的 librdkafka 2.12.x 编译(故钉 2.12 线);build 依赖(含
+# 无 wheel,需对 alpine 的 librdkafka 编译,故钉到它的版本线(Alpine 3.24 = 2.14.x);build 依赖(含
 # py3-virtualenv 用于建 venv)用 --virtual 装完即删。
 # 装完写 /etc/image_info/pip.txt(pip freeze,git 装的 neutron 会带 @<sha>,便于对版
 # 排障),并在本层内删 *.pyc/__pycache__ 与 /etc/machine-id —— 对齐官方 runtime 清理。
@@ -56,11 +69,12 @@ ARG CONSTRAINTS=https://opendev.org/openstack/requirements/raw/branch/stable/202
 # 后续自检 RUN 用 PYTHONDONTWRITEBYTECODE=1,避免 import 把字节码又写回新层。
 RUN apk add --no-cache \
         python3 \
+        openvswitch \
+        bash coreutils util-linux iproute2 ca-certificates jq \
         haproxy \
         iptables ip6tables conntrack-tools keepalived dnsmasq \
         sudo \
         lshw \
-        frr \
         libffi libxml2 libxslt pcre2 librdkafka libpq \
  && apk add --no-cache --virtual .build-deps \
         py3-virtualenv \
@@ -78,7 +92,7 @@ RUN apk add --no-cache \
         "neutron @ git+${NEUTRON_REPO}@${NEUTRON_REF}" \
         tap-as-a-service \
  && /var/lib/openstack/bin/pip install --no-cache-dir \
-        psycopg2-binary 'confluent-kafka>=2.12,<2.13' \
+        psycopg2-binary 'confluent-kafka>=2.14,<2.15' \
  && mkdir -p /etc/image_info \
  && /var/lib/openstack/bin/pip freeze > /etc/image_info/pip.txt \
  && apk del .build-deps \
@@ -159,10 +173,17 @@ RUN SP=$(PYTHONDONTWRITEBYTECODE=1 /var/lib/openstack/bin/python3 -c "import sys
 #     (fork commit 7255bbeeeb on fivetime/openstack-neutron evpn-gateway-chassis).
 # A patch that stops applying fails the build on purpose: upstream has changed
 # the code, so the patch has to be rebased (or dropped once merged).
-# The `frr` package above provides vtysh, which the OVN agent's ovn-evpn
-# extension runs (through privsep) against the FRR of the chart's
-# daemonset_ovn_evpn_frr; FRR itself runs in that daemonset, not here.
 COPY patches/neutron/ /tmp/neutron-patches/
+
+# vtysh, which the OVN agent's ovn-evpn extension runs (through privsep)
+# against the FRR of the chart's daemonset_ovn_evpn_frr. It is the frr APK the
+# FRR image was built and installed from (same Alpine release), installed with
+# apk so its libraries are Alpine's; the daemons it also contains are not run
+# here.
+COPY --from=frr /pkgs/apk/ /tmp/frr-apk/
+COPY --from=frr /etc/apk/keys/ /etc/apk/keys/
+RUN apk add --no-cache /tmp/frr-apk/frr-[0-9]*.apk \
+ && rm -rf /tmp/frr-apk
 RUN apk add --no-cache --virtual .patch-deps patch \
  && SP=$(PYTHONDONTWRITEBYTECODE=1 /var/lib/openstack/bin/python3 -c "import sysconfig; print(sysconfig.get_paths()['purelib'])") \
  && for p in /tmp/neutron-patches/*.patch; do \
@@ -222,7 +243,7 @@ RUN export PYTHONDONTWRITEBYTECODE=1 \
  && python3 -c "import psycopg2, confluent_kafka, pymysql; print('db+kafka drivers OK')" \
  && python3 -c "import ovs.dns_resolve as d; assert getattr(d, '_ovnic_dns_patched', False); print('DNS patch active')" \
  && python3 -c "from neutron.common.ovn import constants as c; from neutron.plugins.ml2.drivers.ovn.mech_driver.ovsdb import impl_idl_ovn as i; assert c.CMS_OPT_CHASSIS_AS_EVPN_GW == 'enable-chassis-as-evpn-gw'; assert hasattr(i.OvsdbSbOvnIdl, 'get_evpn_gateway_chassis'); print('EVPN gateway chassis patch active')" \
- && vtysh --help > /dev/null && echo "vtysh OK" \
+ && vtysh --help > /dev/null && echo "vtysh from $(apk info -e -v frr) OK" \
  && echo "venv layout OK (neutron in /var/lib/openstack)"
 
 CMD ["neutron-ovn-agent"]
