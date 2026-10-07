@@ -34,6 +34,17 @@ RUN git clone --depth 1 --branch "${SKYLINE_CONSOLE_REF}" \
     || (git clone "${SKYLINE_CONSOLE_REPO}" . \
         && git checkout "${SKYLINE_CONSOLE_REF}")
 
+# Fork-only patches, see the skyline-apiserver step below for the layout.
+COPY skyline/patches/ /tmp/patches/
+RUN ref="$(echo "${SKYLINE_CONSOLE_REF}" | tr / -)" \
+    && for p in /tmp/patches/skyline-console/*.patch \
+                "/tmp/patches/skyline-console/${ref}"/*.patch; do \
+         [ -e "$p" ] || continue; \
+         git apply "$p" || exit 1; \
+         echo "skyline-console patch ${p#/tmp/patches/skyline-console/}" \
+           >> /src/skyline-console/.fork-patches; \
+       done
+
 RUN corepack enable \
     && yarn install --frozen-lockfile --network-timeout 600000 \
     && NODE_OPTIONS=--max-old-space-size=2048 yarn run build
@@ -71,20 +82,27 @@ RUN if [ -s /etc/image_info/bindep_build.txt ]; then \
 # skyline-console source tree with bundles already built
 COPY --from=console-build /src/skyline-console /tmp/skyline-console
 
-# Fork-only: fixes not yet merged upstream, as git format-patch files, one
-# directory per project. Each is applied with `git apply` right
-# after the clone and listed in /etc/image_info/patches.txt; one that does
-# not apply fails the build, so a fix that landed upstream is noticed and
-# its patch removed. Drop a patch once its change is in the branch built.
+# Fork-only: fixes not yet merged upstream, as git format-patch files.
+# patches/<project>/*.patch apply to every branch built,
+# patches/<project>/<ref with / as ->/*.patch only to that one (a fix for
+# code a branch does not have would not apply there). Each is applied with
+# `git apply` right after the clone and listed in /etc/image_info/patches.txt;
+# one that does not apply fails the build, so a fix that landed upstream is
+# noticed. Drop a patch once its change is in the branch built.
 COPY skyline/patches/ /tmp/patches/
 
 RUN sed -i '/^skyline-apiserver===/d' /upper-constraints.txt \
     && git clone --filter=blob:none -b ${SKYLINE_APISERVER_REF} ${SKYLINE_APISERVER_REPO} /tmp/skyline-apiserver \
-    && for p in /tmp/patches/skyline-apiserver/*.patch; do \
+    && ref="$(echo "${SKYLINE_APISERVER_REF}" | tr / -)" \
+    && for p in /tmp/patches/skyline-apiserver/*.patch \
+                "/tmp/patches/skyline-apiserver/${ref}"/*.patch; do \
          [ -e "$p" ] || continue; \
          git -C /tmp/skyline-apiserver apply "$p" || exit 1; \
-         echo "skyline-apiserver patch ${p##*/}" >> /etc/image_info/patches.txt; \
+         echo "skyline-apiserver patch ${p#/tmp/patches/skyline-apiserver/}" >> /etc/image_info/patches.txt; \
        done \
+    && if [ -f /tmp/skyline-console/.fork-patches ]; then \
+         cat /tmp/skyline-console/.fork-patches >> /etc/image_info/patches.txt; \
+       fi \
     && uv pip install \
          --build-constraint /upper-constraints.txt \
          -c /upper-constraints.txt \
