@@ -23,6 +23,9 @@ ARG INCUS_PROVIDER_REF=74d4f35ddbeb4dbc1aabfcae89b0885ba73b05b1
 # has no tags, so it is stated instead. The commit is the real identity
 # and it is recorded in /etc/image_info/project.txt.
 ARG INCUS_PROVIDER_VERSION=0.1.0
+# confluent-kafka has no musl wheel and is built against Alpine's librdkafka,
+# so its range follows the Alpine release: 2.12.x on 3.23, 2.14.x on 3.24.
+ARG CONFLUENT_KAFKA_SERIES=2.12
 
 # Alpine 3.23 no longer packages ISC dhclient. That binary is used inside an
 # amphora agent image, not by the Octavia controller or the OVN provider roles
@@ -73,7 +76,7 @@ RUN apk add --no-cache \
         uwsgi PyMySQL python-memcached redis \
         /tmp/octavia /tmp/ovn-octavia-provider \
  && /var/lib/openstack/bin/pip install --no-cache-dir \
-        psycopg2-binary 'confluent-kafka>=2.12,<2.13' \
+        psycopg2-binary "confluent-kafka==${CONFLUENT_KAFKA_SERIES}.*" \
  && PBR_VERSION="${INCUS_PROVIDER_VERSION}" \
     /var/lib/openstack/bin/pip install --no-cache-dir \
         -c /tmp/upper-constraints.txt \
