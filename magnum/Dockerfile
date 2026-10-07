@@ -27,11 +27,14 @@ ARG MAGNUM_REF=stable/2026.1
 # The StorageClass half only became safe to ship once Manila actually served NFS,
 # which needed ceph/ceph#69250 (see Rook-Ceph-Deploy.md 6.9). Before that it would
 # have published a StorageClass whose PVCs could never bind.
+# fivetime.16 runs under Magnum 2026.2, which dropped eventlet and novaclient:
+# the Rust calls only go through eventlet.tpool when eventlet is patched in (a
+# tpool call from a native thread never returns), and novaclient is optional.
 ARG MAGNUM_CLUSTER_API_REPO=https://github.com/fivetime/magnum-cluster-api.git
 # Must be a tag, not a branch: build.rs feeds git describe into VERGEN_GIT_DESCRIBE,
 # which names the ClusterClass and is asserted non-empty at compile time. A shallow
 # branch clone carries no tags and the build fails there.
-ARG MAGNUM_CLUSTER_API_REF=v0.38.2-fivetime.15
+ARG MAGNUM_CLUSTER_API_REF=v0.38.2-fivetime.16
 ARG PROFILES=""
 
 # Use bindep to determine packages needed for this profile set
