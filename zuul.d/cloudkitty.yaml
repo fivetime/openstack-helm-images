@@ -68,6 +68,7 @@
             # upstream.
             - "CLOUDKITTY_REPO=https://github.com/fivetime/openstack-cloudkitty"
             - "CLOUDKITTY_REF=master"
+            - "CLOUDKITTY_REF_URL=https://api.github.com/repos/fivetime/openstack-cloudkitty/git/refs/heads/master"
         - context: .
           registry: quay.io
           repository: quay.io/airshipit/cloudkitty
@@ -80,9 +81,13 @@
           build_args:
             - "BASE_VENV_BUILDER=quay.io/airshipit/venv_builder:2026.2-ubuntu_resolute"
             - "BASE_RUNTIME=quay.io/airshipit/base:2026.2-ubuntu_resolute"
-            # No 2026.2 branch of the fork yet, so this builds opendev's
-            # stable/2026.2, without the InfluxDB v2 fixes above.
-            - "CLOUDKITTY_REF=stable/2026.2"
+            # The fork's fivetime/stable/2026.2 branch: opendev's
+            # stable/2026.2 plus the InfluxDB v2 fixes above, as submitted to
+            # Gerrit (1008743-1008746). Drop these three build args once they
+            # land upstream and are backported.
+            - "CLOUDKITTY_REPO=https://github.com/fivetime/openstack-cloudkitty"
+            - "CLOUDKITTY_REF=fivetime/stable/2026.2"
+            - "CLOUDKITTY_REF_URL=https://api.github.com/repos/fivetime/openstack-cloudkitty/git/refs/heads/fivetime/stable/2026.2"
     files: &cloudkitty_files
       - cloudkitty/.*
       - zuul.d/cloudkitty.yaml

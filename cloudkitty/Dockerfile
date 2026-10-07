@@ -22,6 +22,14 @@ RUN if [ -s /etc/image_info/bindep_build.txt ]; then \
         && rm -rf /var/lib/apt/lists/*; \
     fi
 
+# Cache-bust: the RUN below is keyed on its text, so a rebuild against the same
+# branch name would silently reuse the layer with stale code. The branch head
+# JSON changes on every push and forces the clone to re-run. The URL has to
+# follow CLOUDKITTY_REPO: the default is opendev's Gitea API, so a cell that
+# builds from the GitHub fork passes GitHub's ref API instead.
+ARG CLOUDKITTY_REF_URL=https://opendev.org/api/v1/repos/openstack/cloudkitty/branches/${CLOUDKITTY_REF}
+ADD ${CLOUDKITTY_REF_URL} /tmp/cloudkitty.ref
+
 RUN sed -i '/^cloudkitty===/d' /upper-constraints.txt \
     && git clone --filter=blob:none -b ${CLOUDKITTY_REF} ${CLOUDKITTY_REPO} /tmp/cloudkitty \
     && uv pip install \
@@ -30,7 +38,7 @@ RUN sed -i '/^cloudkitty===/d' /upper-constraints.txt \
          -r /etc/image_info/python_packages.txt \
          /tmp/cloudkitty \
     && git -C /tmp/cloudkitty log --oneline -1 > /etc/image_info/project.txt \
-    && rm -rf /tmp/cloudkitty \
+    && rm -rf /tmp/cloudkitty /tmp/cloudkitty.ref \
     && uv pip freeze > /etc/image_info/pip.txt
 
 FROM ${BASE_RUNTIME} AS runtime
