@@ -58,7 +58,6 @@
           container_filename: gnocchi/Dockerfile
           arch:
             - linux/amd64
-            - linux/arm64
           tags:
             - "2026.2-ubuntu_resolute"
             - "2026.2-ubuntu_resolute-{{ currentdate }}"
