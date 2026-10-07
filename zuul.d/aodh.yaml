@@ -52,6 +52,20 @@
             - "BASE_VENV_BUILDER=quay.io/airshipit/venv_builder:2026.1-ubuntu_noble"
             - "BASE_RUNTIME=quay.io/airshipit/base:2026.1-ubuntu_noble"
             - "AODH_REF=stable/2026.1"
+        - context: .
+          registry: quay.io
+          repository: quay.io/airshipit/aodh
+          container_filename: aodh/Dockerfile
+          arch:
+            - linux/amd64
+            - linux/arm64
+          tags:
+            - "2026.2-ubuntu_resolute"
+            - "2026.2-ubuntu_resolute-{{ currentdate }}"
+          build_args:
+            - "BASE_VENV_BUILDER=quay.io/airshipit/venv_builder:2026.2-ubuntu_resolute"
+            - "BASE_RUNTIME=quay.io/airshipit/base:2026.2-ubuntu_resolute"
+            - "AODH_REF=stable/2026.2"
     files: &aodh_files
       - aodh/.*
       - zuul.d/aodh.yaml
