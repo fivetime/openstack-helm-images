@@ -85,7 +85,15 @@
           build_args:
             - "BASE_VENV_BUILDER=quay.io/airshipit/venv_builder:2026.2-ubuntu_resolute"
             - "BASE_RUNTIME=quay.io/airshipit/base:2026.2-ubuntu_resolute"
-            - "CEILOMETER_REF=stable/2026.2"
+            # The fork's fivetime/stable/2026.2: upstream stable/2026.2 plus
+            # the Cinder SDK fix (cinder_client passed oslo_conf, the SDK then
+            # wants a [cinder] option group ceilometer never registers, and
+            # block-storage was disabled: every Cinder pollster failed).
+            # The ref URL is GitHub's, as CEILOMETER_REF_URL defaults to
+            # opendev's API for the branch.
+            - "CEILOMETER_REPO=https://github.com/fivetime/openstack-ceilometer.git"
+            - "CEILOMETER_REF=fivetime/stable/2026.2"
+            - "CEILOMETER_REF_URL=https://api.github.com/repos/fivetime/openstack-ceilometer/git/refs/heads/fivetime/stable/2026.2"
     files: &ceilometer_files
       - ceilometer/.*
       - zuul.d/ceilometer.yaml
