@@ -71,8 +71,20 @@ RUN if [ -s /etc/image_info/bindep_build.txt ]; then \
 # skyline-console source tree with bundles already built
 COPY --from=console-build /src/skyline-console /tmp/skyline-console
 
+# Fork-only: fixes not yet merged upstream, as git format-patch files, one
+# directory per project. Each is applied with `git apply` right
+# after the clone and listed in /etc/image_info/patches.txt; one that does
+# not apply fails the build, so a fix that landed upstream is noticed and
+# its patch removed. Drop a patch once its change is in the branch built.
+COPY skyline/patches/ /tmp/patches/
+
 RUN sed -i '/^skyline-apiserver===/d' /upper-constraints.txt \
     && git clone --filter=blob:none -b ${SKYLINE_APISERVER_REF} ${SKYLINE_APISERVER_REPO} /tmp/skyline-apiserver \
+    && for p in /tmp/patches/skyline-apiserver/*.patch; do \
+         [ -e "$p" ] || continue; \
+         git -C /tmp/skyline-apiserver apply "$p" || exit 1; \
+         echo "skyline-apiserver patch ${p##*/}" >> /etc/image_info/patches.txt; \
+       done \
     && uv pip install \
          --build-constraint /upper-constraints.txt \
          -c /upper-constraints.txt \

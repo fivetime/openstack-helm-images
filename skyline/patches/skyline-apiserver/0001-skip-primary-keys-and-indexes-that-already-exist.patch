@@ -1,0 +1,195 @@
+From dcb0919b0bdeb38e1367c3179230397a83fd7a86 Mon Sep 17 00:00:00 2001
+From: Simon Zhou <td@fivetime.ltd>
+Date: Wed, 7 Oct 2026 13:00:14 +0000
+Subject: [PATCH] Skip primary keys and indexes that already exist
+
+Migration 001 drops the old index on revoked_token and settings and
+then creates the primary key. On Galera and Percona XtraDB Cluster
+with pxc_strict_mode=ENFORCING the tables could not be written at all
+without a primary key (bug 2108940), so deployments added it by hand.
+There the migration fails with "Multiple primary key defined"; MySQL
+cannot roll back DDL, so the index it dropped first stays dropped and
+every later run fails on dropping it again.
+
+Look at what each table already has and do only what is missing.
+
+Verified on Percona XtraDB Cluster 8.0.45 with pxc_strict_mode set to
+ENFORCING: a database at 000 with the keys added by hand failed with
+error 1068 before, and ends with the same schema as a fresh one after.
+SQLite rebuilds the table in batch mode and so cannot reproduce the
+error; the unit tests cover the three starting states.
+
+Related-Bug: #2108940
+Assisted-By: Claude Opus 5.5 <noreply@anthropic.com>
+Change-Id: Iddfa87e636e7d1af09af506f46871b30bd3ce061
+Signed-off-by: Simon Zhou <td@fivetime.ltd>
+---
+ ...y-keys-added-by-hand-3b9e5f0c1d7a4e26.yaml |  8 ++
+ .../001_add_primary_keys_to_skyline_tables.py | 29 ++++--
+ .../tests/unit/test_db_migrations.py          | 91 +++++++++++++++++++
+ 3 files changed, 121 insertions(+), 7 deletions(-)
+ create mode 100644 releasenotes/notes/primary-keys-added-by-hand-3b9e5f0c1d7a4e26.yaml
+ create mode 100644 skyline_apiserver/tests/unit/test_db_migrations.py
+
+diff --git a/releasenotes/notes/primary-keys-added-by-hand-3b9e5f0c1d7a4e26.yaml b/releasenotes/notes/primary-keys-added-by-hand-3b9e5f0c1d7a4e26.yaml
+new file mode 100644
+index 0000000..4db5dab
+--- /dev/null
++++ b/releasenotes/notes/primary-keys-added-by-hand-3b9e5f0c1d7a4e26.yaml
+@@ -0,0 +1,8 @@
++---
++fixes:
++  - |
++    The migration that adds primary keys to ``revoked_token`` and
++    ``settings`` no longer fails on databases where they were added by hand
++    to work around bug 2108940 on Galera or Percona XtraDB Cluster. It used
++    to fail with ``Multiple primary key defined`` after dropping the first
++    index, which left the database where every later run failed too.
+diff --git a/skyline_apiserver/db/alembic/versions/001_add_primary_keys_to_skyline_tables.py b/skyline_apiserver/db/alembic/versions/001_add_primary_keys_to_skyline_tables.py
+index 0f6b1ec..dd69f5f 100644
+--- a/skyline_apiserver/db/alembic/versions/001_add_primary_keys_to_skyline_tables.py
++++ b/skyline_apiserver/db/alembic/versions/001_add_primary_keys_to_skyline_tables.py
+@@ -20,6 +20,7 @@ Create Date: 2026-07-20 00:00:00.000000
+ 
+ """
+ 
++import sqlalchemy as sa
+ from alembic import op
+ 
+ # revision identifiers, used by Alembic.
+@@ -29,14 +30,28 @@ branch_labels = None
+ depends_on = None
+ 
+ 
+-def upgrade() -> None:
+-    with op.batch_alter_table("revoked_token") as batch_op:
+-        batch_op.drop_index(op.f("ix_revoked_token_uuid"))
+-        batch_op.create_primary_key("pk_revoked_token", ["uuid"])
++TABLES = (("revoked_token", "uuid"), ("settings", "key"))
+ 
+-    with op.batch_alter_table("settings") as batch_op:
+-        batch_op.drop_index(op.f("ix_settings_key"))
+-        batch_op.create_primary_key("pk_settings", ["key"])
++
++def upgrade() -> None:
++    # Bug 2108940 left these tables without a primary key, which Galera and
++    # Percona XtraDB Cluster with pxc_strict_mode=ENFORCING refuse to write
++    # to, and the way out was to add one by hand. Skip what such a database
++    # already has: creating a second primary key fails, and as MySQL cannot
++    # roll back DDL, the index dropped before it stays dropped and every
++    # later run fails on it.
++    for table, column in TABLES:
++        inspector = sa.inspect(op.get_bind())
++        index = op.f(f"ix_{table}_{column}")
++        has_index = index in {i["name"] for i in inspector.get_indexes(table)}
++        has_primary_key = bool(inspector.get_pk_constraint(table)["constrained_columns"])
++        if not has_index and has_primary_key:
++            continue
++        with op.batch_alter_table(table) as batch_op:
++            if has_index:
++                batch_op.drop_index(index)
++            if not has_primary_key:
++                batch_op.create_primary_key(f"pk_{table}", [column])
+ 
+ 
+ def downgrade() -> None:
+diff --git a/skyline_apiserver/tests/unit/test_db_migrations.py b/skyline_apiserver/tests/unit/test_db_migrations.py
+new file mode 100644
+index 0000000..7511e36
+--- /dev/null
++++ b/skyline_apiserver/tests/unit/test_db_migrations.py
+@@ -0,0 +1,91 @@
++# Copyright 2021 99cloud
++#
++# Licensed under the Apache License, Version 2.0 (the "License");
++# you may not use this file except in compliance with the License.
++# You may obtain a copy of the License at
++#
++#     http://www.apache.org/licenses/LICENSE-2.0
++#
++# Unless required by applicable law or agreed to in writing, software
++# distributed under the License is distributed on an "AS IS" BASIS,
++# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
++# See the License for the specific language governing permissions and
++# limitations under the License.
++
++import importlib.util
++from pathlib import Path
++from typing import Any, Iterator
++
++import pytest
++import sqlalchemy as sa
++from alembic.migration import MigrationContext
++from alembic.operations import Operations
++
++VERSIONS = Path(__file__).parents[2] / "db" / "alembic" / "versions"
++TABLES = (("revoked_token", "uuid"), ("settings", "key"))
++
++
++def _migration(name: str) -> Any:
++    spec = importlib.util.spec_from_file_location(name, VERSIONS / f"{name}.py")
++    assert spec is not None and spec.loader is not None
++    module = importlib.util.module_from_spec(spec)
++    spec.loader.exec_module(module)
++    return module
++
++
++def _run(connection: sa.engine.Connection, step: Any) -> None:
++    with Operations.context(MigrationContext.configure(connection)):
++        step()
++
++
++def _schema(connection: sa.engine.Connection) -> dict:
++    inspector = sa.inspect(connection)
++    return {
++        table: (
++            inspector.get_pk_constraint(table)["constrained_columns"],
++            sorted(i["name"] for i in inspector.get_indexes(table)),
++        )
++        for table, _ in TABLES
++    }
++
++
++@pytest.fixture
++def connection() -> Iterator[sa.engine.Connection]:
++    engine = sa.create_engine("sqlite://")
++    with engine.begin() as connection:
++        _run(connection, _migration("000_init").upgrade)
++        yield connection
++
++
++class TestAddPrimaryKeys:
++    expected = {"revoked_token": (["uuid"], []), "settings": (["key"], [])}
++
++    def test_adds_the_primary_keys(self, connection: sa.engine.Connection) -> None:
++        _run(connection, _migration("001_add_primary_keys_to_skyline_tables").upgrade)
++        assert _schema(connection) == self.expected
++
++    def test_keeps_primary_keys_added_by_hand(self, connection: sa.engine.Connection) -> None:
++        # The way out of bug 2108940 on Galera/PXC was to add the keys by
++        # hand, leaving both the key and the old index.
++        def add_by_hand() -> None:
++            from alembic import op
++
++            for table, column in TABLES:
++                with op.batch_alter_table(table) as batch_op:
++                    batch_op.create_primary_key(f"manual_{table}", [column])
++
++        _run(connection, add_by_hand)
++        _run(connection, _migration("001_add_primary_keys_to_skyline_tables").upgrade)
++        assert _schema(connection) == self.expected
++
++    def test_resumes_after_a_partial_run(self, connection: sa.engine.Connection) -> None:
++        # MySQL cannot roll back DDL, so a run that failed after dropping an
++        # index leaves the index gone and the primary key missing.
++        def drop_one_index() -> None:
++            from alembic import op
++
++            op.drop_index("ix_revoked_token_uuid", table_name="revoked_token")
++
++        _run(connection, drop_one_index)
++        _run(connection, _migration("001_add_primary_keys_to_skyline_tables").upgrade)
++        assert _schema(connection) == self.expected
+-- 
+2.53.0
+
