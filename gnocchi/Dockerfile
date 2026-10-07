@@ -12,6 +12,12 @@ ARG GNOCCHI_REF=4.7.0
 # ceph = no python deps (rados comes from the distro package installed in the
 # runtime stage); the venv is built with --system-site-packages so it is visible.
 ARG GNOCCHI_EXTRAS="postgresql,mysql,keystone,redis,s3,prometheus,ceph"
+# The gnocchi CLI (python-gnocchiclient) is what the chart's resources-cleaner
+# CronJob and helm test run; gnocchi itself does not depend on it, so without
+# this the cleaner fails on every run. Same fork as the ceilometer image: it
+# percent-encodes resource ids in URL paths (Cinder pool ids contain '#').
+ARG GNOCCHICLIENT_REPO=https://github.com/fivetime/python-gnocchiclient
+ARG GNOCCHICLIENT_REF=master
 ARG PROFILES="fluent ceph"
 
 # Use bindep to determine packages needed for this profile set
@@ -27,6 +33,10 @@ RUN if [ -s /etc/image_info/bindep_build.txt ]; then \
         && rm -rf /var/lib/apt/lists/*; \
     fi
 
+# The branch head JSON changes on every push, so a new client commit re-runs
+# the RUN below instead of reusing a cached layer.
+ADD https://api.github.com/repos/fivetime/python-gnocchiclient/git/refs/heads/${GNOCCHICLIENT_REF} /tmp/gnocchiclient.ref
+
 # Gnocchi is not in upper-constraints, but its dependencies are; keep the
 # OpenStack constraints for the shared libraries (oslo.*, keystonemiddleware).
 RUN git clone --filter=blob:none -b ${GNOCCHI_REF} ${GNOCCHI_REPO} /tmp/gnocchi \
@@ -37,6 +47,11 @@ RUN git clone --filter=blob:none -b ${GNOCCHI_REF} ${GNOCCHI_REPO} /tmp/gnocchi 
          "/tmp/gnocchi[${GNOCCHI_EXTRAS}]" \
     && git -C /tmp/gnocchi log --oneline -1 > /etc/image_info/project.txt \
     && rm -rf /tmp/gnocchi \
+    && sed -i '/^gnocchiclient===/d' /upper-constraints.txt \
+    && git clone --filter=blob:none -b ${GNOCCHICLIENT_REF} ${GNOCCHICLIENT_REPO} /tmp/gnocchiclient \
+    && uv pip install -c /upper-constraints.txt /tmp/gnocchiclient \
+    && git -C /tmp/gnocchiclient log --oneline -1 > /etc/image_info/gnocchiclient.txt \
+    && rm -rf /tmp/gnocchiclient \
     && uv pip freeze > /etc/image_info/pip.txt
 
 FROM ${BASE_RUNTIME} AS runtime
