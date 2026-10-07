@@ -27,3 +27,23 @@
             - RAAS_UI_REF=3aab9567ae54942a74b5417331c5553ededa0192
             # daas-ui: same rules as raas-ui (private, pinned by commit).
             - DAAS_UI_REF=4e1991393b745d4c9818f613b0c21061357c680f
+        # 2026.2: kolla publishes only ubuntu-noble (Python 3.12) for Horizon,
+        # no resolute. The base moves to horizon 27 and Django 5.2, so every
+        # plugin added here has to be checked against Django 5.2.
+        - context: .
+          repository: openstackhelm/horizon-kolla
+          container_filename: horizon-kolla/Dockerfile
+          arch:
+            - linux/amd64
+          tags:
+            - 2026.2-ubuntu-noble
+          build_args:
+            - BASE=quay.io/openstack.kolla/horizon:2026.2-ubuntu-noble
+            - RELEASE=2026.2
+            # 2026.2 releases of the two PyPI plugins
+            - FREEZER_WEB_UI_VERSION=19.0.0
+            - ZAQAR_UI_VERSION=21.0.0
+            # barbican-ui has only master; latest commit at the 2026.2 bump
+            - BARBICAN_UI_REF=3285e42b0297802bf74270fa755ee6be514f8dc7
+            - RAAS_UI_REF=3aab9567ae54942a74b5417331c5553ededa0192
+            - DAAS_UI_REF=4e1991393b745d4c9818f613b0c21061357c680f
