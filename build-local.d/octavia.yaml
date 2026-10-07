@@ -24,13 +24,16 @@
             - OVN_PROVIDER_REF=stable/2026.1
             # 私有仓库,钉 commit;与 Dockerfile 的 ARG 默认值由
             # PINNED_BUILD_ARGS 强制一致。发版时两处同改。
-            - INCUS_PROVIDER_REF=74d4f35ddbeb4dbc1aabfcae89b0885ba73b05b1
+            - INCUS_PROVIDER_REF=869f1583535b39183d66777e2f8bd8f3f262c60d
             - CONSTRAINTS=https://opendev.org/openstack/requirements/raw/branch/stable/2026.1/upper-constraints.txt
         # 2026.2 on Alpine 3.24 (Python 3.14). ovn-octavia-provider comes from
         # the fork's master: upstream master plus our Service_Monitor/member
         # health fixes (fivetime/ovn-octavia-provider), which also supports
         # 2026.2 (its only requirement change is neutron-lib>=5.0.0). The incus
-        # provider stays on the production pin until its own release.
+        # provider pin is shared with the row above (PINNED_BUILD_ARGS); its
+        # master needs [incus_worker] worker_image_owner_id and a controller
+        # certificate with OU=octavia-incus-controller and both TLS purposes
+        # (tools/check-upgrade.py in that repository checks both).
         - context: octavia
           repository: openstackhelm/octavia
           container_filename: Dockerfile.alpine
@@ -45,5 +48,5 @@
             - OCTAVIA_REF=stable/2026.2
             - OVN_PROVIDER_REPO=https://github.com/fivetime/ovn-octavia-provider
             - OVN_PROVIDER_REF=master
-            - INCUS_PROVIDER_REF=74d4f35ddbeb4dbc1aabfcae89b0885ba73b05b1
+            - INCUS_PROVIDER_REF=869f1583535b39183d66777e2f8bd8f3f262c60d
             - CONSTRAINTS=https://opendev.org/openstack/requirements/raw/branch/stable/2026.2/upper-constraints.txt
