@@ -65,6 +65,9 @@
             - "BASE_VENV_BUILDER=quay.io/airshipit/venv_builder:2026.2-ubuntu_resolute"
             - "BASE_RUNTIME=quay.io/airshipit/base:2026.2-ubuntu_resolute"
             - "GNOCCHI_REF=4.7.1"
+            # fivetime/cotyledon fix/default-fork-start-method, see the
+            # cotyledon note in gnocchi/Dockerfile.
+            - "COTYLEDON_REF=e76637295655dc9b4561bdd2cafc677135e9bd3f"
     files: &gnocchi_files
       - gnocchi/.*
       - zuul.d/gnocchi.yaml

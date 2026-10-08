@@ -88,6 +88,9 @@
             - "CLOUDKITTY_REPO=https://github.com/fivetime/openstack-cloudkitty"
             - "CLOUDKITTY_REF=fivetime/stable/2026.2"
             - "CLOUDKITTY_REF_URL=https://api.github.com/repos/fivetime/openstack-cloudkitty/git/refs/heads/fivetime/stable/2026.2"
+            # fivetime/cotyledon fix/default-fork-start-method, see the
+            # cotyledon note in cloudkitty/Dockerfile.
+            - "COTYLEDON_REF=e76637295655dc9b4561bdd2cafc677135e9bd3f"
     files: &cloudkitty_files
       - cloudkitty/.*
       - zuul.d/cloudkitty.yaml

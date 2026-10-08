@@ -94,6 +94,9 @@
             - "CEILOMETER_REPO=https://github.com/fivetime/openstack-ceilometer.git"
             - "CEILOMETER_REF=fivetime/stable/2026.2"
             - "CEILOMETER_REF_URL=https://api.github.com/repos/fivetime/openstack-ceilometer/git/refs/heads/fivetime/stable/2026.2"
+            # fivetime/cotyledon fix/default-fork-start-method, see the
+            # cotyledon note in ceilometer/Dockerfile.
+            - "COTYLEDON_REF=e76637295655dc9b4561bdd2cafc677135e9bd3f"
     files: &ceilometer_files
       - ceilometer/.*
       - zuul.d/ceilometer.yaml

@@ -54,6 +54,21 @@ RUN git clone --filter=blob:none -b ${GNOCCHI_REF} ${GNOCCHI_REPO} /tmp/gnocchi 
     && rm -rf /tmp/gnocchiclient \
     && uv pip freeze > /etc/image_info/pip.txt
 
+# cotyledon: Python 3.14 made 'forkserver' the default multiprocessing start
+# method on Linux and cotyledon 2.2.0 follows the default, so its workers no
+# longer inherit the logging set up in the master (INFO lost, errors printed
+# as the bare message). The fork keeps forking (sileht/cotyledon#94). Only the
+# cells that set COTYLEDON_REF install it -- the 2026.2 ones, the first on
+# Python 3.14. The ref is a commit, so the layer needs no cache-bust.
+ARG COTYLEDON_REPO=https://github.com/fivetime/cotyledon
+ARG COTYLEDON_REF=
+RUN if [ -n "${COTYLEDON_REF}" ]; then \
+        sed -i '/^cotyledon===/d' /upper-constraints.txt \
+        && uv pip install --no-deps "cotyledon @ git+${COTYLEDON_REPO}@${COTYLEDON_REF}" \
+        && echo "${COTYLEDON_REPO}@${COTYLEDON_REF}" > /etc/image_info/cotyledon.txt \
+        && uv pip freeze > /etc/image_info/pip.txt; \
+    fi
+
 FROM ${BASE_RUNTIME} AS runtime
 
 ENV PATH=/var/lib/openstack/bin:$PATH
