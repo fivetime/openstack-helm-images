@@ -68,6 +68,9 @@
             # fivetime/cotyledon fix/default-fork-start-method, see the
             # cotyledon note in gnocchi/Dockerfile.
             - "COTYLEDON_REF=e76637295655dc9b4561bdd2cafc677135e9bd3f"
+            # fivetime/voluptuous fix/thread-safe-sub-validators, see the
+            # voluptuous note in gnocchi/Dockerfile.
+            - "VOLUPTUOUS_REF=a656a56f8223b3370223a9f40cfcadbfd81e49c3"
     files: &gnocchi_files
       - gnocchi/.*
       - zuul.d/gnocchi.yaml

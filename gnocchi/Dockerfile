@@ -69,6 +69,22 @@ RUN if [ -n "${COTYLEDON_REF}" ]; then \
         && uv pip freeze > /etc/image_info/pip.txt; \
     fi
 
+# voluptuous (up to 0.16.0) compiles Any()/All() into the shared validator
+# instance, so a request compiling a schema can make a concurrent request in
+# another uWSGI thread see an empty or half-built list: valid searches fail
+# with HTTP 400 ("no valid value found", "extra keys not allowed @
+# data['search']"). Gnocchi shares such validators at module and class level.
+# The fork keeps the compiled list per schema (alecthomas/voluptuous#556).
+# Only the cells that set VOLUPTUOUS_REF install it; the ref is a commit.
+ARG VOLUPTUOUS_REPO=https://github.com/fivetime/voluptuous
+ARG VOLUPTUOUS_REF=
+RUN if [ -n "${VOLUPTUOUS_REF}" ]; then \
+        sed -i '/^voluptuous===/d' /upper-constraints.txt \
+        && uv pip install --no-deps "voluptuous @ git+${VOLUPTUOUS_REPO}@${VOLUPTUOUS_REF}" \
+        && echo "${VOLUPTUOUS_REPO}@${VOLUPTUOUS_REF}" > /etc/image_info/voluptuous.txt \
+        && uv pip freeze > /etc/image_info/pip.txt; \
+    fi
+
 FROM ${BASE_RUNTIME} AS runtime
 
 ENV PATH=/var/lib/openstack/bin:$PATH
