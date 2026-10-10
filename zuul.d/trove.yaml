@@ -50,17 +50,19 @@
           build_args:
             - "BASE_VENV_BUILDER=quay.io/airshipit/venv_builder:2026.1-ubuntu_noble"
             - "BASE_RUNTIME=quay.io/airshipit/base:2026.1-ubuntu_noble"
-            # Build from our fork's master-fivetime branch: upstream master
-            # plus the datastores that aa1d4d22 (Datastore containerization)
+            # Build from our fork's master branch: upstream master plus
+            # the datastores that aa1d4d22 (Datastore containerization)
             # removed, ported to the container model. Master, not
             # stable/2026.1, because upstream datastore work (KeyDB/Valkey,
             # SSL, pre-auth Swift backups) lands there. Its requirements all
             # fit the 2026.1 upper-constraints, so it builds on the 2026.1
             # base like zun does. The guest image must come from the same
             # branch; fivetime/openstack-trove-images builds it. Keep the
-            # fork free of tags: pbr takes the version from them.
+            # fork free of tags: pbr takes the version from them. The fork
+            # has the one branch: master-fivetime was merged into master on
+            # 2026-10-10 (5da7e09b) and removed, so the two cannot drift.
             - "TROVE_REPO=https://github.com/fivetime/openstack-trove"
-            - "TROVE_REF=master-fivetime"
+            - "TROVE_REF=master"
         - context: .
           registry: quay.io
           repository: quay.io/airshipit/trove
@@ -80,7 +82,7 @@
             # delete_rpc_server_queues trove uses to delete the guest agent's
             # queues with the instance.
             - "TROVE_REPO=https://github.com/fivetime/openstack-trove"
-            - "TROVE_REF=master-fivetime"
+            - "TROVE_REF=master"
     files: &trove_files
       - trove/.*
       - zuul.d/trove.yaml
