@@ -84,6 +84,16 @@ ARG RAAS_UI_REF=3aab9567ae54942a74b5417331c5553ededa0192
 # DAAS_UI_REF is likewise in PINNED_BUILD_ARGS.
 ARG DAAS_UI_GIT=https://github.com/fivetime/openstack-daas-ui
 ARG DAAS_UI_REF=4e1991393b745d4c9818f613b0c21061357c680f
+# senlin-dashboard and the python-senlinclient it uses: Senlin is retired
+# upstream (PyPI's last client, 3.1.0, predates osc-lib 4), so both come
+# from the private fivetime forks, pinned to release tags. A tag in the RUN
+# line is its own cache key. Installed without PBR_VERSION: pbr reads the
+# version from the tags, and the dashboard requires python-senlinclient
+# >= 1.9.0, which a forced 0.1.0 would not satisfy.
+ARG SENLIN_UI_GIT=https://github.com/fivetime/senlin-dashboard
+ARG SENLIN_UI_REF=15.0.0
+ARG SENLINCLIENT_GIT=https://github.com/fivetime/python-senlinclient
+ARG SENLINCLIENT_REF=4.0.0
 
 # A pip install from a moving branch is one unchanging RUN line, so the
 # layer is reused and the branch's new commits never arrive -- an image
@@ -186,6 +196,41 @@ RUN --mount=type=secret,id=src_repo_token \
     && /var/lib/kolla/venv/bin/pip install --no-cache-dir pyflakes \
     && /var/lib/kolla/venv/bin/python3 /tmp/check-ui-plugin.py raas_ui \
     && /var/lib/kolla/venv/bin/python3 /tmp/check-ui-plugin.py daas_ui \
+    && /var/lib/kolla/venv/bin/pip uninstall -y pyflakes
+
+# senlin-dashboard, in a layer of its own so that a senlin bump leaves the
+# raas/daas layer alone. Same secret handling as above.
+RUN --mount=type=secret,id=src_repo_token \
+    if [ -s /run/secrets/src_repo_token ]; then \
+        TOK="$(cat /run/secrets/src_repo_token)"; \
+        git config --global \
+          url."https://x-access-token:${TOK}@github.com/".insteadOf "https://github.com/"; \
+    fi \
+    && /var/lib/kolla/venv/bin/pip install --no-cache-dir \
+        "python-senlinclient @ git+${SENLINCLIENT_GIT}@${SENLINCLIENT_REF}" \
+        "senlin-dashboard @ git+${SENLIN_UI_GIT}@${SENLIN_UI_REF}" \
+    && rm -f /root/.gitconfig \
+    && /var/lib/kolla/venv/bin/pip show python-senlinclient senlin-dashboard \
+        | grep -E "Name|Version" \
+    && /var/lib/kolla/venv/bin/pip check \
+    # the versions come from the tags; 0.x means pbr saw none
+    && /var/lib/kolla/venv/bin/python3 -c "import importlib.metadata as m; \
+v = m.version('senlin-dashboard'); c = m.version('python-senlinclient'); \
+assert v.split('.')[0] == '${SENLIN_UI_REF}'.split('.')[0], v; \
+assert c.split('.')[0] == '${SENLINCLIENT_REF}'.split('.')[0], c" \
+    # the git install leaves the catalogs uncompiled (as for trove-dashboard)
+    && for d in django djangojs; do \
+         /var/lib/kolla/venv/bin/pybabel compile -D $d \
+           -d "$(echo /var/lib/kolla/venv/lib/python3.*/site-packages/senlin_dashboard/locale)" \
+           || exit 1; \
+       done \
+    && ls /var/lib/kolla/venv/lib/python3*/site-packages/senlin_dashboard/locale/zh_Hans/LC_MESSAGES/django.mo \
+    # extra_panels needs enabled/ (silently skipped otherwise)
+    && ls /var/lib/kolla/venv/lib/python3*/site-packages/senlin_dashboard/enabled/_[1-9]*.py >/dev/null \
+    && /var/lib/kolla/venv/bin/python3 -m compileall -q \
+         /var/lib/kolla/venv/lib/python3*/site-packages/senlin_dashboard \
+    && /var/lib/kolla/venv/bin/pip install --no-cache-dir pyflakes \
+    && /var/lib/kolla/venv/bin/python3 /tmp/check-ui-plugin.py senlin_dashboard \
     && /var/lib/kolla/venv/bin/pip uninstall -y pyflakes \
     && rm -f /tmp/check-ui-plugin.py
 USER horizon

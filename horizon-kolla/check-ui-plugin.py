@@ -37,7 +37,9 @@ import subprocess
 
 proc = subprocess.run([sys.executable, "-m", "pyflakes", pkg.__path__[0].rsplit("/", 1)[0]],
                       capture_output=True, text=True)
-undefined = [ln for ln in proc.stdout.splitlines() if "undefined name" in ln]
+# Match pyflakes' "undefined name 'x'" only: a star import reports
+# "unable to detect undefined names", which is not a NameError.
+undefined = [ln for ln in proc.stdout.splitlines() if "undefined name '" in ln]
 if undefined:
     sys.exit("%s: undefined names (would NameError at runtime):\n  %s"
              % (module, "\n  ".join(undefined)))
