@@ -1,0 +1,23 @@
+---
+# Fork-only Senlin (Clustering service) image. Senlin is retired upstream;
+# fivetime/openstack-senlin carries it on 2026.2 with native threads instead
+# of eventlet. Built only for 2026.2 (Python 3.14, Ubuntu 26.04).
+
+- job:
+    name: build-local-senlin
+    description: Build the Senlin image from the fork's master.
+    vars:
+      container_images:
+        - context: .
+          repository: openstackhelm/senlin
+          container_filename: senlin/Dockerfile
+          synthesize_master: false
+          arch:
+            - linux/amd64
+          tags:
+            - 2026.2-ubuntu_resolute
+          build_args:
+            - BASE_VENV_BUILDER=quay.io/airshipit/venv_builder:2026.2-ubuntu_resolute
+            - BASE_RUNTIME=quay.io/airshipit/base:2026.2-ubuntu_resolute
+            - SENLIN_REPO=https://github.com/fivetime/openstack-senlin
+            - SENLIN_REF=master
