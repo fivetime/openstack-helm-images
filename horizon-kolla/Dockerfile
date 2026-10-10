@@ -91,7 +91,7 @@ ARG DAAS_UI_REF=4e1991393b745d4c9818f613b0c21061357c680f
 # version from the tags, and the dashboard requires python-senlinclient
 # >= 1.9.0, which a forced 0.1.0 would not satisfy.
 ARG SENLIN_UI_GIT=https://github.com/fivetime/senlin-dashboard
-ARG SENLIN_UI_REF=15.0.0
+ARG SENLIN_UI_REF=15.0.1
 ARG SENLINCLIENT_GIT=https://github.com/fivetime/python-senlinclient
 ARG SENLINCLIENT_REF=4.0.0
 
