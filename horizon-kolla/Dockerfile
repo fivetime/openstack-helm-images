@@ -46,8 +46,10 @@ ARG BLAZAR_UI_REF=master
 # OpenStack); the release tarball kolla installs has them compiled. A git
 # install would leave Horizon with no translation of the Trove panels at
 # all, so they are compiled below.
+# The fork has the one branch, master: master-fivetime was merged into it
+# on 2026-10-10 (509be3a) and removed, so the two cannot drift.
 ARG TROVE_UI_REPO=https://github.com/fivetime/openstack-trove-dashboard
-ARG TROVE_UI_REF=master-fivetime
+ARG TROVE_UI_REF=master
 
 # barbican-ui is never published to PyPI and its master carries no release
 # tags (pbr reports it as 0.0.1.devN), so it is pinned by commit. A SHA in
@@ -90,7 +92,7 @@ ARG DAAS_UI_REF=4e1991393b745d4c9818f613b0c21061357c680f
 ADD https://api.github.com/repos/fivetime/openstack-zun-ui/git/refs/heads/master /tmp/zun-ui.ref
 ADD https://api.github.com/repos/fivetime/openstack-zunclient/git/refs/heads/master /tmp/zunclient.ref
 ADD https://api.github.com/repos/fivetime/openstack-blazar-ui/git/refs/heads/master /tmp/blazar-ui.ref
-ADD https://api.github.com/repos/fivetime/openstack-trove-dashboard/git/refs/heads/master-fivetime /tmp/trove-ui.ref
+ADD https://api.github.com/repos/fivetime/openstack-trove-dashboard/git/refs/heads/master /tmp/trove-ui.ref
 
 USER root
 RUN curl -fsSL "https://releases.openstack.org/constraints/upper/${RELEASE}" \
