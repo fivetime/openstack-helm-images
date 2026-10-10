@@ -20,4 +20,6 @@
             - BASE_VENV_BUILDER=quay.io/airshipit/venv_builder:2026.2-ubuntu_resolute
             - BASE_RUNTIME=quay.io/airshipit/base:2026.2-ubuntu_resolute
             - SENLIN_REPO=https://github.com/fivetime/openstack-senlin
-            - SENLIN_REF=master
+            # The repository is private: name the release tag (or commit)
+            # to build. Bump it to build newer code.
+            - SENLIN_REF=22.0.0

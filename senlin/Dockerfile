@@ -11,7 +11,10 @@ ENV PATH=/var/lib/openstack/bin:$PATH
 # retired opendev repository for the release branch, get a 404 and fail the
 # whole build. senlin's driver packages are listed in pydep.txt by hand.
 ARG SENLIN_REPO=https://github.com/fivetime/openstack-senlin
-ARG SENLIN_REF=master
+# A release tag (or a commit). The repository is private, so the ref cannot
+# be watched through the API the way public forks are; naming it makes the
+# build reproducible and invalidates the layer by itself.
+ARG SENLIN_REF=22.0.0
 ARG PROFILES="fluent"
 
 # Use bindep to determine packages needed for this profile set
@@ -27,14 +30,22 @@ RUN if [ -s /etc/image_info/bindep_build.txt ]; then \
         && rm -rf /var/lib/apt/lists/*; \
     fi
 
-# A clone of a moving branch inside an unchanging RUN gets its layer reused
-# and quietly builds yesterday's code; the ref document changes with every
-# push to the branch.
-ARG SENLIN_REF_URL=https://api.github.com/repos/fivetime/openstack-senlin/git/refs/heads/${SENLIN_REF}
-ADD ${SENLIN_REF_URL} /tmp/senlin.ref
-
-RUN sed -i '/^senlin===/d' /upper-constraints.txt \
-    && git clone --filter=blob:none -b ${SENLIN_REF} ${SENLIN_REPO} /tmp/senlin \
+# CI supplies src_repo_token as a BuildKit secret; the token and the
+# temporary git rewrite live only inside this RUN and never reach an image
+# layer. A full (blobless) clone, not a single commit: pbr computes the
+# version from the tags.
+RUN --mount=type=secret,id=src_repo_token \
+    if [ -s /run/secrets/src_repo_token ]; then \
+        token="$(cat /run/secrets/src_repo_token)"; \
+        git config --global \
+          url."https://x-access-token:${token}@github.com/".insteadOf \
+          "https://github.com/"; \
+    fi \
+    && git clone --filter=blob:none ${SENLIN_REPO} /tmp/senlin \
+    # Still authenticated: a blobless checkout fetches the blobs it needs.
+    && git -C /tmp/senlin checkout --detach ${SENLIN_REF} \
+    && rm -f /root/.gitconfig \
+    && sed -i '/^senlin===/d' /upper-constraints.txt \
     && uv pip install \
          --build-constraint /upper-constraints.txt \
          -c /upper-constraints.txt \
