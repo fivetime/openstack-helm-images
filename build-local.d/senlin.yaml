@@ -22,4 +22,4 @@
             - SENLIN_REPO=https://github.com/fivetime/openstack-senlin
             # The repository is private: name the release tag (or commit)
             # to build. Bump it to build newer code.
-            - SENLIN_REF=22.0.6
+            - SENLIN_REF=22.0.7
