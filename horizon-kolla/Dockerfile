@@ -227,6 +227,18 @@ assert c.split('.')[0] == '${SENLINCLIENT_REF}'.split('.')[0], c" \
     && ls /var/lib/kolla/venv/lib/python3*/site-packages/senlin_dashboard/locale/zh_Hans/LC_MESSAGES/django.mo \
     # extra_panels needs enabled/ (silently skipped otherwise)
     && ls /var/lib/kolla/venv/lib/python3*/site-packages/senlin_dashboard/enabled/_[1-9]*.py >/dev/null \
+    # Horizon checks the policies of a service only if POLICY_FILES names
+    # it; without this every senlin action shows for any role.
+    && printf '%s\n' \
+         '# Check the senlin panel actions against the senlin policies.' \
+         'from senlin_dashboard import conf as _senlin_conf' \
+         '_senlin_conf.register_policies(POLICY_FILES, DEFAULT_POLICY_FILES)' \
+         > /etc/openstack-dashboard/local_settings.d/_1600_senlin_policy.py \
+    && /var/lib/kolla/venv/bin/python3 -c "import os; \
+POLICY_FILES = {}; DEFAULT_POLICY_FILES = {}; \
+exec(open('/etc/openstack-dashboard/local_settings.d/_1600_senlin_policy.py').read()); \
+assert os.path.isfile(POLICY_FILES['cluster']), POLICY_FILES; \
+assert os.path.isfile(DEFAULT_POLICY_FILES['cluster']), DEFAULT_POLICY_FILES" \
     && /var/lib/kolla/venv/bin/python3 -m compileall -q \
          /var/lib/kolla/venv/lib/python3*/site-packages/senlin_dashboard \
     && /var/lib/kolla/venv/bin/pip install --no-cache-dir pyflakes \
