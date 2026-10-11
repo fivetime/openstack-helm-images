@@ -14,7 +14,7 @@ ARG SENLIN_REPO=https://github.com/fivetime/openstack-senlin
 # A release tag (or a commit). The repository is private, so the ref cannot
 # be watched through the API the way public forks are; naming it makes the
 # build reproducible and invalidates the layer by itself.
-ARG SENLIN_REF=22.0.4
+ARG SENLIN_REF=22.0.5
 ARG PROFILES="fluent"
 
 # Use bindep to determine packages needed for this profile set
