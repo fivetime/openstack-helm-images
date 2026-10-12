@@ -95,6 +95,18 @@ ARG SENLIN_UI_REF=15.0.2
 ARG SENLINCLIENT_GIT=https://github.com/fivetime/python-senlinclient
 ARG SENLINCLIENT_REF=4.0.0
 
+# Horizon fixes not yet in the kolla base, applied to the installed horizon.
+# One commit of the fivetime/openstack-horizon branch 27.0.0-fivetime, pinned
+# by SHA: a commit's .patch never changes, and the SHA in the RUN line is the
+# layer's cache key. The diff also applies to 2026.1 (kolla ships 25.7.x).
+# git apply refuses a hunk that does not apply cleanly, so a kolla base
+# that moved on fails the build instead of shipping half a fix.
+#  - volume attachments without a Nova server (bare metal attached through
+#    the Cinder attachments API, standalone Ironic): the volume list showed
+#    "Instance None could not be found" and the volume detail, extend, edit
+#    and other volume pages did not open. Upstream: not submitted yet.
+ARG HORIZON_FIX_SHA=2940c555198eb497820fe336d22ab95fe05bbcb1
+
 # A pip install from a moving branch is one unchanging RUN line, so the
 # layer is reused and the branch's new commits never arrive -- an image
 # that looks rebuilt and is not. Fetching the ref itself first makes the
@@ -245,4 +257,15 @@ assert os.path.isfile(DEFAULT_POLICY_FILES['cluster']), DEFAULT_POLICY_FILES" \
     && /var/lib/kolla/venv/bin/python3 /tmp/check-ui-plugin.py senlin_dashboard \
     && /var/lib/kolla/venv/bin/pip uninstall -y pyflakes \
     && rm -f /tmp/check-ui-plugin.py
+
+RUN curl -fsSL -o /tmp/horizon-fix.patch \
+        "https://github.com/fivetime/openstack-horizon/commit/${HORIZON_FIX_SHA}.patch" \
+    && cd "$(echo /var/lib/kolla/venv/lib/python3.*/site-packages)" \
+    # the base ships no release notes; tests are installed and patched too
+    && git apply --verbose --exclude='releasenotes/*' /tmp/horizon-fix.patch \
+    && grep -q '^def is_server_attachment' openstack_dashboard/api/cinder.py \
+    && /var/lib/kolla/venv/bin/python3 -m compileall -q \
+         openstack_dashboard/api openstack_dashboard/dashboards/project/volumes \
+         openstack_dashboard/dashboards/admin/volumes \
+    && rm -f /tmp/horizon-fix.patch
 USER horizon
