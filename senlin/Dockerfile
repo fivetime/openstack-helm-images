@@ -14,7 +14,7 @@ ARG SENLIN_REPO=https://github.com/fivetime/openstack-senlin
 # A release tag (or a commit). The repository is private, so the ref cannot
 # be watched through the API the way public forks are; naming it makes the
 # build reproducible and invalidates the layer by itself.
-ARG SENLIN_REF=22.0.21
+ARG SENLIN_REF=22.0.22
 ARG PROFILES="fluent"
 
 # Use bindep to determine packages needed for this profile set
@@ -88,6 +88,8 @@ import senlin.cmd  # noqa: F401
 from oslo_service import backend
 import senlin.engine.service  # noqa: F401
 import senlin.health_manager.service  # noqa: F401
+# The tooz backends the health managers may share the clusters through.
+from tooz.drivers import etcd3gw, redis  # noqa: F401
 
 assert backend.get_backend_type() == backend.BackendType.THREADING
 if 'eventlet' in sys.modules:

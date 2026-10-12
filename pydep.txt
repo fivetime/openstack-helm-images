@@ -4,6 +4,7 @@ boto3                  [glance]
 # 出现重复行,bindep 解析无害)。这里显式写死是为了【本地 docker build】——
 # 本地不跑那个生成器,漏了它 aodh/ceilometer 连 Redpanda 会 DriverLoadFailure。
 # etcd3gw 生成器不管(它只看 oslo.db / oslo.messaging),tooz 的 etcd3 驱动只能手写。
+# senlin 的 health-manager 用 tooz 分摊集群,etcd3gw 与 redis 两个后端驱动都装进镜像。
 confluent-kafka        [aodh ceilometer senlin]
 # 本地 docker build 走这份;CI 会用 .github/scripts/generate_pydep.py 的产物整个
 # 覆盖它,那边按 requirements.txt 里有没有 oslo.db 自动给全部 26 个服务加上。
@@ -14,7 +15,7 @@ confluent-kafka        [aodh ceilometer senlin]
 # senlin is built from the fork (retired upstream), which generate_pydep.py
 # does not scan, so its oslo.db/oslo.messaging drivers are listed here.
 cryptography           [gnocchi placement masakari cloudkitty senlin]
-etcd3gw                [aodh ceilometer gnocchi]
+etcd3gw                [aodh ceilometer gnocchi senlin]
 fluent-logger          [fluent]
 httplib2               [placement]
 keystonemiddleware     [swift]
@@ -38,6 +39,6 @@ python-ldap            [(keystone ldap)]
 python-memcached       []
 python-openstackclient [keystone]
 python-swiftclient     [cinder freezer freezer-api glance trove]
-redis                  [zaqar keystone]
+redis                  [zaqar keystone senlin]
 tap-as-a-service       [neutron]
 uwsgi                  []
