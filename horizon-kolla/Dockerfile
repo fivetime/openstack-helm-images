@@ -105,7 +105,7 @@ ARG SENLINCLIENT_REF=4.0.0
 #    the Cinder attachments API, standalone Ironic): the volume list showed
 #    "Instance None could not be found" and the volume detail, extend, edit
 #    and other volume pages did not open. Upstream: not submitted yet.
-ARG HORIZON_FIX_SHA=2940c555198eb497820fe336d22ab95fe05bbcb1
+ARG HORIZON_FIX_SHA=306dad9bbe418ea53e8fe23002548ae03cf3e7ad
 
 # A pip install from a moving branch is one unchanging RUN line, so the
 # layer is reused and the branch's new commits never arrive -- an image
