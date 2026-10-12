@@ -1,27 +1,36 @@
 ---
 # Fork-only Zun (Container service) image. Upstream openstack-helm-images has
-# no zun; we build a loci-style image from stable/2026.1 so the generated
-# pydep overlay injects psycopg2-binary and confluent-kafka automatically
-# (zun pulls oslo.db and oslo.messaging).
+# no zun; we build a loci-style image so the generated pydep overlay injects
+# psycopg2-binary and confluent-kafka automatically (zun pulls oslo.db and
+# oslo.messaging).
+#
+# Built for 2026.2 (Python 3.14, Ubuntu 26.04) only, like senlin. Being a
+# 2026.2 row, it builds FROM our own venv_builder (zuul_to_matrix.py
+# OWN_VENV_BUILDER_RELEASES), so it carries the oslo.messaging fork too. The
+# fork's master runs on native threads when the chart sets
+# OS_ZUN_DISABLE_EVENTLET_PATCHING=true, and forks wsproxy's and the CNI
+# daemon's children itself on Python 3.14, so no cotyledon fork is needed:
+# oslo.service's threading backend asks for fork on its own. The last
+# 2026.1-ubuntu_noble image stays in the registry for a rollback. The
+# airshipit bases are amd64-only.
 
 - job:
     name: build-local-zun
-    description: Build Zun ubuntu_noble image from upstream stable branch.
+    description: Build the Zun image from the fork's master.
     vars:
       container_images:
         - context: .
           repository: openstackhelm/zun
           container_filename: zun/Dockerfile
+          synthesize_master: false
           arch:
             - linux/amd64
-            - linux/arm64
           tags:
-            - 2026.1-ubuntu_noble
+            - 2026.2-ubuntu_resolute
           build_args:
-            - BASE_VENV_BUILDER=quay.io/airshipit/venv_builder:2026.1-ubuntu_noble
-            - BASE_RUNTIME=quay.io/airshipit/base:2026.1-ubuntu_noble
-            # fivetime fork master(见仓库 FORK.md):upstream master 基点 +
-            # capsule/CRI 改造 + volume.host 持久化修复。docker+kuryr 路径
-            # 与上游 0 diff,无新增 DB migration,已核 schema 兼容 2026.1。
+            - BASE_VENV_BUILDER=quay.io/airshipit/venv_builder:2026.2-ubuntu_resolute
+            - BASE_RUNTIME=quay.io/airshipit/base:2026.2-ubuntu_resolute
+            # fivetime fork master (see the repository's FORK.md): upstream
+            # master plus the capsule/CRI work and native threading.
             - ZUN_REPO=https://github.com/fivetime/openstack-zun
             - ZUN_REF=master
