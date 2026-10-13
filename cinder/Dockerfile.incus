@@ -50,5 +50,32 @@ RUN /var/lib/openstack/bin/pip install --no-cache-dir \
  && /var/lib/openstack/bin/python3 -c "from osprofiler.drivers import otlp; from opentelemetry.exporter.otlp.proto.http.trace_exporter import OTLPSpanExporter; from opentelemetry.sdk.trace import TracerProvider" \
  && /var/lib/openstack/bin/pip check \
  && printf 'opentelemetry-exporter-otlp-proto-http 1.39.1\n' >> /etc/image_info/project.txt
-
+# The NVMe-oF driver, newer than the one CINDER_BASE was built with. It is
+# replaced here rather than by rebuilding CINDER_BASE: that rebuild follows
+# stable/2026.1, which has moved past the Cinder commit checked above. Keep
+# in step with NVMEOF_DRIVER_REF in Dockerfile.alpine, and drop this layer
+# once CINDER_BASE is rebuilt with that ref. --no-deps: the driver needs
+# nothing the base lacks, and pip must not move oslo.* past the constraints.
+ARG NVMEOF_DRIVER_REPO=https://github.com/fivetime/cinder-nvme-of.git
+ARG NVMEOF_DRIVER_REF=26d6c5208f62bef66865e514fe8861d987601063
+RUN --mount=type=secret,id=src_repo_token \
+    apk add --no-cache --virtual .nvmeof-driver-tools git \
+ && if [ -s /run/secrets/src_repo_token ]; then \
+        token="$(cat /run/secrets/src_repo_token)"; \
+        git config --global \
+          url."https://x-access-token:${token}@github.com/".insteadOf \
+          "https://github.com/"; \
+    fi \
+ && /var/lib/openstack/bin/pip install --no-cache-dir --no-deps --force-reinstall \
+        "cinder-nvme-of @ git+${NVMEOF_DRIVER_REPO}@${NVMEOF_DRIVER_REF}" \
+ && rm -f /root/.gitconfig \
+ && apk del .nvmeof-driver-tools \
+ && /var/lib/openstack/bin/pip check \
+ && /var/lib/openstack/bin/pip freeze --local > /etc/image_info/pip.txt \
+ && grep -qx "cinder-nvme-of @ git+${NVMEOF_DRIVER_REPO}@${NVMEOF_DRIVER_REF}" \
+        /etc/image_info/pip.txt \
+ && sed -i "s|^cinder-nvme-of @ .*|cinder-nvme-of @ git+${NVMEOF_DRIVER_REPO}@${NVMEOF_DRIVER_REF}|" \
+        /etc/image_info/project.txt \
+ && /var/lib/openstack/bin/python3 -c "from cinder_nvme_of.driver import RBDNVMeOFDriver as D; \
+print('cinder-nvme-of driver OK', D.VERSION)"
 CMD ["cinder-api"]
