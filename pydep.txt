@@ -15,7 +15,7 @@ confluent-kafka        [aodh ceilometer senlin]
 # senlin is built from the fork (retired upstream), which generate_pydep.py
 # does not scan, so its oslo.db/oslo.messaging drivers are listed here.
 cryptography           [gnocchi placement masakari cloudkitty senlin]
-etcd3gw                [aodh ceilometer gnocchi senlin]
+etcd3gw                [aodh ceilometer gnocchi senlin trove]
 fluent-logger          [fluent]
 httplib2               [placement]
 keystonemiddleware     [swift]
