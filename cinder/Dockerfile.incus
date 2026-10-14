@@ -57,7 +57,7 @@ RUN /var/lib/openstack/bin/pip install --no-cache-dir \
 # once CINDER_BASE is rebuilt with that ref. --no-deps: the driver needs
 # nothing the base lacks, and pip must not move oslo.* past the constraints.
 ARG NVMEOF_DRIVER_REPO=https://github.com/fivetime/cinder-nvme-of.git
-ARG NVMEOF_DRIVER_REF=26d6c5208f62bef66865e514fe8861d987601063
+ARG NVMEOF_DRIVER_REF=0db835298c75626df7301d9be34054d66c785991
 RUN --mount=type=secret,id=src_repo_token \
     apk add --no-cache --virtual .nvmeof-driver-tools git \
  && if [ -s /run/secrets/src_repo_token ]; then \
