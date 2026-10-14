@@ -65,7 +65,7 @@
             # Drop these two lines once a release that has both is in the
             # stable/2026.2 constraints.
             - "OSLO_MESSAGING_REPO=https://github.com/fivetime/oslo.messaging"
-            - "OSLO_MESSAGING_REF=ca9a82c25fcb82071e7aca05f4462e4a3962877c"
+            - "OSLO_MESSAGING_REF=a80adc33dfa5c93ce4dd448cf2aae550189d2bce"
 
 - job:
     name: openstack-helm-images-upload-venv-builder
