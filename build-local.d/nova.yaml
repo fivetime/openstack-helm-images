@@ -15,10 +15,10 @@
             - linux/amd64
             - linux/arm64
           tags:
-            - 2026.2-alpine_3.23
+            - 2026.2-alpine_3.24
           build_args:
             - NOVA_REF=8df1922926ddf949d681e10670dba7bc731701d3
-            - NOVA_INCUS_REF=b11d4095957b9f66758cf10a219f74eae25c9b0d
+            - NOVA_INCUS_REF=866d7e20a82e0a8502dc84e8822bc840eae07ec0
             - INCUS_SDK_REF=eb803e4ebb2f97ea403069fadd42453846a63ef3
             - REQUIREMENTS_REF=bab6cd8e3b9a5ac61b98aa7016c7d98b3000a8ac
 
@@ -54,4 +54,4 @@
           tags:
             - 2026.2-ubuntu_resolute
           build_args:
-            - NOVA_INCUS_REF=b11d4095957b9f66758cf10a219f74eae25c9b0d
+            - NOVA_INCUS_REF=866d7e20a82e0a8502dc84e8822bc840eae07ec0

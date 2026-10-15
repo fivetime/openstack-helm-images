@@ -2,7 +2,7 @@
 # Dedicated Alpine Nova compute image for the external Incus system-container
 # driver. This is not a general Nova or libvirt compute image.
 
-ARG ALPINE_VERSION=3.23
+ARG ALPINE_VERSION=3.24
 FROM alpine:${ALPINE_VERSION} AS build
 
 ENV PATH=/var/lib/openstack/bin:$PATH
@@ -10,7 +10,7 @@ ENV PATH=/var/lib/openstack/bin:$PATH
 ARG NOVA_REPO=https://opendev.org/openstack/nova
 ARG NOVA_REF=8df1922926ddf949d681e10670dba7bc731701d3
 ARG NOVA_INCUS_REPO=https://github.com/fivetime/nova-incus-driver.git
-ARG NOVA_INCUS_REF=b11d4095957b9f66758cf10a219f74eae25c9b0d
+ARG NOVA_INCUS_REF=866d7e20a82e0a8502dc84e8822bc840eae07ec0
 ARG INCUS_SDK_REPO=https://github.com/fivetime/incus-python-sdk.git
 ARG INCUS_SDK_REF=eb803e4ebb2f97ea403069fadd42453846a63ef3
 ARG REQUIREMENTS_REPO=https://opendev.org/openstack/requirements
@@ -78,10 +78,10 @@ RUN --mount=type=secret,id=src_repo_token \
         'cryptography==46.0.5' 'pyOpenSSL==25.3.0' \
         pyroute2 \
         /tmp/incus-python-sdk /tmp/nova /tmp/nova-incus \
- && (cd /var/lib/openstack/lib/python3.12/site-packages \
+ && (cd /var/lib/openstack/lib/python3.14/site-packages \
         && git apply --no-index \
             /tmp/nova-incus/patches/python-glanceclient/0001-preserve-seekable-upload-length.patch) \
- && (cd /var/lib/openstack/lib/python3.12/site-packages \
+ && (cd /var/lib/openstack/lib/python3.14/site-packages \
         && git apply --no-index \
             /tmp/nova-incus/patches/os-brick/0001-rbd-fallback-to-kernel-device-path.patch) \
  && /var/lib/openstack/bin/python -c "import tempfile, requests; from glanceclient.common import http; f = tempfile.TemporaryFile(); f.write(b'x' * 10); f.seek(0); body = http._BaseHTTPClient._chunk_body(f); headers = requests.Request('PUT', 'http://example.invalid', data=body).prepare().headers; assert headers.get('Content-Length') == '10', headers; assert 'Transfer-Encoding' not in headers, headers" \
@@ -186,7 +186,7 @@ RUN export PYTHONDONTWRITEBYTECODE=1 \
  && python3 -c "from nova.virt.incus.manager import IncusComputeManager; assert IncusComputeManager.__module__ == 'nova.virt.incus.manager'; print('Nova Incus compute manager OK')" \
  && python3 -c "from nova.virt.incus.migrate_data import IncusLiveMigrateData; assert IncusLiveMigrateData.VERSION == '1.7'; print('Nova Incus migrate-data 1.7 OK')" \
  && python3 -c "from nova.virt.incus import volume_contracts; assert volume_contracts.volume_device_info_key('v') == 'user.openstack.volume.v'; print('Nova Incus volume attachment records OK')" \
- && env -u OS_NOVA_DISABLE_EVENTLET_PATCHING python3 -c "import os; import nova.virt.incus.cmd.compute as c; assert os.environ[c.EVENTLET_PATCHING_ENV] == '0'; print('Nova Incus compute selects eventlet OK')" \
+ && env -u OS_NOVA_DISABLE_EVENTLET_PATCHING python3 -c "import pkgutil, sys; import nova.virt.incus.cmd.compute; import nova.virt.incus as p; from nova import monkey_patch; [__import__(m.name) for m in pkgutil.walk_packages(p.__path__, p.__name__ + '.') if m.name != 'nova.virt.incus.ceilometer']; assert not monkey_patch.is_patched(); assert 'eventlet' not in sys.modules; print('Nova Incus compute loads in native threading mode OK')" \
  && python3 -c "import inspect; from nova.compute import api; assert 'rebuild_states' in inspect.getsource(api.API.evacuate); print('Nova evacuate rebuild-state refusal OK')" \
  && python3 -c "import inspect; from nova.compute import manager; assert callable(manager.ComputeManager._create_share_manager); assert 'migration_status' in inspect.signature(manager.ComputeManager._complete_live_migration_rollback).parameters; print('Nova 2026.2 Manila and rollback hooks OK')" \
  && python3 -c "from nova.compute import manager; assert callable(getattr(manager.ComputeManager, '_should_delete_allocation_for_failed_build', None)); print('Nova failed-build allocation policy OK')" \
