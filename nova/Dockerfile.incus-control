@@ -3,7 +3,7 @@
 FROM alpine:3.23 AS source
 
 ARG NOVA_INCUS_REPO=https://github.com/fivetime/nova-incus-driver.git
-ARG NOVA_INCUS_REF=a6d65d4d4dcc95a5f6e0e5662492b242b22e95c5
+ARG NOVA_INCUS_REF=b11d4095957b9f66758cf10a219f74eae25c9b0d
 
 RUN apk add --no-cache git
 RUN --mount=type=secret,id=src_repo_token \
@@ -19,25 +19,31 @@ RUN --mount=type=secret,id=src_repo_token \
  && git -C /src checkout --detach FETCH_HEAD \
  && rm -f /root/.gitconfig
 
-# Keep the control-plane runtime identical to the image already qualified in
-# production. The Airship release tag is mutable and must not silently pull a
-# newer Nova build while this image only adds the Incus RPC object registry.
-FROM quay.io/airshipit/nova@sha256:084ca5611eb34c33d1922e09c4baca079e180971fef509e0a307270ac638e1af
+# The Airship release tag is mutable and must not silently pull a newer Nova
+# build while this image only adds the Incus RPC object registry and the
+# control-plane patches. quay.io/airshipit/nova:2026.2-ubuntu_resolute as of
+# 2026-10-15: Nova stable/2026.2 8df1922926, Ubuntu 26.04.1, Python 3.14.4.
+FROM quay.io/airshipit/nova@sha256:1940ba3220e825b3dfa3e21be797688697bb463f6243a8f72e07c1168692724f
+
+ARG SITE_PACKAGES=/var/lib/openstack/lib/python3.14/site-packages
 
 COPY --from=source /src/nova/virt/incus/__init__.py \
-    /var/lib/openstack/lib/python3.12/site-packages/nova/virt/incus/__init__.py
+    ${SITE_PACKAGES}/nova/virt/incus/__init__.py
 COPY --from=source /src/nova/virt/incus/migrate_data.py \
-    /var/lib/openstack/lib/python3.12/site-packages/nova/virt/incus/migrate_data.py
+    ${SITE_PACKAGES}/nova/virt/incus/migrate_data.py
 COPY --from=source /src/patches/nova/0002-hardware-accept-incus-manila-share-trait.patch \
     /tmp/0002-hardware-accept-incus-manila-share-trait.patch
-COPY --from=source /src/patches/nova/0003-compute-allow-incus-manila-live-migration.patch \
+COPY --from=source /src/patches/nova/2026.2/0003-compute-allow-incus-manila-live-migration.patch \
     /tmp/0003-compute-allow-incus-manila-live-migration.patch
-COPY --from=source /src/patches/nova/0006-sdk-user-token-honor-service-config.patch \
+COPY --from=source /src/patches/nova/2026.2/0006-sdk-user-token-honor-service-config.patch \
     /tmp/0006-sdk-user-token-honor-service-config.patch
 COPY --from=source /src/patches/nova/0008-compute-allow-container-bfv-rescue.patch \
     /tmp/0008-compute-allow-container-bfv-rescue.patch
+COPY --from=source /src/patches/nova/0009-compute-api-refuse-evacuate-during-rebuild.patch \
+    /tmp/0009-compute-api-refuse-evacuate-during-rebuild.patch
 
-RUN cd /var/lib/openstack/lib/python3.12/site-packages \
+RUN cd "${SITE_PACKAGES}" \
+ && test -f nova/compute/share_management.py \
  && git apply --no-index \
       --include=nova/virt/hardware.py \
       /tmp/0002-hardware-accept-incus-manila-share-trait.patch \
@@ -45,6 +51,7 @@ RUN cd /var/lib/openstack/lib/python3.12/site-packages \
       --include=nova/api/openstack/compute/server_shares.py \
       --include=nova/compute/api.py \
       --include=nova/compute/manager.py \
+      --include=nova/compute/share_management.py \
       /tmp/0003-compute-allow-incus-manila-live-migration.patch \
  && git apply --no-index \
       --include=nova/utils.py \
@@ -52,15 +59,20 @@ RUN cd /var/lib/openstack/lib/python3.12/site-packages \
  && git apply --no-index \
       --include=nova/compute/api.py \
       /tmp/0008-compute-allow-container-bfv-rescue.patch \
+ && git apply --no-index \
+      --include=nova/compute/api.py \
+      /tmp/0009-compute-api-refuse-evacuate-during-rebuild.patch \
  && rm -f /tmp/0002-hardware-accept-incus-manila-share-trait.patch \
       /tmp/0003-compute-allow-incus-manila-live-migration.patch \
       /tmp/0006-sdk-user-token-honor-service-config.patch \
-      /tmp/0008-compute-allow-container-bfv-rescue.patch
+      /tmp/0008-compute-allow-container-bfv-rescue.patch \
+      /tmp/0009-compute-api-refuse-evacuate-during-rebuild.patch
 
-RUN python3 - <<'PY'
+RUN python3 - "${SITE_PACKAGES}" <<'PY'
+import sys
 from pathlib import Path
 
-path = Path('/var/lib/openstack/lib/python3.12/site-packages/nova/objects/__init__.py')
+path = Path(sys.argv[1]) / 'nova/objects/__init__.py'
 source = path.read_text()
 statement = "    __import__('nova.virt.incus.migrate_data')\n"
 anchor = "    __import__('nova.objects.migrate_data')\n"
@@ -92,7 +104,9 @@ assert hasattr(manager.ComputeManager, '_prepare_live_migration_check_data')
 assert hasattr(manager.ComputeManager, '_complete_live_migration_rollback')
 assert 'oslo_conf=CONF' in inspect.getsource(utils.get_sdk_adapter)
 assert 'CUSTOM_INCUS_SYSTEM_CONTAINER' in inspect.getsource(api.API.rescue)
+assert 'rebuild_states' in inspect.getsource(api.API.evacuate)
 print('Nova Incus control-plane migrate-data 1.7 OK')
 print('Nova Incus control-plane Manila migration contract OK')
 print('Nova user-token SDK service configuration OK')
+print('Nova evacuate rebuild-state refusal OK')
 PY

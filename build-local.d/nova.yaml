@@ -15,12 +15,12 @@
             - linux/amd64
             - linux/arm64
           tags:
-            - 2026.1-alpine_3.23
+            - 2026.2-alpine_3.23
           build_args:
-            - NOVA_REF=8595b8eed4d0cabf6a7db04b0d946cf764187965
-            - NOVA_INCUS_REF=a6d65d4d4dcc95a5f6e0e5662492b242b22e95c5
+            - NOVA_REF=8df1922926ddf949d681e10670dba7bc731701d3
+            - NOVA_INCUS_REF=b11d4095957b9f66758cf10a219f74eae25c9b0d
             - INCUS_SDK_REF=eb803e4ebb2f97ea403069fadd42453846a63ef3
-            - REQUIREMENTS_REF=06cd4e8523cbade25fb93efc4f8ea77d6d97064f
+            - REQUIREMENTS_REF=bab6cd8e3b9a5ac61b98aa7016c7d98b3000a8ac
 
 - job:
     name: build-local-nova-osvif
@@ -52,6 +52,6 @@
           arch:
             - linux/amd64
           tags:
-            - 2026.1-ubuntu_noble
+            - 2026.2-ubuntu_resolute
           build_args:
-            - NOVA_INCUS_REF=a6d65d4d4dcc95a5f6e0e5662492b242b22e95c5
+            - NOVA_INCUS_REF=b11d4095957b9f66758cf10a219f74eae25c9b0d
