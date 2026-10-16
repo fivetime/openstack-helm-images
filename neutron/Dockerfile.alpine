@@ -32,8 +32,9 @@
 # image used to be FROM the fork's ovn:alpine_latest, which tied neutron's Alpine
 # release to the one the production OVN runs (moving OVN is a data-plane change).
 #
-# 构建 (context = neutron/，与 build-local.d/neutron.yaml 一致)：
-#   cd neutron && docker build -f Dockerfile.alpine -t neutron:alpine-test .
+# 构建 (context = 仓库根目录，与 build-local.d/neutron.yaml 一致；要用根目录的
+# osprofiler-otlp/patch_otlp_driver.py)：
+#   docker build -f neutron/Dockerfile.alpine -t neutron:alpine-test .
 # =============================================================================
 
 # The Alpine release of OVS_IMAGE and FRR_IMAGE; they must match.
@@ -99,6 +100,7 @@ RUN apk add --no-cache \
         PyMySQL python-memcached pymemcache \
         "neutron @ git+${NEUTRON_REPO}@${NEUTRON_REF}" \
         tap-as-a-service \
+        opentelemetry-sdk opentelemetry-exporter-otlp-proto-http \
  && /var/lib/openstack/bin/pip install --no-cache-dir \
         psycopg2-binary 'confluent-kafka>=2.14,<2.15' \
  && mkdir -p /etc/image_info \
@@ -166,7 +168,7 @@ RUN apk add --no-cache --virtual .ngs-deps git \
 # DNS 修复：把 ovs.dns_resolve.resolve 换成同步 getaddrinfo。.pth 放进 venv 的
 # site-packages，对 venv 里所有进程(neutron-server/ovn-agent/db-manage)生效，
 # 不改上游 neutron 代码。
-COPY patches/ovsdb_dns.py /tmp/ovsdb_dns_patch.py
+COPY neutron/patches/ovsdb_dns.py /tmp/ovsdb_dns_patch.py
 # PYTHONDONTWRITEBYTECODE: venv 启动期的 .pth(_virtualenv/distutils-precedence)会在这次
 # python 调用里写回 _virtualenv/_distutils_hack 的字节码,设此变量避免污染本层。
 RUN SP=$(PYTHONDONTWRITEBYTECODE=1 /var/lib/openstack/bin/python3 -c "import sysconfig; print(sysconfig.get_paths()['purelib'])") \
@@ -188,8 +190,8 @@ RUN SP=$(PYTHONDONTWRITEBYTECODE=1 /var/lib/openstack/bin/python3 -c "import sys
 #     upper-constraints pins).
 # A patch that stops applying fails the build on purpose: upstream has changed
 # the code, so the patch has to be rebased (or dropped once merged).
-COPY patches/neutron/ /tmp/patches/neutron/
-COPY patches/pyroute2/ /tmp/patches/pyroute2/
+COPY neutron/patches/neutron/ /tmp/patches/neutron/
+COPY neutron/patches/pyroute2/ /tmp/patches/pyroute2/
 
 # vtysh, which the OVN agent's ovn-evpn extension runs (through privsep)
 # against the FRR of the chart's daemonset_ovn_evpn_frr. It is the frr APK the
@@ -211,6 +213,16 @@ RUN apk add --no-cache --virtual .patch-deps patch \
     done \
  && apk del .patch-deps \
  && rm -rf /tmp/patches /var/cache/apk/*
+
+# osprofiler tracing ([profiler] connection_string = otlp://...): fix the otlp
+# driver for forking and threaded services, and clean the trace a pooled
+# thread keeps between RPC messages. See osprofiler-otlp/. The OpenTelemetry
+# SDK and the OTLP/HTTP exporter are installed with neutron above, under the
+# constraints.
+COPY osprofiler-otlp/patch_otlp_driver.py osprofiler-otlp/patch_rpc_context.py /tmp/
+RUN PYTHONDONTWRITEBYTECODE=1 /var/lib/openstack/bin/python3 /tmp/patch_otlp_driver.py \
+ && PYTHONDONTWRITEBYTECODE=1 /var/lib/openstack/bin/python3 /tmp/patch_rpc_context.py \
+ && rm /tmp/patch_otlp_driver.py /tmp/patch_rpc_context.py
 
 # neutron 运行目录 + 属主 (chart 以 uid 42424 运行容器)。
 RUN mkdir -p /etc/neutron /var/log/neutron /var/lib/neutron /var/cache/neutron \

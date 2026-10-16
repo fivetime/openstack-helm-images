@@ -45,9 +45,9 @@
         # a reproducible image, pin NEUTRON_REF to a tag/sha and FRR_IMAGE to a
         # digest. CONSTRAINTS must follow NEUTRON_REF: neutron master needs a
         # newer neutron-lib than a stable branch's constraints allow.
-        - context: neutron
+        - context: .
           repository: openstackhelm/neutron
-          container_filename: Dockerfile.alpine
+          container_filename: neutron/Dockerfile.alpine
           arch:
             - linux/amd64
             - linux/arm64
@@ -63,9 +63,9 @@
             # networking-generic-switch 同理:fork 只有 master。
             - NETWORKING_GENERIC_SWITCH_REPO=https://github.com/fivetime/networking-generic-switch.git
             - NETWORKING_GENERIC_SWITCH_REF=master
-        - context: neutron
+        - context: .
           repository: openstackhelm/neutron
-          container_filename: Dockerfile.alpine
+          container_filename: neutron/Dockerfile.alpine
           arch:
             - linux/amd64
             - linux/arm64

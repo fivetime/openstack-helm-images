@@ -34,6 +34,11 @@ RUN sed -i '/^glance===/d' /upper-constraints.txt \
     && python -c "import boto3, botocore" \
     && uv pip freeze > /etc/image_info/pip.txt
 
+# osprofiler's otlp driver ([profiler] connection_string = otlp://...): fix it
+# for forking and threaded services. See osprofiler-otlp/patch_otlp_driver.py.
+COPY osprofiler-otlp/patch_otlp_driver.py /opt/
+RUN PYTHONDONTWRITEBYTECODE=1 python3 /opt/patch_otlp_driver.py
+
 FROM ${BASE_RUNTIME} AS runtime
 
 ENV PATH=/var/lib/openstack/bin:$PATH

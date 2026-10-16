@@ -78,6 +78,7 @@
       - zuul.d/venv_builder.yaml
       - bindep.txt
       - pydep.txt
+      - osprofiler-otlp/.*
 
 - job:
     name: openstack-helm-images-upload-placement

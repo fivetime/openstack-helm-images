@@ -29,6 +29,13 @@ oslo-rootwrap          [glance]
 ovn-octavia-provider   [(octavia ovn)]
 purestorage            [(cinder purestorage) (nova purestorage)]
 pymemcache             [blazar horizon gnocchi]
+# osprofiler's otlp driver sends traces to Tempo; it needs the OpenTelemetry
+# SDK and the OTLP/HTTP exporter, which no service requires. nova and placement
+# do not depend on osprofiler at all. The Dockerfiles of these services run
+# osprofiler-otlp/patch_otlp_driver.py, which fails the build without them.
+opentelemetry-sdk                      [glance nova placement]
+opentelemetry-exporter-otlp-proto-http [glance nova placement]
+osprofiler                             [nova placement]
 pymysql                []
 pyroute2               [nova]
 requests               [daas]

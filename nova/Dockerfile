@@ -33,6 +33,13 @@ RUN sed -i '/^nova===/d' /upper-constraints.txt \
     && rm -rf /tmp/nova \
     && uv pip freeze > /etc/image_info/pip.txt
 
+# osprofiler tracing ([profiler] connection_string = otlp://...): fix the otlp
+# driver for forking and threaded services, and clean the trace a pooled
+# thread keeps between RPC messages and tasks. See osprofiler-otlp/.
+COPY osprofiler-otlp/patch_otlp_driver.py osprofiler-otlp/patch_rpc_context.py /opt/
+RUN PYTHONDONTWRITEBYTECODE=1 python3 /opt/patch_otlp_driver.py \
+    && PYTHONDONTWRITEBYTECODE=1 python3 /opt/patch_rpc_context.py
+
 FROM ${BASE_RUNTIME} AS runtime
 
 ENV PATH=/var/lib/openstack/bin:$PATH
