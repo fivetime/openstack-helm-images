@@ -92,7 +92,9 @@ ARG CONSTRAINTS=https://opendev.org/openstack/requirements/raw/branch/stable/202
 # 3.23 是 librdkafka 2.12.x,3.24 是 2.14.1。stable/2026.2 的 upper-constraints 钉
 # confluent-kafka===2.15.0,它在 3.24 上编译即报 "confluent-kafka-python requires
 # librdkafka v2.15.0 or later"(10-16 实测),所以这条不走 constraints。
-ARG CONFLUENT_KAFKA_SPEC=>=2.12,<2.13
+# 只传主次版本(装 ~=<线>.0,即同一条 2.x 线的最新补丁版):CI 把 build_args 不加引号
+# 拼进 shell,写成 ">=2.14,<2.15" 会被当成重定向(10-16 CI 首次构建即失败)。
+ARG CONFLUENT_KAFKA_SERIES=2.12
 
 # 我方树外 NVMe-oF 卷驱动(**私有仓库**,同 nova/Dockerfile.incus 的处理方式)。
 # **按 commit SHA 钉版,不要写分支名**,两个理由:
@@ -156,7 +158,7 @@ RUN --mount=type=secret,id=src_repo_token \
         opentelemetry-sdk opentelemetry-exporter-otlp-proto-http \
         "cinder @ ${cinder_src}" \
  && /var/lib/openstack/bin/pip install --no-cache-dir \
-        psycopg2-binary "confluent-kafka${CONFLUENT_KAFKA_SPEC}" etcd3gw \
+        psycopg2-binary "confluent-kafka~=${CONFLUENT_KAFKA_SERIES}.0" etcd3gw \
         'grpcio>=1.81.1' \
  && if [ -s /run/secrets/src_repo_token ]; then \
         token="$(cat /run/secrets/src_repo_token)"; \

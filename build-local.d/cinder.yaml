@@ -90,4 +90,4 @@
             - CINDER_TAGS_REPO=https://opendev.org/openstack/cinder
             - CINDER_REF=43bfbdd92fbf5d569eb72a4f07594472c6673709
             - CONSTRAINTS=https://opendev.org/openstack/requirements/raw/commit/bab6cd8e3b9a5ac61b98aa7016c7d98b3000a8ac/upper-constraints.txt
-            - CONFLUENT_KAFKA_SPEC=>=2.14,<2.15
+            - CONFLUENT_KAFKA_SERIES=2.14
