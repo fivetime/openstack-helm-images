@@ -13,4 +13,21 @@
           tags:
             - 2026.1-alpine_3.23
           build_args:
-            - NOVA_INCUS_REF=1bcd15f5c789631152924e6bdcea4fb249b2bcb8
+            - NOVA_INCUS_REF=9ab9371ad4cd274e97376bc636149db7784981f4
+        # 2026.2: the 2026.2-alpine_3.24 cinder image of build-local.d/cinder.yaml
+        # (fork 43bfbdd92, which already carries OpenTelemetry and the NVMe-oF
+        # driver, so those layers are skipped) plus nova-incus-driver's 2026.2
+        # port of the patch.
+        - context: cinder
+          repository: openstackhelm/cinder-incus
+          container_filename: Dockerfile.incus
+          synthesize_master: false
+          arch:
+            - linux/amd64
+          tags:
+            - 2026.2-alpine_3.24
+          build_args:
+            - CINDER_BASE=ghcr.io/fivetime/openstackhelm/cinder@sha256:57c0af7f6cdb3b7726341a259b20adce7461ca0a906a796b6cd1f242c1e13550
+            - CINDER_COMMIT=43bfbdd92fbf5d569eb72a4f07594472c6673709
+            - NOVA_INCUS_REF=9ab9371ad4cd274e97376bc636149db7784981f4
+            - INCUS_CINDER_PATCH=patches/cinder/2026.2/attachment-request-idempotency.patch

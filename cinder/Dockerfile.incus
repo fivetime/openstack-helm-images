@@ -8,7 +8,7 @@ FROM ${CINDER_BASE}
 
 USER root
 ARG NOVA_INCUS_REPO=https://github.com/fivetime/nova-incus-driver.git
-ARG NOVA_INCUS_REF=1bcd15f5c789631152924e6bdcea4fb249b2bcb8
+ARG NOVA_INCUS_REF=9ab9371ad4cd274e97376bc636149db7784981f4
 # The patch is written for one Cinder commit; refuse any other base.
 ARG CINDER_COMMIT=d884fdaeb78cc9fcd331cc9426844d0ef2d9890e
 ARG INCUS_CINDER_PATCH=patches/cinder/attachment-request-idempotency.patch
