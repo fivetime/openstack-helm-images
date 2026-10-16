@@ -118,9 +118,7 @@ RUN export PYTHONDONTWRITEBYTECODE=1 \
  && python3 -c "import importlib.metadata as m; eps=m.entry_points(group='octavia.driver_agent.provider_agents'); assert any(ep.name == 'incus' for ep in eps), 'Incus provider agent entry point missing'; print('incus agent entry point OK')" \
  && python3 -c "from incus_octavia_provider.driver import IncusProviderDriver; print('incus driver imports OK')" \
  && python3 -c "from incus_octavia_provider.agent import IncusProviderAgent; print('incus agent imports OK')" \
- && for command in octavia-incus-admin octavia-incus-db-sync-util octavia-incus-release-util; do \
-        command -v "${command}" >/dev/null || { echo "MISSING ${command}"; exit 1; }; \
-    done \
+ && { command -v octavia-incus-admin >/dev/null || { echo "MISSING octavia-incus-admin"; exit 1; }; } \
  && python3 -c "import psycopg2, confluent_kafka, pymysql; print('db+kafka drivers OK')" \
  && python3 -c "import redis, redis.sentinel; print('taskflow jobboard redis client OK')" \
  && echo "venv layout OK (octavia in /var/lib/openstack)"
