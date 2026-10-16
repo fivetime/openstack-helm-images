@@ -184,6 +184,31 @@ RUN --mount=type=secret,id=src_repo_token \
  && rm -f /root/.gitconfig \
  && rm -rf /root/.cargo /root/.cache /tmp/* /var/cache/apk/* /etc/machine-id
 
+# osprofiler 的 otlp 驱动:建 TracerProvider 之前先 import concurrent.futures.thread。
+# OpenTelemetry SDK 1.44 起 TracerProvider 注册的子进程 at-fork 钩子会 ThreadPoolExecutor.submit,
+# 要拿 concurrent.futures.thread._global_shutdown_lock;concurrent.futures.thread 自己的钩子
+# (fork 前拿锁、子进程里重置)若注册得比它晚,子进程里先跑 OTel 的钩子,等一把永远不会被
+# 重置的锁。processutils.execute 带 preexec_fn,Python 在这种 fork 的子进程里跑 at-fork 钩子,
+# 于是每次 execute(如 RBD 挂卷的 ceph mon dump)都卡在 exec 之前,原生线程/eventlet 都一样。
+# 2026-10-16 cinder-volume 实际卡死过。提前 import 让 concurrent.futures 的钩子先注册,OTel 版本
+# 仍跟 upper-constraints。上游修好后去掉这层(见 OpenStack-Helm-Deploy §7.3.4 踩坑 ⑥)。
+RUN PYTHONDONTWRITEBYTECODE=1 /var/lib/openstack/bin/python3 - <<'EOF'
+import osprofiler.drivers.otlp as m
+path = m.__file__
+src = open(path).read()
+line = 'import concurrent.futures.thread  # noqa: F401  # before TracerProvider registers its at-fork hook\n'
+if line not in src:
+    anchor = 'import collections\n'
+    assert src.count(anchor) == 1, 'osprofiler otlp driver layout changed'
+    open(path, 'w').write(src.replace(anchor, anchor + line, 1))
+import importlib, sys
+for k in [k for k in sys.modules if k.startswith('osprofiler')]: del sys.modules[k]
+import osprofiler.drivers.otlp  # noqa: F401
+assert line in open(path).read()
+assert 'concurrent.futures.thread' in sys.modules
+print('osprofiler otlp driver imports concurrent.futures.thread early')
+EOF
+
 # cinder 用户/运行目录 (uid 42424，与官方 ubuntu 镜像一致；chart 以此 uid 运行容器)。
 RUN addgroup -g 42424 cinder \
  && adduser -D -H -u 42424 -G cinder -h /var/lib/cinder -s /sbin/nologin cinder \
