@@ -22,11 +22,12 @@ RUN --mount=type=secret,id=src_repo_token \
 # Pinned by digest: the release tag is mutable and must not silently pull a
 # newer Nova build while this image only adds the Incus RPC object registry
 # and the control-plane patches. Our CI's nova:2026.2-ubuntu_resolute as of
-# 2026-10-16 (openstack-helm-images cf504a8): Nova stable/2026.2 8df1922926,
-# Ubuntu 26.04.1, Python 3.14.4, with osprofiler, the OpenTelemetry exporter
-# and the osprofiler-otlp patches (it replaces quay.io/airshipit/nova, which
-# carries no osprofiler).
-FROM ghcr.io/fivetime/openstackhelm/nova@sha256:cb370c59be937d05bc7460e7c6a857fc4f33fa4ac050cb6e59e6e72a0a18c88e
+# 2026-10-16 (openstack-helm-images f12b5f6): Nova stable/2026.2 8df1922926
+# with nova/patches/nova/2026.2 (osprofiler tracing decided after the config
+# is parsed), Ubuntu 26.04.1, Python 3.14.4, with osprofiler, the
+# OpenTelemetry exporter and the osprofiler-otlp patches (it replaces
+# quay.io/airshipit/nova, which carries no osprofiler).
+FROM ghcr.io/fivetime/openstackhelm/nova@sha256:4fde9774f4150226bd79478be4e798d9a4f8a3eebef64f1c98ad9ef7aa23af2f
 
 ARG SITE_PACKAGES=/var/lib/openstack/lib/python3.14/site-packages
 
@@ -123,5 +124,9 @@ assert hasattr(otlp.OTLP, '_reset_after_fork')
 assert 'profiler.clean()' in inspect.getsource(
     dispatcher.RPCDispatcher._do_dispatch)
 assert 'profiler.clean()' in inspect.getsource(thread_pool_factory.spawn_on)
-print('osprofiler otlp driver and RPC trace cleanup OK')
+from nova import profiler as nova_profiler
+from nova import service as nova_service
+assert hasattr(nova_profiler, 'enable_tracing')
+assert 'enable_tracing()' in inspect.getsource(nova_service.setup_profiler)
+print('osprofiler otlp driver, RPC trace cleanup and deferred tracing OK')
 PY
