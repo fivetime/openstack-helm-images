@@ -77,6 +77,7 @@ RUN --mount=type=secret,id=src_repo_token \
         -c /tmp/upper-constraints.txt \
         'cryptography==46.0.5' 'pyOpenSSL==25.3.0' \
         pyroute2 \
+        osprofiler opentelemetry-sdk opentelemetry-exporter-otlp-proto-http \
         /tmp/incus-python-sdk /tmp/nova /tmp/nova-incus \
  && (cd /var/lib/openstack/lib/python3.14/site-packages \
         && git apply --no-index \
@@ -104,6 +105,16 @@ RUN --mount=type=secret,id=src_repo_token \
  && find /var/lib/openstack -name '*.pyc' -delete \
  && find /var/lib/openstack -type d -name '__pycache__' -delete \
  && rm -rf /root/.cargo /root/.cache /tmp/*
+
+# osprofiler tracing ([profiler] connection_string = otlp://...): fix the otlp
+# driver (the early concurrent.futures import matters here: nova-compute forks
+# through processutils.execute with a preexec_fn and privsep), and clean the
+# trace a pooled thread keeps between RPC messages and tasks. See
+# osprofiler-otlp/; this image builds from the repository root for it.
+COPY osprofiler-otlp/patch_otlp_driver.py osprofiler-otlp/patch_rpc_context.py /tmp/
+RUN PYTHONDONTWRITEBYTECODE=1 /var/lib/openstack/bin/python3 /tmp/patch_otlp_driver.py \
+ && PYTHONDONTWRITEBYTECODE=1 /var/lib/openstack/bin/python3 /tmp/patch_rpc_context.py \
+ && rm /tmp/patch_otlp_driver.py /tmp/patch_rpc_context.py
 
 FROM alpine:${ALPINE_VERSION} AS runtime
 
@@ -186,13 +197,14 @@ RUN export PYTHONDONTWRITEBYTECODE=1 \
  && python3 -c "from nova.virt.incus.manager import IncusComputeManager; assert IncusComputeManager.__module__ == 'nova.virt.incus.manager'; print('Nova Incus compute manager OK')" \
  && python3 -c "from nova.virt.incus.migrate_data import IncusLiveMigrateData; assert IncusLiveMigrateData.VERSION == '1.7'; print('Nova Incus migrate-data 1.7 OK')" \
  && python3 -c "from nova.virt.incus import volume_contracts; assert volume_contracts.volume_device_info_key('v') == 'user.openstack.volume.v'; print('Nova Incus volume attachment records OK')" \
- && env -u OS_NOVA_DISABLE_EVENTLET_PATCHING python3 -c "import pkgutil, sys; import nova.virt.incus.cmd.compute; import nova.virt.incus as p; from nova import monkey_patch; [__import__(m.name) for m in pkgutil.walk_packages(p.__path__, p.__name__ + '.') if m.name != 'nova.virt.incus.ceilometer']; assert not monkey_patch.is_patched(); assert 'eventlet' not in sys.modules; print('Nova Incus compute loads in native threading mode OK')" \
+ && env -u OS_NOVA_DISABLE_EVENTLET_PATCHING python3 -c "import pkgutil, sys; import nova.virt.incus.cmd.compute; import nova.virt.incus as p; from nova import monkey_patch; import osprofiler.drivers.otlp as otlp; assert hasattr(otlp.OTLP, '_reset_after_fork'); [__import__(m.name) for m in pkgutil.walk_packages(p.__path__, p.__name__ + '.') if m.name != 'nova.virt.incus.ceilometer']; assert not monkey_patch.is_patched(); assert 'eventlet' not in sys.modules; print('Nova Incus compute loads in native threading mode OK')" \
  && python3 -c "import inspect; from nova.compute import api; assert 'rebuild_states' in inspect.getsource(api.API.evacuate); print('Nova evacuate rebuild-state refusal OK')" \
  && python3 -c "import inspect; from nova.compute import manager; assert callable(manager.ComputeManager._create_share_manager); assert 'migration_status' in inspect.signature(manager.ComputeManager._complete_live_migration_rollback).parameters; print('Nova 2026.2 Manila and rollback hooks OK')" \
  && python3 -c "from nova.compute import manager; assert callable(getattr(manager.ComputeManager, '_should_delete_allocation_for_failed_build', None)); print('Nova failed-build allocation policy OK')" \
  && python3 -c "import inspect; from nova import utils; assert 'oslo_conf=CONF' in inspect.getsource(utils.get_sdk_adapter); print('Nova user-token SDK service configuration OK')" \
  && python3 -c "from nova.objects.fields import HVType; assert not hasattr(HVType, 'INCUS'); print('Nova cross-service enum compatibility OK')" \
  && python3 -c "import pylxd, rados, rbd; print('Incus+Ceph bindings OK')" \
+ && python3 -c "import google.protobuf as pb; from google.protobuf.internal import api_implementation; from opentelemetry.exporter.otlp.proto.http.trace_exporter import OTLPSpanExporter; from opentelemetry.sdk.trace import TracerProvider; print('OTLP exporter OK, protobuf', pb.__version__, api_implementation.Type())" \
  && test -n "$(hostname --fqdn)" \
  && echo "venv layout OK (Nova Incus compute in /var/lib/openstack)"
 

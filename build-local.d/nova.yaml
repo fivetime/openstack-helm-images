@@ -8,9 +8,9 @@
     description: Build the Nova Incus system-container compute image.
     vars:
       container_images:
-        - context: nova
+        - context: .
           repository: openstackhelm/nova-incus
-          container_filename: Dockerfile.incus
+          container_filename: nova/Dockerfile.incus
           arch:
             - linux/amd64
             - linux/arm64

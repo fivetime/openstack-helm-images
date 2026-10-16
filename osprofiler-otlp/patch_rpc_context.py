@@ -28,6 +28,12 @@ Both look the profiler up in sys.modules: a process that never imported
 osprofiler has no trace to clean. The script asserts the layout it expects,
 so a release that changes it fails the image build instead of shipping
 unpatched.
+
+Upstream: not reported yet. The defect is osprofiler's (init() keeps a
+stale profiler; nothing on the RPC path calls clean()); the fix belongs in
+oslo.messaging's dispatcher or osprofiler, and nova's thread_pool_factory
+for its pools. This script is for tracing only: functional changes to nova
+go to nova-incus-driver's patches/nova/, not here.
 """
 
 import importlib
