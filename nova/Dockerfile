@@ -22,8 +22,27 @@ RUN if [ -s /etc/image_info/bindep_build.txt ]; then \
         && rm -rf /var/lib/apt/lists/*; \
     fi
 
+# Changes carried until they merge upstream, one directory per release under
+# nova/patches/nova/ (NOVA_REF without "stable/"); a release without one is
+# built unpatched:
+#   2026.2/0001-decide-osprofiler-tracing-after-config.patch -- trace_cls()
+#     and the manager metaclass decided at import time whether to trace, before
+#     the services parse [profiler] enabled, so nova-compute traced no RPC
+#     client or Glance calls (https://review.opendev.org/c/openstack/nova/+/1010918,
+#     bug 1731864; runtime files only, the tests stay in the change).
+# A patch that stops applying fails the build on purpose: rebase it, or drop it
+# once merged.
+COPY nova/patches/nova/ /tmp/patches/nova/
 RUN sed -i '/^nova===/d' /upper-constraints.txt \
     && git clone --filter=blob:none -b ${NOVA_REF} ${NOVA_REPO} /tmp/nova \
+    && release=${NOVA_REF#stable/} \
+    && for p in /tmp/patches/nova/${release}/*.patch; do \
+           [ -e "${p}" ] || continue; \
+           echo "applying nova/${release}/${p##*/}"; \
+           git -C /tmp/nova apply "${p}" || exit 1; \
+           echo "nova patch ${release}/${p##*/}" >> /etc/image_info/patches.txt; \
+       done \
+    && rm -rf /tmp/patches \
     && uv pip install \
          --build-constraint /upper-constraints.txt \
          -c /upper-constraints.txt \

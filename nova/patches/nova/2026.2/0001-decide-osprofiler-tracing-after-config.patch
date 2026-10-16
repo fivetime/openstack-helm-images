@@ -1,0 +1,180 @@
+From bd5e6d0aa8ff509010897ecf1902f83e388c09ed Mon Sep 17 00:00:00 2001
+From: Simon Zhou <td@fivetime.ltd>
+Date: Fri, 16 Oct 2026 15:49:34 +0000
+Subject: [PATCH] Decide osprofiler tracing after the config is parsed
+
+nova.profiler.trace_cls() and the metaclass returned by
+get_traced_meta() checked CONF.profiler.enabled when the class was
+defined. The services import most traced classes before they parse
+their configuration, when the option still has its default (False),
+so those classes were never traced although [profiler] enabled was
+True. nova-compute, for example, imports nova.image.glance and both
+RPC client APIs before parse_args() through nova.cmd.compute, and a
+traced server create showed no nova_image or rpc client spans from it.
+Any service that imports nova.manager early loses the tracing of all
+its manager methods the same way.
+
+Keep the tracing of a class pending until nova.service.setup_profiler()
+runs, after the configuration is parsed, and apply it there if
+profiling is enabled. Classes defined after that are traced as they
+are defined. With profiling disabled nothing is wrapped, as before.
+
+The metaclass can no longer be osprofiler's TracedMeta, which wraps
+the methods when the class is created, so nova.profiler._TracedMeta
+wraps the same methods (the public functions of each class body)
+later.
+
+test_all_public_methods_are_traced no longer needs to reload the
+modules to see the tracing applied.
+
+Closes-Bug: #1731864
+
+Assisted-By: Claude Opus 5.5 <noreply@anthropic.com>
+Change-Id: I0425882bd470ce5f14fcd9da172390bc53613de0
+Signed-off-by: Simon Zhou <td@fivetime.ltd>
+(cherry picked from commit 9bd47915f88b827093eaab77740353e0a18f2ca4)
+---
+ nova/profiler.py | 85 +++++++++++++++++++++++++++++++++++++++++++++---
+ nova/service.py  |  2 ++
+ 2 files changed, 83 insertions(+), 4 deletions(-)
+
+diff --git a/nova/profiler.py b/nova/profiler.py
+index 71d2eb09b0..f8aa42652a 100644
+--- a/nova/profiler.py
++++ b/nova/profiler.py
+@@ -13,6 +13,8 @@
+ #    License for the specific language governing permissions and limitations
+ #    under the License.
+ 
++import inspect
++
+ from oslo_utils import importutils
+ import webob.dec
+ 
+@@ -45,9 +47,81 @@ class WsgiMiddleware(object):
+         return request.get_response(self.application)
+ 
+ 
++# NOTE: The classes below are traced by the trace_cls() decorator and the
++# metaclass returned by get_traced_meta(), which run when the class is
++# defined. Services import most of them before they parse their
++# configuration, while CONF.profiler.enabled still has its default value, so
++# whether to trace cannot be decided then. Until enable_tracing() runs after
++# the configuration is parsed, the tracing of a class is kept here instead of
++# being applied or dropped.
++_pending_tracing = []
++_tracing_enabled = False
++
++
++def _apply_or_defer(apply_tracing):
++    if _tracing_enabled:
++        apply_tracing()
++    else:
++        _pending_tracing.append(apply_tracing)
++
++
++def enable_tracing():
++    """Trace the classes marked for tracing if profiling is enabled.
++
++    Called once the service has parsed its configuration. Classes marked
++    before this call are traced now, classes marked after it as they are
++    defined. Nothing is traced if OSProfiler is missing or disabled.
++    """
++    global _tracing_enabled
++    if not (profiler and 'profiler' in CONF and CONF.profiler.enabled):
++        return
++    _tracing_enabled = True
++    while _pending_tracing:
++        _pending_tracing.pop(0)()
++
++
++def _trace_class_methods(cls):
++    # The same methods osprofiler's TracedMeta traces: the public functions
++    # defined in this class body; inherited ones are traced by the metaclass
++    # of the class that defines them.
++    trace_args = dict(cls.__trace_args__)
++    trace_private = trace_args.pop('trace_private', False)
++    allow_multiple_trace = trace_args.pop('allow_multiple_trace', True)
++    methods = [
++        (name, value) for name, value in vars(cls).items()
++        if (inspect.ismethod(value) or inspect.isfunction(value)) and
++        not name.startswith('__') and
++        (trace_private or not name.startswith('_'))]
++    if not allow_multiple_trace:
++        for name, value in methods:
++            if getattr(value, '__traced__', 0):
++                raise ValueError("Function '%s' has already been traced" %
++                                 value)
++    for name, value in methods:
++        setattr(cls, name, profiler.trace(**trace_args)(value))
++
++
++class _TracedMeta(type):
++    """Trace the public methods of every class using it once tracing is on.
++
++    Equivalent to osprofiler's TracedMeta, which traces when the class is
++    defined. The class must have a __trace_args__ dictionary with a "name"
++    key.
++    """
++
++    def __init__(cls, cls_name, bases, attrs):
++        super().__init__(cls_name, bases, attrs)
++        if 'name' not in getattr(cls, '__trace_args__', {}):
++            raise TypeError(
++                "Please specify __trace_args__ class level dictionary "
++                "attribute with mandatory 'name' key - e.g. "
++                "__trace_args__ = {'name': 'rpc'}")
++        _apply_or_defer(lambda: _trace_class_methods(cls))
++
++
+ def get_traced_meta():
+-    if profiler and 'profiler' in CONF and CONF.profiler.enabled:
+-        return profiler.TracedMeta
++    if profiler:
++        return _TracedMeta
+     else:
+         # NOTE(rpodolyaka): if we do not return a child of type, then Python
+         # fails to build a correct MRO when osprofiler is not installed
+@@ -60,14 +134,17 @@ def trace_cls(name, **kwargs):
+     """Wrap the OSProfiler trace_cls decorator so that it will not try to
+     patch the class unless OSProfiler is present and enabled in the config
+ 
++    The class is patched by enable_tracing(), or when it is defined if that
++    has already run.
++
+     :param name: The name of action. E.g. wsgi, rpc, db, etc..
+     :param kwargs: Any other keyword args used by profiler.trace_cls
+     """
+ 
+     def decorator(cls):
+-        if profiler and 'profiler' in CONF and CONF.profiler.enabled:
++        if profiler:
+             trace_decorator = profiler.trace_cls(name, kwargs)
+-            return trace_decorator(cls)
++            _apply_or_defer(lambda: trace_decorator(cls))
+         return cls
+ 
+     return decorator
+diff --git a/nova/service.py b/nova/service.py
+index 1685e5a6bd..aea3eef1aa 100644
+--- a/nova/service.py
++++ b/nova/service.py
+@@ -39,6 +39,7 @@ from nova.i18n import _
+ from nova import objects
+ from nova.objects import base as objects_base
+ from nova.objects import service as service_obj
++from nova import profiler
+ from nova import rpc
+ from nova import servicegroup
+ from nova import utils
+@@ -141,6 +142,7 @@ def setup_profiler(binary, host):
+             project="nova",
+             service=binary,
+             host=host)
++        profiler.enable_tracing()
+         LOG.info("OSProfiler is enabled.")
+ 
+ 
+-- 
+2.53.0
+
