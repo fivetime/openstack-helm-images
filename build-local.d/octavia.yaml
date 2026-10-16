@@ -24,7 +24,7 @@
             - OVN_PROVIDER_REF=stable/2026.1
             # 私有仓库,钉 commit;与 Dockerfile 的 ARG 默认值由
             # PINNED_BUILD_ARGS 强制一致。发版时两处同改。
-            - INCUS_PROVIDER_REF=869f1583535b39183d66777e2f8bd8f3f262c60d
+            - INCUS_PROVIDER_REF=9691cfe0fa6ed6966cb501079126d3fc74030428
             - CONSTRAINTS=https://opendev.org/openstack/requirements/raw/branch/stable/2026.1/upper-constraints.txt
         # 2026.2 on Alpine 3.24 (Python 3.14). ovn-octavia-provider comes from
         # the fork's master: upstream master plus our Service_Monitor/member
@@ -48,5 +48,27 @@
             - OCTAVIA_REF=stable/2026.2
             - OVN_PROVIDER_REPO=https://github.com/fivetime/ovn-octavia-provider
             - OVN_PROVIDER_REF=master
-            - INCUS_PROVIDER_REF=869f1583535b39183d66777e2f8bd8f3f262c60d
+            - INCUS_PROVIDER_REF=9691cfe0fa6ed6966cb501079126d3fc74030428
             - CONSTRAINTS=https://opendev.org/openstack/requirements/raw/branch/stable/2026.2/upper-constraints.txt
+        # Production since 2026-10-16: Octavia from the fork's master (upstream
+        # master plus the load balancer resize API, 890215, and the provider
+        # completion of a resize), on Alpine 3.24 (Python 3.14). The fork
+        # masters of all three repositories are the authoritative branches.
+        # No schema change against stable/2026.2, so db_sync keeps its image.
+        - context: octavia
+          repository: openstackhelm/octavia
+          container_filename: Dockerfile.alpine
+          arch:
+            - linux/amd64
+            - linux/arm64
+          tags:
+            - master-alpine_3.24
+          build_args:
+            - ALPINE_VERSION=3.24
+            - CONFLUENT_KAFKA_SERIES=2.14
+            - OCTAVIA_REPO=https://github.com/fivetime/openstack-octavia
+            - OCTAVIA_REF=master
+            - OVN_PROVIDER_REPO=https://github.com/fivetime/ovn-octavia-provider
+            - OVN_PROVIDER_REF=master
+            - INCUS_PROVIDER_REF=9691cfe0fa6ed6966cb501079126d3fc74030428
+            - CONSTRAINTS=https://opendev.org/openstack/requirements/raw/branch/master/upper-constraints.txt
