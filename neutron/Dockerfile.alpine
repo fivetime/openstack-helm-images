@@ -180,9 +180,10 @@ RUN SP=$(PYTHONDONTWRITEBYTECODE=1 /var/lib/openstack/bin/python3 -c "import sys
 # in site-packages (runtime files only; the tests and release notes stay in the
 # change), one directory per project under patches/:
 #   neutron/0001-evpn-gateway-chassis.patch -- ovn-cms-options
-#     enable-chassis-as-evpn-gw picks the chassis for EVPN router ports instead
-#     of every gateway chassis (fork commit 7255bbeeeb on
-#     fivetime/openstack-neutron evpn-gateway-chassis).
+#     enable-chassis-as-evpn-gw limits the chassis the EVPN scheduler picks
+#     for EVPN router ports (upstream schedules among every gateway chassis)
+#     (fork commit fa9298c0c8 on fivetime/openstack-neutron
+#     evpn-gateway-chassis-rebase, rebased onto the upstream scheduler).
 #   pyroute2/0001-bridge-accept-24-bit-tunnel-ids.patch -- vlan_tunnel_info
 #     silently dropped tunnel ids (VNIs) above 4094, so the OVN agent's EVPN
 #     SVD got no VLAN-to-VNI mapping and FRR saw no L3 VNI (fivetime/pyroute2

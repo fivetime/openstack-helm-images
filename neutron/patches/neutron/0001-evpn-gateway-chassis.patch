@@ -55,10 +55,10 @@ index 47b9934123..f1226358fa 100644
      def get_gateway_chassis_from_cms_options(self, name_only=True):
          """Get chassis eligible for external connectivity from CMS options.
 diff --git a/neutron/plugins/ml2/drivers/ovn/mech_driver/ovsdb/impl_idl_ovn.py b/neutron/plugins/ml2/drivers/ovn/mech_driver/ovsdb/impl_idl_ovn.py
-index 90a211260f..5be95fe29c 100644
+index f44d312b14..25e7b2996b 100644
 --- a/neutron/plugins/ml2/drivers/ovn/mech_driver/ovsdb/impl_idl_ovn.py
 +++ b/neutron/plugins/ml2/drivers/ovn/mech_driver/ovsdb/impl_idl_ovn.py
-@@ -1056,6 +1056,14 @@ class OvsdbSbOvnIdl(sb_impl_idl.OvnSbApiIdlImpl, Backend):
+@@ -1080,6 +1080,14 @@ class OvsdbSbOvnIdl(sb_impl_idl.OvnSbApiIdlImpl, Backend):
                  for ch in self.chassis_list().execute(check_error=True)
                  if utils.is_gateway_chassis(ch)]
  
@@ -88,15 +88,19 @@ index 9cfd7cdfa7..3d805dd100 100644
          else:
              syncer = EvpnLoggingSynchronizer()
 diff --git a/neutron/services/evpn/plugin.py b/neutron/services/evpn/plugin.py
-index b1e3539af7..6be3b3a113 100644
+index 5c8903a44a..56a684e54a 100644
 --- a/neutron/services/evpn/plugin.py
 +++ b/neutron/services/evpn/plugin.py
-@@ -133,7 +133,7 @@ class EVPNPlugin(service_base.ServicePluginBase):
+@@ -157,6 +157,12 @@ class EVPNPlugin(service_base.ServicePluginBase):
+         gw_chassis, candidates = (
+             self._sb_idl.get_gateway_chassis_with_az_filter(
+                 az_hints=router.get('availability_zone_hints', [])))
++        # Only chassis with the EVPN pieces can host the VRF: when some
++        # chassis are marked enable-chassis-as-evpn-gw, schedule among them
++        # (every gateway chassis otherwise, see get_evpn_gateway_chassis).
++        evpn_gw_chassis = set(self._sb_idl.get_evpn_gateway_chassis())
++        gw_chassis &= evpn_gw_chassis
++        candidates &= evpn_gw_chassis
  
-         router_id = payload.resource_id
-         vlan = self._evpn_db.get_vlan_for_router(payload.context, router_id)
--        gw_chassis = self._sb_idl.get_gateway_chassis_from_cms_options()
-+        gw_chassis = self._sb_idl.get_evpn_gateway_chassis()
-         with self._nb_idl.transaction(check_error=True) as txn:
-             txn.add(evpn_ovn.CreateEVPNRouterCommand(
-                 self._nb_idl, router_id, vni, vlan, gw_chassis))
+         hcg_load = self._compute_hcg_primary_load(chassis_names=gw_chassis)
+         scheduler = evpn_scheduler.LeastLoadedChassisScheduler(hcg_load)
