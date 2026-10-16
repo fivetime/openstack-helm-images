@@ -38,6 +38,13 @@ It patches the installed osprofiler/drivers/otlp.py in place:
    strips any of those letters, so "driver" became "drive". Upstream:
    https://review.opendev.org/c/openstack/osprofiler/+/1010851
 
+5. osprofiler/opts.py: set_defaults(conf) also registers the jaeger and
+   otlp driver option groups on conf. They were only registered on the
+   global cfg.CONF at import time, so a service with its own ConfigOpts
+   (placement) failed to create the otlp driver (NoSuchOptError for
+   profiler_otlp), osprofiler swallowed the error and every span went to
+   the no-op notifier.
+
 The script asserts the driver layout it expects, so an osprofiler release
 that changes it fails the image build instead of shipping unpatched. Images
 that use it build from the repository root. cinder/Dockerfile.alpine still
@@ -114,6 +121,19 @@ POP_NEW = '''\
             if span is None:
                 return
 '''
+OPTS_OLD = '''\
+    conf.register_opts(_PROFILER_OPTS, group=_profiler_opt_group)
+
+'''
+OPTS_MARK = '# fivetime: driver option groups on conf'
+OPTS_NEW = '''\
+    conf.register_opts(_PROFILER_OPTS, group=_profiler_opt_group)
+    ''' + OPTS_MARK + ''' too: the drivers read them from the
+    # conf they are given, and only cfg.CONF has them from import time.
+    conf.register_opts(_JAEGER_OPTS, group=_jaegerprofiler_opt_group)
+    conf.register_opts(_OTLP_OPTS, group=_otlp_profiler_opt_group)
+
+'''
 NAME_OLD = '        return str(payload["name"]).rstrip("-start")\n'
 NAME_NEW = '        return str(payload["name"]).removesuffix("-start")\n'
 
@@ -146,6 +166,13 @@ def main():
         with open(path, 'w') as f:
             f.write(src)
 
+    import osprofiler.opts as opts
+    with open(opts.__file__) as f:
+        opts_src = f.read()
+    if OPTS_MARK not in opts_src:
+        with open(opts.__file__, 'w') as f:
+            f.write(replace_once(opts_src, OPTS_OLD, OPTS_NEW))
+
     for name in [n for n in sys.modules if n.startswith('osprofiler')]:
         del sys.modules[name]
     mod = importlib.import_module('osprofiler.drivers.otlp')
@@ -153,9 +180,13 @@ def main():
         patched = f.read()
     assert EARLY_IMPORT in patched and 'self.spans' not in patched
     assert hasattr(mod.OTLP, '_reset_after_fork')
+    from oslo_config import cfg
+    conf = cfg.ConfigOpts()
+    importlib.import_module('osprofiler.opts').set_defaults(conf)
+    assert conf.profiler_otlp.service_name_prefix is None
     print('osprofiler otlp driver: early concurrent.futures import, '
           'per-process provider after fork, open spans by trace id, '
-          'span names (%s)' % path)
+          'span names, driver options on any conf (%s)' % path)
 
 
 if __name__ == '__main__':
