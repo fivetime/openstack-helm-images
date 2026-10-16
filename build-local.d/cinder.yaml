@@ -88,6 +88,6 @@
             # The fork has no tags; take them from upstream so that pbr gives
             # cinder its real version (Dockerfile.alpine).
             - CINDER_TAGS_REPO=https://opendev.org/openstack/cinder
-            - CINDER_REF=cf846d34e4ee4cad2dbb069b7fce4aab8ea5e633
+            - CINDER_REF=862b4b473b6114dccaf0d88be480abebf627fb9d
             - CONSTRAINTS=https://opendev.org/openstack/requirements/raw/commit/bab6cd8e3b9a5ac61b98aa7016c7d98b3000a8ac/upper-constraints.txt
             - CONFLUENT_KAFKA_SERIES=2.14
