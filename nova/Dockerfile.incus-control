@@ -19,11 +19,14 @@ RUN --mount=type=secret,id=src_repo_token \
  && git -C /src checkout --detach FETCH_HEAD \
  && rm -f /root/.gitconfig
 
-# The Airship release tag is mutable and must not silently pull a newer Nova
-# build while this image only adds the Incus RPC object registry and the
-# control-plane patches. quay.io/airshipit/nova:2026.2-ubuntu_resolute as of
-# 2026-10-15: Nova stable/2026.2 8df1922926, Ubuntu 26.04.1, Python 3.14.4.
-FROM quay.io/airshipit/nova@sha256:1940ba3220e825b3dfa3e21be797688697bb463f6243a8f72e07c1168692724f
+# Pinned by digest: the release tag is mutable and must not silently pull a
+# newer Nova build while this image only adds the Incus RPC object registry
+# and the control-plane patches. Our CI's nova:2026.2-ubuntu_resolute as of
+# 2026-10-16 (openstack-helm-images cf504a8): Nova stable/2026.2 8df1922926,
+# Ubuntu 26.04.1, Python 3.14.4, with osprofiler, the OpenTelemetry exporter
+# and the osprofiler-otlp patches (it replaces quay.io/airshipit/nova, which
+# carries no osprofiler).
+FROM ghcr.io/fivetime/openstackhelm/nova@sha256:cb370c59be937d05bc7460e7c6a857fc4f33fa4ac050cb6e59e6e72a0a18c88e
 
 ARG SITE_PACKAGES=/var/lib/openstack/lib/python3.14/site-packages
 
@@ -94,6 +97,7 @@ from nova.objects import base
 from nova.virt import hardware
 
 objects.register_all()
+print('base image:', open('/etc/image_info/project.txt').read().strip())
 versions = base.NovaObjectRegistry.obj_classes().get('IncusLiveMigrateData', [])
 assert versions and versions[0].VERSION == '1.7', versions
 assert 'CUSTOM_INCUS_MANILA_SHARE' in inspect.getsource(
@@ -109,4 +113,15 @@ print('Nova Incus control-plane migrate-data 1.7 OK')
 print('Nova Incus control-plane Manila migration contract OK')
 print('Nova user-token SDK service configuration OK')
 print('Nova evacuate rebuild-state refusal OK')
+
+# Tracing comes with the base image: osprofiler's otlp driver and the RPC
+# context cleanup from osprofiler-otlp/ (patched in nova/Dockerfile's build).
+from nova import thread_pool_factory
+from oslo_messaging.rpc import dispatcher
+import osprofiler.drivers.otlp as otlp
+assert hasattr(otlp.OTLP, '_reset_after_fork')
+assert 'profiler.clean()' in inspect.getsource(
+    dispatcher.RPCDispatcher._do_dispatch)
+assert 'profiler.clean()' in inspect.getsource(thread_pool_factory.spawn_on)
+print('osprofiler otlp driver and RPC trace cleanup OK')
 PY
