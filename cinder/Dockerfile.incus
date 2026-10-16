@@ -1,14 +1,20 @@
 # syntax=docker/dockerfile:1
 # Add the reviewed Incus reservation protocol to the exact deployed Cinder.
+# The defaults are the 2026.1 image; build-local.d/cinder-incus.yaml passes
+# the base, the Cinder commit it must contain and the matching patch for
+# every other release.
 ARG CINDER_BASE=ghcr.io/fivetime/openstackhelm/cinder@sha256:00acbe9904fe0a9240b6ed7ad6e45e514a59dc227ab7a268613c22a345849d45
 FROM ${CINDER_BASE}
 
 USER root
 ARG NOVA_INCUS_REPO=https://github.com/fivetime/nova-incus-driver.git
 ARG NOVA_INCUS_REF=1bcd15f5c789631152924e6bdcea4fb249b2bcb8
+# The patch is written for one Cinder commit; refuse any other base.
+ARG CINDER_COMMIT=d884fdaeb78cc9fcd331cc9426844d0ef2d9890e
+ARG INCUS_CINDER_PATCH=patches/cinder/attachment-request-idempotency.patch
 
 RUN --mount=type=secret,id=src_repo_token \
-    grep -q d884fdaeb78cc9fcd331cc9426844d0ef2d9890e /etc/image_info/project.txt \
+    grep -q "${CINDER_COMMIT}" /etc/image_info/project.txt \
  && apk add --no-cache --virtual .incus-patch-tools git \
  && if [ -s /run/secrets/src_repo_token ]; then \
         token="$(cat /run/secrets/src_repo_token)"; \
@@ -24,12 +30,12 @@ RUN --mount=type=secret,id=src_repo_token \
  && cinder_site="$(python3 -c 'import pathlib, cinder; print(pathlib.Path(cinder.__file__).parent.parent)')" \
  && cd "${cinder_site}" \
  && git apply --check --exclude='cinder/tests/**' \
-        /tmp/incus-cinder-patches/patches/cinder/attachment-request-idempotency.patch \
+        /tmp/incus-cinder-patches/${INCUS_CINDER_PATCH} \
  && git apply --exclude='cinder/tests/**' \
-        /tmp/incus-cinder-patches/patches/cinder/attachment-request-idempotency.patch \
+        /tmp/incus-cinder-patches/${INCUS_CINDER_PATCH} \
  && python3 -m compileall -q cinder \
  && printf 'nova-incus-cinder-patches %s\n' "${NOVA_INCUS_REF}" >> /etc/image_info/project.txt \
- && sha256sum /tmp/incus-cinder-patches/patches/cinder/attachment-request-idempotency.patch \
+ && sha256sum /tmp/incus-cinder-patches/${INCUS_CINDER_PATCH} \
         > /etc/image_info/incus-cinder-patch.sha256 \
  && rm -rf /tmp/incus-cinder-patches \
  && apk del .incus-patch-tools
@@ -40,25 +46,36 @@ RUN --mount=type=secret,id=src_repo_token \
 # googleapis-common-protos are already installed at the constrained versions,
 # so nothing else moves. Requests are traced only when signed with one of
 # [profiler]/hmac_keys, so the packages are inert until a client asks.
-RUN /var/lib/openstack/bin/pip install --no-cache-dir \
-        opentelemetry-api==1.39.1 \
-        opentelemetry-sdk==1.39.1 \
-        opentelemetry-semantic-conventions==0.60b1 \
-        opentelemetry-proto==1.39.1 \
-        opentelemetry-exporter-otlp-proto-common==1.39.1 \
-        opentelemetry-exporter-otlp-proto-http==1.39.1 \
+# Bases built from the current Dockerfile.alpine (2026.2 on) install them at
+# their own constraints already; they are left untouched.
+RUN if /var/lib/openstack/bin/python3 -c "import opentelemetry.exporter.otlp.proto.http, opentelemetry.sdk" 2>/dev/null; then \
+        echo "OpenTelemetry already in CINDER_BASE"; \
+    else \
+        /var/lib/openstack/bin/pip install --no-cache-dir \
+            opentelemetry-api==1.39.1 \
+            opentelemetry-sdk==1.39.1 \
+            opentelemetry-semantic-conventions==0.60b1 \
+            opentelemetry-proto==1.39.1 \
+            opentelemetry-exporter-otlp-proto-common==1.39.1 \
+            opentelemetry-exporter-otlp-proto-http==1.39.1 \
+     && printf 'opentelemetry-exporter-otlp-proto-http 1.39.1\n' >> /etc/image_info/project.txt; \
+    fi \
  && /var/lib/openstack/bin/python3 -c "from osprofiler.drivers import otlp; from opentelemetry.exporter.otlp.proto.http.trace_exporter import OTLPSpanExporter; from opentelemetry.sdk.trace import TracerProvider" \
- && /var/lib/openstack/bin/pip check \
- && printf 'opentelemetry-exporter-otlp-proto-http 1.39.1\n' >> /etc/image_info/project.txt
+ && /var/lib/openstack/bin/pip check
 # The NVMe-oF driver, newer than the one CINDER_BASE was built with. It is
 # replaced here rather than by rebuilding CINDER_BASE: that rebuild follows
 # stable/2026.1, which has moved past the Cinder commit checked above. Keep
-# in step with NVMEOF_DRIVER_REF in Dockerfile.alpine, and drop this layer
-# once CINDER_BASE is rebuilt with that ref. --no-deps: the driver needs
-# nothing the base lacks, and pip must not move oslo.* past the constraints.
+# in step with NVMEOF_DRIVER_REF in Dockerfile.alpine; a base that already
+# has that ref (every 2026.2 base) skips the reinstall. --no-deps: the driver
+# needs nothing the base lacks, and pip must not move oslo.* past the
+# constraints.
 ARG NVMEOF_DRIVER_REPO=https://github.com/fivetime/cinder-nvme-of.git
 ARG NVMEOF_DRIVER_REF=0db835298c75626df7301d9be34054d66c785991
 RUN --mount=type=secret,id=src_repo_token \
+    if grep -qx "cinder-nvme-of @ git+${NVMEOF_DRIVER_REPO}@${NVMEOF_DRIVER_REF}" \
+            /etc/image_info/pip.txt; then \
+        echo "cinder-nvme-of ${NVMEOF_DRIVER_REF} already in CINDER_BASE"; \
+    else \
     apk add --no-cache --virtual .nvmeof-driver-tools git \
  && if [ -s /run/secrets/src_repo_token ]; then \
         token="$(cat /run/secrets/src_repo_token)"; \
@@ -75,7 +92,8 @@ RUN --mount=type=secret,id=src_repo_token \
  && grep -qx "cinder-nvme-of @ git+${NVMEOF_DRIVER_REPO}@${NVMEOF_DRIVER_REF}" \
         /etc/image_info/pip.txt \
  && sed -i "s|^cinder-nvme-of @ .*|cinder-nvme-of @ git+${NVMEOF_DRIVER_REPO}@${NVMEOF_DRIVER_REF}|" \
-        /etc/image_info/project.txt \
+        /etc/image_info/project.txt; \
+    fi \
  && /var/lib/openstack/bin/python3 -c "from cinder_nvme_of.driver import RBDNVMeOFDriver as D; \
 print('cinder-nvme-of driver OK', D.VERSION)"
 CMD ["cinder-api"]

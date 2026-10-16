@@ -67,3 +67,27 @@
           build_args:
             - CINDER_REF=stable/2026.1
             - CONSTRAINTS=https://opendev.org/openstack/requirements/raw/branch/stable/2026.1/upper-constraints.txt
+        # 2026.2 on Alpine 3.24 (Python 3.14, ceph19 bindings 19.2.4, the same
+        # line as nova-incus). Source is the fork branch fivetime/stable/2026.2
+        # of fivetime/openstack-cinder = opendev stable/2026.2 plus the
+        # osprofiler SQLAlchemy tracing fix that is not upstream yet; source and
+        # constraints are pinned by SHA. confluent-kafka follows the librdkafka
+        # that Alpine 3.24 ships (2.14.1); see Dockerfile.alpine. No master is
+        # synthesized from this entry; the 2026.1 entry above provides it.
+        - context: cinder
+          repository: openstackhelm/cinder
+          container_filename: Dockerfile.alpine
+          synthesize_master: false
+          arch:
+            - linux/amd64
+          tags:
+            - 2026.2-alpine_3.24
+          build_args:
+            - ALPINE_VERSION=3.24
+            - CINDER_REPO=https://github.com/fivetime/openstack-cinder
+            # The fork has no tags; take them from upstream so that pbr gives
+            # cinder its real version (Dockerfile.alpine).
+            - CINDER_TAGS_REPO=https://opendev.org/openstack/cinder
+            - CINDER_REF=43bfbdd92fbf5d569eb72a4f07594472c6673709
+            - CONSTRAINTS=https://opendev.org/openstack/requirements/raw/commit/bab6cd8e3b9a5ac61b98aa7016c7d98b3000a8ac/upper-constraints.txt
+            - CONFLUENT_KAFKA_SPEC=>=2.14,<2.15

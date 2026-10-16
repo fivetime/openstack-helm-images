@@ -1,6 +1,9 @@
 # syntax=docker/dockerfile:1
 # =============================================================================
-# cinder 镜像 (Alpine 变体) —— 与官方 ubuntu 镜像同源 (opendev stable/2026.1)。
+# cinder 镜像 (Alpine 变体)。源码/约束/Alpine 版本由 build-local.d/cinder.yaml 的
+# build_args 决定:2026.1-alpine_3.23 与官方 ubuntu 镜像同源(opendev stable/2026.1);
+# 2026.2-alpine_3.24 用 fork fivetime/openstack-cinder 的 fivetime/stable/2026.2
+# (= opendev stable/2026.2 + 尚未合入上游的修复,按提交 SHA 钉)。
 #
 # 布局对齐官方：官方 cinder/Dockerfile 用 loci/venv_builder 把 cinder 装进
 # /var/lib/openstack 的 venv (ENV PATH=/var/lib/openstack/bin)，chart 的 root_helper、
@@ -56,6 +59,10 @@
 #      装在主 RUN 内(git/build-deps 尚在)而不是单独一层:pbr 取版本要 .git,
 #      而主 RUN 末尾 `apk del .build-deps` 会把 git 删掉;GitHub 的 archive tarball
 #      既无 .git 也无 PKG-INFO,pbr 会直接报错,所以只能走 git+。
+#   6. OpenTelemetry SDK + OTLP/HTTP exporter —— osprofiler 的 otlp 驱动
+#      ([profiler] connection_string = otlp://...,发往 Tempo)要它们,官方镜像不带。
+#      走受约束的那条安装(版本 = upper-constraints)。只有用 [profiler]/hmac_keys
+#      签名的请求才会被追踪,未签名请求完全不受影响。
 #
 # 构建 (context = cinder/，与 build-local.d/cinder.yaml 一致)：
 #   cd cinder && docker build -f Dockerfile.alpine -t cinder:alpine-test .
@@ -74,7 +81,18 @@ ENV PATH=/var/lib/openstack/bin:$PATH
 
 ARG CINDER_REPO=https://opendev.org/openstack/cinder
 ARG CINDER_REF=stable/2026.1
+# fork 构建时填上游仓库(https://opendev.org/openstack/cinder)。pbr 按 git tag 推版本,
+# 而 fork 按规矩保持零 tag(打了非 PEP 440 的 tag 会毒化以后所有构建),直接
+# `pip install git+<fork>` 装出来的 cinder 自报 1.0.0。填了它就先把 fork 克隆到
+# /tmp/cinder-src,只把上游的 tag 拉进这个临时克隆,再从本地目录装:版本与上游一致
+# (stable/2026.2 + 1 个提交 = 29.0.1.dev1),fork 本身不动。留空 = 原来的 git+ 安装。
+ARG CINDER_TAGS_REPO=
 ARG CONSTRAINTS=https://opendev.org/openstack/requirements/raw/branch/stable/2026.1/upper-constraints.txt
+# confluent-kafka 要对着 Alpine 自带的 librdkafka 编译,版本线必须一致:
+# 3.23 是 librdkafka 2.12.x,3.24 是 2.14.1。stable/2026.2 的 upper-constraints 钉
+# confluent-kafka===2.15.0,它在 3.24 上编译即报 "confluent-kafka-python requires
+# librdkafka v2.15.0 or later"(10-16 实测),所以这条不走 constraints。
+ARG CONFLUENT_KAFKA_SPEC=>=2.12,<2.13
 
 # 我方树外 NVMe-oF 卷驱动(**私有仓库**,同 nova/Dockerfile.incus 的处理方式)。
 # **按 commit SHA 钉版,不要写分支名**,两个理由:
@@ -89,7 +107,7 @@ ARG NVMEOF_DRIVER_REPO=https://github.com/fivetime/cinder-nvme-of.git
 ARG NVMEOF_DRIVER_REF=0db835298c75626df7301d9be34054d66c785991
 
 # 运行期工具/库 + 一次性 build 依赖(--virtual 装完即删)。
-#  - python3: venv 解释器(venv 的 bin/python 指向系统 python3，二者同为 3.12)
+#  - python3: venv 解释器(venv 的 bin/python 指向系统 python3，版本随 Alpine:3.23=3.12、3.24=3.14)
 #  - 存储后端工具见文件头；os-brick 运行期 shell 出去调 iscsiadm/multipath/lvs 等
 #  - py3-rados/py3-rbd: ceph 的 C 扩展(rados.so/rbd.so)。PyPI 在 musl 无 wheel，
 #    只能用 apk 版；它们装在系统 site-packages，靠下方 include-system-site-packages
@@ -119,13 +137,26 @@ RUN --mount=type=secret,id=src_repo_token \
  && virtualenv /var/lib/openstack \
  && wget -qO /tmp/uc.txt "${CONSTRAINTS}" \
  && sed -i '/^cinder===/d' /tmp/uc.txt \
+ && if [ -n "${CINDER_TAGS_REPO}" ]; then \
+        git clone -q --filter=blob:none --no-checkout "${CINDER_REPO}" /tmp/cinder-src \
+     && git -C /tmp/cinder-src fetch -q origin "${CINDER_REF}" \
+     && git -C /tmp/cinder-src checkout -q --detach FETCH_HEAD \
+     && git -C /tmp/cinder-src remote add upstream "${CINDER_TAGS_REPO}" \
+     && git -C /tmp/cinder-src fetch -q --filter=blob:none --tags upstream \
+     && cinder_src="file:///tmp/cinder-src" \
+     && cinder_line="cinder @ git+${CINDER_REPO}@$(git -C /tmp/cinder-src rev-parse HEAD)"; \
+    else \
+        cinder_src="git+${CINDER_REPO}@${CINDER_REF}" \
+     && cinder_line=""; \
+    fi \
  && /var/lib/openstack/bin/pip install --no-cache-dir \
         -c /tmp/uc.txt \
         uwsgi \
         PyMySQL python-memcached pymemcache \
-        "cinder @ git+${CINDER_REPO}@${CINDER_REF}" \
+        opentelemetry-sdk opentelemetry-exporter-otlp-proto-http \
+        "cinder @ ${cinder_src}" \
  && /var/lib/openstack/bin/pip install --no-cache-dir \
-        psycopg2-binary 'confluent-kafka>=2.12,<2.13' etcd3gw \
+        psycopg2-binary "confluent-kafka${CONFLUENT_KAFKA_SPEC}" etcd3gw \
         'grpcio>=1.81.1' \
  && if [ -s /run/secrets/src_repo_token ]; then \
         token="$(cat /run/secrets/src_repo_token)"; \
@@ -139,7 +170,10 @@ RUN --mount=type=secret,id=src_repo_token \
         /var/lib/openstack/pyvenv.cfg \
  && mkdir -p /etc/image_info \
  && /var/lib/openstack/bin/pip freeze --local > /etc/image_info/pip.txt \
- && grep '^cinder @' /etc/image_info/pip.txt > /etc/image_info/project.txt \
+ && if [ -n "${cinder_line}" ]; then \
+        sed -i "s|^cinder @ file:///tmp/cinder-src.*|${cinder_line}|" /etc/image_info/pip.txt; \
+    fi \
+ && grep '^cinder @ git+' /etc/image_info/pip.txt > /etc/image_info/project.txt \
  && grep -iE '^cinder[-_]nvme[-_]of' /etc/image_info/pip.txt >> /etc/image_info/project.txt \
  && cp /tmp/uc.txt /upper-constraints.txt \
  && apk del .build-deps \
@@ -183,11 +217,15 @@ RUN export PYTHONDONTWRITEBYTECODE=1 \
  && for c in uwsgi cinder-api cinder-scheduler cinder-volume cinder-backup cinder-manage cinder-status cinder-rootwrap qemu-img lvs iscsiadm multipath targetcli sudo; do \
         command -v "$c" >/dev/null || { echo "MISSING $c"; exit 1; }; \
     done \
- && python3 -c "import cinder; from cinder import version; print('cinder', version.version_string())" \
+ && python3 -c "import cinder; from cinder import version; v = version.version_string(); \
+assert int(v.split('.')[0]) >= 20, 'pbr found no release tag: cinder ' + v; print('cinder', v)" \
  && python3 -c "import os_brick, importlib.metadata as m; print('os-brick', m.version('os-brick'))" \
  && python3 -c "import rados, rbd; print('ceph rbd bindings OK')" \
  && python3 -c "import psycopg2, confluent_kafka, pymysql, etcd3gw; print('db+kafka+etcd drivers OK')" \
  && python3 -c "import grpc, google.protobuf as p; print('grpc', grpc.__version__, '| protobuf', p.__version__)" \
+ && python3 -c "from osprofiler.drivers import otlp; \
+from opentelemetry.exporter.otlp.proto.http.trace_exporter import OTLPSpanExporter; \
+from opentelemetry.sdk.trace import TracerProvider; print('osprofiler otlp driver OK')" \
  && python3 -c "from cinder_nvme_of.driver import RBDNVMeOFDriver as D; \
 from cinder.interface import volume_driver as vd; \
 assert issubclass(D, vd.VolumeDriverCore), 'driver fails VolumeDriverCore'; \
