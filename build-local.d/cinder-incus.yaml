@@ -27,7 +27,7 @@
           tags:
             - 2026.2-alpine_3.24
           build_args:
-            - CINDER_BASE=ghcr.io/fivetime/openstackhelm/cinder@sha256:76b0bb45011b834aa7baaea898db11ce3948c8c4bec7b4e2de84447b3977440b
+            - CINDER_BASE=ghcr.io/fivetime/openstackhelm/cinder@sha256:9a3ffc5fbd527ee40fafb492d76c890c5b9b2a08d8d6f6d23f62b3440490907e
             - CINDER_COMMIT=862b4b473b6114dccaf0d88be480abebf627fb9d
             - NOVA_INCUS_REF=9ab9371ad4cd274e97376bc636149db7784981f4
             - INCUS_CINDER_PATCH=patches/cinder/2026.2/attachment-request-idempotency.patch
