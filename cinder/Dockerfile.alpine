@@ -209,6 +209,83 @@ assert 'concurrent.futures.thread' in sys.modules
 print('osprofiler otlp driver imports concurrent.futures.thread early')
 EOF
 
+# osprofiler 的 otlp 驱动:fork 出来的进程第一次发 span 时,给本进程另建 TracerProvider 和导出线程。
+# cinder-volume/cinder-backup 由父进程初始化 osprofiler、再经 oslo.service ProcessLauncher fork 出工作进程;
+# eventlet 下 BatchSpanProcessor 在 fork 钩子里把导出线程建在父进程的 hub 上,launcher 随后在子进程里
+# eventlet.hubs.use_hub() 换了新 hub,那个线程再也不被调度,span 只进队列不出去(Tempo 里从来没有这两个服务)。
+# 2026-10-16 用真实 ProcessLauncher 实测:不打补丁 worker 的 span 0 个、打补丁 1 个;osprofiler 自带 47 个驱动单测都过。
+RUN PYTHONDONTWRITEBYTECODE=1 /var/lib/openstack/bin/python3 - <<'EOF'
+import importlib
+import sys
+
+import osprofiler.drivers.otlp as m
+
+path = m.__file__
+src = open(path).read()
+MARK = '# fivetime: per-process provider'
+if MARK not in src:
+    def rep(old, new):
+        global src
+        assert src.count(old) == 1, 'osprofiler otlp driver layout changed: %r' % old[:60]
+        src = src.replace(old, new, 1)
+
+    rep('import collections\n', 'import collections\nimport os\n')
+    rep('''        exporter = OTLPSpanExporter(f"{parsed_url.geturl()}/v1/traces")
+        self.trace_api.get_tracer_provider().add_span_processor(  # type: ignore[attr-defined]
+            BatchSpanProcessor(exporter)
+        )
+
+        self.spans: collections.deque[Any] = collections.deque()
+''', '''        exporter = OTLPSpanExporter(f"{parsed_url.geturl()}/v1/traces")
+        self.trace_api.get_tracer_provider().add_span_processor(  # type: ignore[attr-defined]
+            BatchSpanProcessor(exporter)
+        )
+
+        self.spans: collections.deque[Any] = collections.deque()
+
+        ''' + MARK + '''. Services that set up osprofiler and then
+        # fork their workers (oslo.service's ProcessLauncher: cinder-volume,
+        # cinder-backup) lose every span under eventlet: the batch processor
+        # restarts its export thread in its at-fork hook, on the parent's
+        # eventlet hub, and the launcher then gives the child a new hub
+        # (eventlet.hubs.use_hub()), so that thread never runs again. The
+        # first span of a forked process therefore builds the process its
+        # own provider and export thread, on the hub that is current by then.
+        self._endpoint = f"{parsed_url.geturl()}/v1/traces"
+        self._resource = resource
+        self._pid = os.getpid()
+
+    def _reset_after_fork(self) -> None:
+        from opentelemetry.exporter.otlp.proto.http.trace_exporter import (
+            OTLPSpanExporter,
+        )
+        from opentelemetry.sdk.trace import TracerProvider
+        from opentelemetry.sdk.trace.export import BatchSpanProcessor
+
+        provider = TracerProvider(resource=self._resource)
+        provider.add_span_processor(
+            BatchSpanProcessor(OTLPSpanExporter(self._endpoint)))
+        self.tracer = provider.get_tracer(__name__)
+        # Spans the parent had open at fork time end in the parent.
+        self.spans = collections.deque()
+        self._pid = os.getpid()
+''')
+    rep('''    def notify(self, info: dict[str, Any], **kwargs: Any) -> None:
+        payload = info
+''', '''    def notify(self, info: dict[str, Any], **kwargs: Any) -> None:
+        if self._pid != os.getpid():
+            self._reset_after_fork()
+        payload = info
+''')
+    open(path, 'w').write(src)
+
+for k in [k for k in sys.modules if k.startswith('osprofiler')]:
+    del sys.modules[k]
+importlib.import_module('osprofiler.drivers.otlp')
+assert MARK in open(path).read()
+print('osprofiler otlp driver: per-process provider after fork')
+EOF
+
 # cinder 用户/运行目录 (uid 42424，与官方 ubuntu 镜像一致；chart 以此 uid 运行容器)。
 RUN addgroup -g 42424 cinder \
  && adduser -D -H -u 42424 -G cinder -h /var/lib/cinder -s /sbin/nologin cinder \
