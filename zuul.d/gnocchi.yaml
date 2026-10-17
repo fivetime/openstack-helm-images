@@ -64,7 +64,13 @@
           build_args:
             - "BASE_VENV_BUILDER=quay.io/airshipit/venv_builder:2026.2-ubuntu_resolute"
             - "BASE_RUNTIME=quay.io/airshipit/base:2026.2-ubuntu_resolute"
-            - "GNOCCHI_REF=4.7.1"
+            # fivetime/gnocchi 4.7.1 + the last_measure_timestamp default fix
+            # (gnocchixyz/gnocchi#1528): with metric_inactive_after set, a
+            # metric created by a long-running gnocchi-api looked inactive from
+            # the start and the janitor could end its resource. A tag, so
+            # `git clone -b` takes it and setuptools_scm versions it.
+            - "GNOCCHI_REPO=https://github.com/fivetime/gnocchi"
+            - "GNOCCHI_REF=4.7.1.post1"
             # fivetime/cotyledon fix/default-fork-start-method, see the
             # cotyledon note in gnocchi/Dockerfile.
             - "COTYLEDON_REF=e76637295655dc9b4561bdd2cafc677135e9bd3f"
