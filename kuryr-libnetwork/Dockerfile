@@ -1,12 +1,12 @@
 # syntax=docker/dockerfile:1
-ARG BASE_VENV_BUILDER=quay.io/airshipit/venv_builder:2025.2-ubuntu_noble
-ARG BASE_RUNTIME=quay.io/airshipit/base:2025.2-ubuntu_noble
+ARG BASE_VENV_BUILDER=quay.io/airshipit/venv_builder:2026.2-ubuntu_resolute
+ARG BASE_RUNTIME=quay.io/airshipit/base:2026.2-ubuntu_resolute
 FROM ${BASE_VENV_BUILDER} AS build
 
 ENV PATH=/var/lib/openstack/bin:$PATH
 
 ARG KURYR_LIBNETWORK_REPO=https://opendev.org/openstack/kuryr-libnetwork
-ARG KURYR_LIBNETWORK_REF=stable/2026.1
+ARG KURYR_LIBNETWORK_REF=stable/2026.2
 # kuryr-lib from our fork: binding scripts run with set -e so a failed
 # ovs-vsctl fails the binding instead of silently leaving the port DOWN
 ARG KURYR_LIB_REPO=https://github.com/fivetime/openstack-kuryr

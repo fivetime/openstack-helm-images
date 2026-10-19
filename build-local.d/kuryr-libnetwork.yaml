@@ -1,23 +1,28 @@
 ---
 # Fork-only Kuryr-libnetwork (Docker libnetwork driver) image. Upstream openstack-helm-images has
-# no kuryr-libnetwork; we build a loci-style image from stable/2026.1 so the generated
+# no kuryr-libnetwork; we build a loci-style image from the upstream stable branch so the generated
 # pydep overlay injects psycopg2-binary and confluent-kafka automatically
 # (kuryr-libnetwork has no oslo.messaging; pydep adds nothing, which is correct).
+#
+# Built for 2026.2 (Python 3.14, Ubuntu 26.04) only, like zun and senlin.
+# stable/2026.2 carries no code change over stable/2026.1; what changes is
+# the base and the constraints. The last 2026.1-ubuntu_noble image stays in
+# the registry for a rollback. The airshipit bases are amd64-only.
 
 - job:
     name: build-local-kuryr-libnetwork
-    description: Build Zun ubuntu_noble image from upstream stable branch.
+    description: Build the Kuryr-libnetwork image from the upstream stable branch.
     vars:
       container_images:
         - context: .
           repository: openstackhelm/kuryr-libnetwork
           container_filename: kuryr-libnetwork/Dockerfile
+          synthesize_master: false
           arch:
             - linux/amd64
-            - linux/arm64
           tags:
-            - 2026.1-ubuntu_noble
+            - 2026.2-ubuntu_resolute
           build_args:
-            - BASE_VENV_BUILDER=quay.io/airshipit/venv_builder:2026.1-ubuntu_noble
-            - BASE_RUNTIME=quay.io/airshipit/base:2026.1-ubuntu_noble
-            - KURYR_LIBNETWORK_REF=stable/2026.1
+            - BASE_VENV_BUILDER=quay.io/airshipit/venv_builder:2026.2-ubuntu_resolute
+            - BASE_RUNTIME=quay.io/airshipit/base:2026.2-ubuntu_resolute
+            - KURYR_LIBNETWORK_REF=stable/2026.2
