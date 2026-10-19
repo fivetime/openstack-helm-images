@@ -55,7 +55,7 @@
             # (private; fetched with src_repo_token), which the masakari
             # chart runs on the Incus compute nodes. A commit of its main
             # branch: bump it to ship a change.
-            - "INCUS_MONITOR_REF=113499d296dd87c09f6bdc35b64d7b2dc526cf15"
+            - "INCUS_MONITOR_REF=21448f4057d5de4d24a9836d1f14bb7ff1bec730"
         - context: .
           registry: quay.io
           repository: quay.io/airshipit/masakari-monitors
@@ -70,7 +70,7 @@
             - "BASE_RUNTIME=quay.io/airshipit/base:2026.2-ubuntu_resolute"
             - "MASAKARI_MONITORS_REF=stable/2026.2"
             # The Incus exporter and notifier, as in the 2026.1 cell above.
-            - "INCUS_MONITOR_REF=113499d296dd87c09f6bdc35b64d7b2dc526cf15"
+            - "INCUS_MONITOR_REF=21448f4057d5de4d24a9836d1f14bb7ff1bec730"
     files: &masakari_monitors_files
       - masakari-monitors/.*
       - zuul.d/masakari-monitors.yaml
