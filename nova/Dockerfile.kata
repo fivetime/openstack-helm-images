@@ -107,7 +107,7 @@ ENV PATH=/var/lib/openstack/bin:$PATH
 RUN apk add --no-cache \
         python3 bash coreutils \
         ceph19-common py3-rados19 py3-rbd19 \
-        e2fsprogs iproute2 iptables kmod libffi librdkafka \
+        cdrkit e2fsprogs iproute2 iptables kmod libffi librdkafka \
         lvm2 multipath-tools net-tools nfs-utils nvme-cli \
         open-iscsi openvswitch \
         sudo util-linux \
@@ -152,7 +152,7 @@ RUN printf '%s\n' \
 # Build-time contract checks of the Kata compute layout.
 RUN export PYTHONDONTWRITEBYTECODE=1 \
  && for command in nova-compute nova-kata-compute nova-manage \
-        nova-rootwrap privsep-helper ovs-vsctl rbd mount.nfs; do \
+        nova-rootwrap privsep-helper ovs-vsctl rbd mount.nfs genisoimage; do \
         command -v "${command}" >/dev/null || \
           { echo "MISSING ${command}"; exit 1; }; \
     done \
@@ -161,6 +161,7 @@ RUN export PYTHONDONTWRITEBYTECODE=1 \
  && env -u OS_NOVA_DISABLE_EVENTLET_PATCHING python3 -c "import pkgutil, sys; import nova.virt.kata.cmd.compute; import nova.virt.kata as p; from nova import monkey_patch; [__import__(m.name) for m in pkgutil.walk_packages(p.__path__, p.__name__ + '.') if m.name != 'nova.virt.kata.ceilometer']; assert not monkey_patch.is_patched(); assert 'eventlet' not in sys.modules; print('Nova Kata compute loads in native threading mode OK')" \
  && python3 -c "import inspect; from nova import profiler, service; assert 'enable_tracing()' in inspect.getsource(service.setup_profiler); print('Nova deferred osprofiler tracing OK')" \
  && python3 -c "import os_vif, os_brick, rados, rbd; print('os-vif, os-brick and Ceph bindings OK')" \
+ && python3 -c "import configparser, glob; files = glob.glob('/etc/nova/rootwrap.d/*.filters'); assert files; [configparser.RawConfigParser().read(f) for f in files]; assert all(configparser.ConfigParser(interpolation=None).read(f) and True for f in files); c = configparser.RawConfigParser(); c.read('/etc/nova/rootwrap.d/kata.filters'); assert c.has_section('Filters'); print('rootwrap filters OK')" \
  && python3 -c "import confluent_kafka; from oslo_messaging._drivers import impl_kafka; print('Kafka notifications OK')" \
  && test -n "$(hostname --fqdn)" \
  && echo "venv layout OK (Nova Kata compute in /var/lib/openstack)"
