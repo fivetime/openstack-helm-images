@@ -23,6 +23,11 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
          cloud-config.service cloud-final.service ssh.service \
     && rm -f /etc/ssh/ssh_host_* /etc/machine-id /var/lib/dbus/machine-id \
     && rm -rf /var/lib/cloud/* /var/lib/apt/lists/* \
-    && touch /etc/machine-id
+    && touch /etc/machine-id \
+    && printf '%s\n' \
+         '# The OCI build leaves an empty placeholder here; point the guest at' \
+         '# the systemd-resolved stub that netplan configures at boot.' \
+         'L+ /etc/resolv.conf - - - - ../run/systemd/resolve/stub-resolv.conf' \
+         > /usr/lib/tmpfiles.d/incus-system-resolv.conf
 
 CMD ["/sbin/init"]
