@@ -18,7 +18,7 @@ ARG NOVA_KATA_REPO=fivetime/openstack-nova-kata
 ARG NOVA_KATA_REF
 ARG NOVA_KATA_BUNDLE_TAG
 ARG NOVA_KATA_BUNDLE_SHA256
-RUN apk add --no-cache curl git jq tar zstd ca-certificates
+RUN apk add --no-cache coreutils curl git jq tar zstd ca-certificates
 
 RUN --mount=type=secret,id=src_repo_token \
     test -n "${NOVA_KATA_REF}" -a -n "${NOVA_KATA_BUNDLE_TAG}" -a -n "${NOVA_KATA_BUNDLE_SHA256}" \
