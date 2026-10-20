@@ -89,6 +89,6 @@
           tags:
             - 2026.2-20261020
           build_args:
-            - NOVA_KATA_REF=8f0f868aa6be490991cb868c139f270533c746a9
+            - NOVA_KATA_REF=7074f0f3196997d0a6d0621cc07b53425dd011dc
             - NOVA_KATA_BUNDLE_TAG=20261020
             - NOVA_KATA_BUNDLE_SHA256=30e3149f6773dda2296c2a3af7358ca8543d3279f2f298c283631c98900ad053
