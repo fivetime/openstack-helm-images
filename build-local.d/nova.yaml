@@ -55,3 +55,40 @@
             - 2026.2-ubuntu_resolute
           build_args:
             - NOVA_INCUS_REF=866d7e20a82e0a8502dc84e8822bc840eae07ec0
+
+# Nova compute image for the Kata Containers driver (openstack-nova-kata,
+# ADR-056), and the host bundle its nodes install. Both are pinned together:
+# driver, gateway, snapshotter and shim are one unit.
+- job:
+    name: build-local-nova-kata
+    description: Build the Nova Kata Containers compute image.
+    vars:
+      container_images:
+        - context: .
+          repository: openstackhelm/nova-kata
+          container_filename: nova/Dockerfile.kata
+          arch:
+            - linux/amd64
+          tags:
+            - 2026.2-alpine_3.24
+          build_args:
+            - NOVA_REF=8df1922926ddf949d681e10670dba7bc731701d3
+            - NOVA_KATA_REF=8f0f868aa6be490991cb868c139f270533c746a9
+            - REQUIREMENTS_REF=bab6cd8e3b9a5ac61b98aa7016c7d98b3000a8ac
+
+- job:
+    name: build-local-nova-kata-host
+    description: Build the Nova Kata host bundle and installer image.
+    vars:
+      container_images:
+        - context: .
+          repository: openstackhelm/nova-kata-host
+          container_filename: nova/Dockerfile.kata-host
+          arch:
+            - linux/amd64
+          tags:
+            - "20261020"
+          build_args:
+            - NOVA_KATA_REF=8f0f868aa6be490991cb868c139f270533c746a9
+            - NOVA_KATA_BUNDLE_TAG=20261020
+            - NOVA_KATA_BUNDLE_SHA256=30e3149f6773dda2296c2a3af7358ca8543d3279f2f298c283631c98900ad053

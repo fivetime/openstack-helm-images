@@ -1,0 +1,168 @@
+# syntax=docker/dockerfile:1
+# Dedicated Alpine Nova compute image for the Kata Containers driver
+# (openstack-nova-kata, ADR-056). This is not a general Nova or libvirt
+# compute image. The driver talks only to the host's Kata gateway, reached
+# through its host-mounted socket; the host stack (containerd, the gateway,
+# the snapshotter, Kata) is installed on the host by the nova-kata-host chart.
+
+ARG ALPINE_VERSION=3.24
+FROM alpine:${ALPINE_VERSION} AS build
+
+ENV PATH=/var/lib/openstack/bin:$PATH
+
+ARG NOVA_REPO=https://opendev.org/openstack/nova
+ARG NOVA_REF=8df1922926ddf949d681e10670dba7bc731701d3
+ARG NOVA_KATA_REPO=https://github.com/fivetime/openstack-nova-kata.git
+ARG NOVA_KATA_REF
+ARG REQUIREMENTS_REPO=https://opendev.org/openstack/requirements
+ARG REQUIREMENTS_REF=bab6cd8e3b9a5ac61b98aa7016c7d98b3000a8ac
+# See Dockerfile.incus: confluent-kafka on Alpine's librdkafka 2.14 line.
+ARG CONFLUENT_KAFKA_SERIES=2.14
+COPY nova/patches/nova/2026.2/ /tmp/nova-release-patches/
+RUN apk add --no-cache \
+        python3 py3-virtualenv git \
+        build-base python3-dev linux-headers \
+        libffi-dev openssl-dev libxml2-dev libxslt-dev librdkafka-dev \
+        cargo rust \
+ && virtualenv /var/lib/openstack
+
+# The driver repository is private: CI supplies src_repo_token as a BuildKit
+# secret, removed in this RUN with the temporary git rewrite.
+RUN --mount=type=secret,id=src_repo_token \
+    test -n "${NOVA_KATA_REF}" \
+ && if [ -s /run/secrets/src_repo_token ]; then \
+        token="$(cat /run/secrets/src_repo_token)"; \
+        git config --global \
+          url."https://x-access-token:${token}@github.com/".insteadOf \
+          "https://github.com/"; \
+    fi \
+ && fetch_ref() { \
+        repo="$1"; ref="$2"; destination="$3"; \
+        git init "${destination}"; \
+        git -C "${destination}" remote add origin "${repo}"; \
+        git -C "${destination}" fetch --depth=1 --filter=blob:none origin "${ref}"; \
+        git -C "${destination}" checkout --detach FETCH_HEAD; \
+    } \
+ && fetch_ref "${NOVA_REPO}" "${NOVA_REF}" /tmp/nova \
+ && fetch_ref "${NOVA_KATA_REPO}" "${NOVA_KATA_REF}" /tmp/nova-kata \
+ && fetch_ref "${REQUIREMENTS_REPO}" "${REQUIREMENTS_REF}" /tmp/requirements \
+ && rm -f /root/.gitconfig \
+ && cp /tmp/requirements/upper-constraints.txt /tmp/upper-constraints.txt \
+ && sed -i \
+        -e '/^nova===/d' \
+        -e '/^cryptography===/d' \
+        -e '/^pyOpenSSL===/d' \
+        -e '/^confluent-kafka===/d' \
+        /tmp/upper-constraints.txt \
+ && git -C /tmp/nova apply \
+        /tmp/nova-release-patches/0001-decide-osprofiler-tracing-after-config.patch \
+ && test -z "$(find /tmp/nova-kata/patches/nova -name '*.patch')" \
+ && mkdir -p /tmp/nova/nova/virt/kata \
+ && cp -a /tmp/nova-kata/nova/virt/kata/. /tmp/nova/nova/virt/kata/ \
+ && find /tmp/nova/nova/virt/kata -name '__pycache__' -prune -exec rm -rf {} + \
+ && git -C /tmp/nova add -f nova/virt/kata \
+ && /var/lib/openstack/bin/pip install --no-cache-dir \
+        -c /tmp/upper-constraints.txt \
+        'cryptography==46.0.5' 'pyOpenSSL==25.3.0' \
+        osprofiler opentelemetry-sdk opentelemetry-exporter-otlp-proto-http \
+        "confluent-kafka~=${CONFLUENT_KAFKA_SERIES}.0" \
+        -r /tmp/nova-kata/requirements.txt \
+        /tmp/nova \
+ && mkdir -p /opt/nova-kata-runtime/etc/nova/rootwrap.d /etc/image_info \
+ && cp /tmp/nova-kata/etc/nova/rootwrap.d/kata.filters \
+        /opt/nova-kata-runtime/etc/nova/rootwrap.d/ \
+ && { \
+        printf 'nova '; git -C /tmp/nova log --oneline -1; \
+        printf 'openstack-nova-kata '; git -C /tmp/nova-kata log --oneline -1; \
+        printf 'requirements '; \
+        git -C /tmp/requirements log --oneline -1; \
+    } > /etc/image_info/project.txt \
+ && /var/lib/openstack/bin/pip freeze > /etc/image_info/pip.txt \
+ && cp /tmp/upper-constraints.txt /upper-constraints.txt \
+ && find /var/lib/openstack -name '*.pyc' -delete \
+ && find /var/lib/openstack -type d -name '__pycache__' -delete \
+ && rm -rf /root/.cargo /root/.cache /tmp/*
+
+# The driver's console script (openstack-nova-kata's entry point): Nova's
+# nova-compute with the Kata compute manager.
+RUN printf '%s\n' \
+      '#!/var/lib/openstack/bin/python3' \
+      'import sys' \
+      'from nova.virt.kata.cmd.compute import main' \
+      'sys.exit(main())' > /var/lib/openstack/bin/nova-kata-compute \
+ && chmod 0755 /var/lib/openstack/bin/nova-kata-compute
+
+# osprofiler tracing: as Dockerfile.incus.
+COPY osprofiler-otlp/patch_otlp_driver.py osprofiler-otlp/patch_rpc_context.py /tmp/
+RUN PYTHONDONTWRITEBYTECODE=1 /var/lib/openstack/bin/python3 /tmp/patch_otlp_driver.py \
+ && PYTHONDONTWRITEBYTECODE=1 /var/lib/openstack/bin/python3 /tmp/patch_rpc_context.py \
+ && rm /tmp/patch_otlp_driver.py /tmp/patch_rpc_context.py
+
+FROM alpine:${ALPINE_VERSION} AS runtime
+
+ENV PATH=/var/lib/openstack/bin:$PATH
+
+# Runtime dependencies for Neutron/OVS (os-vif), Cinder RBD (os-brick maps
+# on the host's kernel), Manila NFS and rootwrap/privsep.
+RUN apk add --no-cache \
+        python3 bash coreutils \
+        ceph19-common py3-rados19 py3-rbd19 \
+        e2fsprogs iproute2 iptables kmod libffi librdkafka \
+        lvm2 multipath-tools net-tools nfs-utils nvme-cli \
+        open-iscsi openvswitch \
+        sudo util-linux \
+ && rm -rf /var/cache/apk/* /etc/machine-id
+
+# See Dockerfile.incus: the musl loader under the ctypes lookup name.
+RUN set -- /lib/ld-musl-*.so.1 \
+ && test "$#" = 1 \
+ && test -f "$1" \
+ && ln -s "$1" /usr/lib/libc.so
+
+COPY --from=build --link /var/lib/openstack /var/lib/openstack
+COPY --from=build /etc/image_info /etc/image_info
+COPY --from=build /upper-constraints.txt /
+COPY --from=build /opt/nova-kata-runtime/ /
+
+RUN sed -i \
+        's/^include-system-site-packages = false/include-system-site-packages = true/' \
+        /var/lib/openstack/pyvenv.cfg \
+ && addgroup -g 42424 nova \
+ && adduser -D -H -u 42424 -G nova -h /var/lib/nova -s /bin/bash nova \
+ && mkdir -p /etc/nova /var/log/nova /var/lib/nova /var/cache/nova \
+ && chown nova:nova \
+        /etc/nova /var/log/nova /var/lib/nova /var/cache/nova
+
+RUN printf '%s\n' \
+      'Defaults:nova !requiretty' \
+      'nova ALL=(root) NOPASSWD: /var/lib/openstack/bin/nova-rootwrap, /var/lib/openstack/bin/nova-rootwrap-daemon, /var/lib/openstack/bin/privsep-helper' \
+      > /etc/sudoers.d/nova \
+ && chmod 0440 /etc/sudoers.d/nova \
+ && visudo -cf /etc/sudoers.d/nova
+
+# See Dockerfile.incus: GNU hostname --fqdn for the OpenStack Helm scripts.
+RUN printf '%s\n' \
+      '#!/bin/sh' \
+      'case "$1" in' \
+      '  -f|--fqdn) exec python3 -c "import socket; print(socket.getfqdn())" ;;' \
+      '  *) exec /bin/hostname "$@" ;;' \
+      'esac' > /usr/local/bin/hostname \
+ && chmod 0755 /usr/local/bin/hostname
+
+# Build-time contract checks of the Kata compute layout.
+RUN export PYTHONDONTWRITEBYTECODE=1 \
+ && for command in nova-compute nova-kata-compute nova-manage \
+        nova-rootwrap privsep-helper ovs-vsctl rbd mount.nfs; do \
+        command -v "${command}" >/dev/null || \
+          { echo "MISSING ${command}"; exit 1; }; \
+    done \
+ && python3 -c "from nova.virt.kata.driver import KataDriver; print('Nova Kata driver OK')" \
+ && python3 -c "from nova.virt.kata.manager import KataComputeManager; assert KataComputeManager.__module__ == 'nova.virt.kata.manager'; print('Nova Kata compute manager OK')" \
+ && env -u OS_NOVA_DISABLE_EVENTLET_PATCHING python3 -c "import pkgutil, sys; import nova.virt.kata.cmd.compute; import nova.virt.kata as p; from nova import monkey_patch; [__import__(m.name) for m in pkgutil.walk_packages(p.__path__, p.__name__ + '.') if m.name != 'nova.virt.kata.ceilometer']; assert not monkey_patch.is_patched(); assert 'eventlet' not in sys.modules; print('Nova Kata compute loads in native threading mode OK')" \
+ && python3 -c "import inspect; from nova import profiler, service; assert 'enable_tracing()' in inspect.getsource(service.setup_profiler); print('Nova deferred osprofiler tracing OK')" \
+ && python3 -c "import os_vif, os_brick, rados, rbd; print('os-vif, os-brick and Ceph bindings OK')" \
+ && python3 -c "import confluent_kafka; from oslo_messaging._drivers import impl_kafka; print('Kafka notifications OK')" \
+ && test -n "$(hostname --fqdn)" \
+ && echo "venv layout OK (Nova Kata compute in /var/lib/openstack)"
+
+CMD ["nova-kata-compute"]

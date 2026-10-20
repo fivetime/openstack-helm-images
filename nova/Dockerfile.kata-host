@@ -1,0 +1,59 @@
+# syntax=docker/dockerfile:1
+# The Nova Kata host bundle and its installer (openstack-nova-kata ADR-056),
+# run by the nova-kata-host chart: an init container writes the bundle to the
+# host and runs tools/production/nova_kata_host_install.sh there through
+# nsenter. The host stack itself runs as systemd units on the host, never in
+# this image's container.
+#
+# The bundle holds the bytes the testbed gates ran (the stock Kata 4.2.0
+# release, our shim, Cloud Hypervisor, guest kernel and image, containerd,
+# gateway and snapshotter). It is a release asset of the private driver
+# repository, fetched with the src_repo_token BuildKit secret and checked
+# against NOVA_KATA_BUNDLE_SHA256 and its own manifest.
+
+ARG ALPINE_VERSION=3.24
+FROM alpine:${ALPINE_VERSION} AS build
+
+ARG NOVA_KATA_REPO=fivetime/openstack-nova-kata
+ARG NOVA_KATA_REF
+ARG NOVA_KATA_BUNDLE_TAG
+ARG NOVA_KATA_BUNDLE_SHA256
+RUN apk add --no-cache curl git jq tar zstd ca-certificates
+
+RUN --mount=type=secret,id=src_repo_token \
+    test -n "${NOVA_KATA_REF}" -a -n "${NOVA_KATA_BUNDLE_TAG}" -a -n "${NOVA_KATA_BUNDLE_SHA256}" \
+ && token="$(cat /run/secrets/src_repo_token)" \
+ && asset="nova-kata-host-bundle-${NOVA_KATA_BUNDLE_TAG}.tar.zst" \
+ && api="https://api.github.com/repos/${NOVA_KATA_REPO}" \
+ && id="$(curl -fsSL -H "Authorization: Bearer ${token}" \
+        "${api}/releases/tags/host-bundle-${NOVA_KATA_BUNDLE_TAG}" \
+        | jq -r --arg n "${asset}" '.assets[] | select(.name == $n) | .id')" \
+ && test -n "${id}" \
+ && curl -fsSL -H "Authorization: Bearer ${token}" -H 'Accept: application/octet-stream' \
+        -o "/tmp/${asset}" "${api}/releases/assets/${id}" \
+ && echo "${NOVA_KATA_BUNDLE_SHA256}  /tmp/${asset}" | sha256sum -c - \
+ && mkdir -p /opt/nova-kata-host/bundle \
+ && tar --zstd -xf "/tmp/${asset}" -C /opt/nova-kata-host/bundle \
+ && (cd /opt/nova-kata-host/bundle && sha256sum -c --quiet MANIFEST.sha256) \
+ && git config --global \
+        url."https://x-access-token:${token}@github.com/".insteadOf "https://github.com/" \
+ && git init /tmp/src \
+ && git -C /tmp/src remote add origin "https://github.com/${NOVA_KATA_REPO}.git" \
+ && git -C /tmp/src fetch --depth=1 origin "${NOVA_KATA_REF}" \
+ && git -C /tmp/src checkout --detach FETCH_HEAD \
+ && rm -f /root/.gitconfig \
+ && mkdir -p /opt/nova-kata-host/src/tools \
+ && cp -a /tmp/src/devstack /opt/nova-kata-host/src/ \
+ && cp -a /tmp/src/tools/production /opt/nova-kata-host/src/tools/ \
+ && { printf 'openstack-nova-kata '; git -C /tmp/src log --oneline -1; \
+      printf 'bundle %s %s\n' "${NOVA_KATA_BUNDLE_TAG}" "${NOVA_KATA_BUNDLE_SHA256}"; \
+    } > /opt/nova-kata-host/image_info.txt \
+ && rm -rf /tmp/*
+
+FROM alpine:${ALPINE_VERSION}
+# util-linux for nsenter; rsync stages the bundle on the host.
+RUN apk add --no-cache bash coreutils util-linux rsync
+COPY --from=build /opt/nova-kata-host /opt/nova-kata-host
+RUN bash -n /opt/nova-kata-host/src/tools/production/nova_kata_host_install.sh \
+ && cat /opt/nova-kata-host/image_info.txt
+CMD ["sleep", "infinity"]
