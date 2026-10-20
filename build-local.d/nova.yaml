@@ -87,7 +87,7 @@
           arch:
             - linux/amd64
           tags:
-            - "20261020"
+            - 2026.2-20261020
           build_args:
             - NOVA_KATA_REF=8f0f868aa6be490991cb868c139f270533c746a9
             - NOVA_KATA_BUNDLE_TAG=20261020
