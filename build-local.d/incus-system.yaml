@@ -18,3 +18,20 @@
           tags:
             - ubuntu_noble
           synthesize_master: false
+
+- job:
+    name: build-local-incus-system-trove-docker
+    description: >-
+      Example derived Incus OCI system image: the base plus Docker, containerd
+      and AppArmor for Trove guests in Flavor-granted nesting instances.
+    vars:
+      container_images:
+        - context: incus-system
+          repository: openstackhelm/incus-system-trove-docker
+          container_filename: Dockerfile.trove-docker
+          arch:
+            - linux/amd64
+            - linux/arm64
+          tags:
+            - ubuntu_noble
+          synthesize_master: false

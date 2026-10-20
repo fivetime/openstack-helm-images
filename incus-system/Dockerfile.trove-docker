@@ -1,0 +1,17 @@
+# Example image derived from the Incus OCI system base: a Trove guest whose
+# database runs in Docker inside a Flavor-granted nesting instance. It only
+# adds packages and enables their units; CMD, user, working directory and
+# environment stay the base's, as the incus-oci-system-v1 publisher requires.
+FROM ghcr.io/fivetime/openstackhelm/incus-system-base:ubuntu_noble@sha256:9052a631242a43a59c0810318be043db875997d153f99bc07ab1a0c9a2b4a235
+
+LABEL org.opencontainers.image.title="Incus system guest with Docker (Ubuntu 24.04)" \
+      org.opencontainers.image.description="Example derived Incus OCI system image for Trove guests: Docker, containerd and AppArmor on the incus-system-base image" \
+      org.opencontainers.image.source="https://github.com/fivetime/openstack-helm-images" \
+      org.opencontainers.image.base.name="ghcr.io/fivetime/openstackhelm/incus-system-base:ubuntu_noble" \
+      org.opencontainers.image.base.digest="sha256:9052a631242a43a59c0810318be043db875997d153f99bc07ab1a0c9a2b4a235"
+
+ARG DEBIAN_FRONTEND=noninteractive
+RUN apt-get update && apt-get install -y --no-install-recommends \
+      docker.io containerd runc apparmor iptables \
+    && systemctl enable containerd.service docker.service \
+    && rm -rf /var/lib/apt/lists/*
