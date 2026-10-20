@@ -8,4 +8,4 @@
           arch: [linux/amd64, linux/arm64]
           tags: [latest]
           build_args:
-            - IDRAC_EXPORTER_REF=046cd0ec55f8467291b99484e32a1bb51892bfdb
+            - IDRAC_EXPORTER_REF=792866f11d9115dca97fc9d59bd9387b98ec4570

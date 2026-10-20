@@ -2,12 +2,13 @@
 # Lenovo XClarity, Supermicro, ...). Built from the fivetime fork of
 # mrlhansen/idrac_exporter, which adds the sensor PhysicalContext and the
 # BMC's own temperature thresholds (idrac_sensors_temperature_info /
-# _threshold) so alerts do not depend on vendor sensor names.
+# _threshold) so alerts do not depend on vendor sensor names, and reads
+# drives on iLO 5 from SmartStorage, also for rebranded HPE servers.
 ARG GOLANG_VERSION=1.26
 ARG ALPINE_VERSION=3.22
 FROM docker.io/library/golang:${GOLANG_VERSION}-alpine AS build
 ARG IDRAC_EXPORTER_REPO=https://github.com/fivetime/idrac_exporter.git
-ARG IDRAC_EXPORTER_REF=046cd0ec55f8467291b99484e32a1bb51892bfdb
+ARG IDRAC_EXPORTER_REF=792866f11d9115dca97fc9d59bd9387b98ec4570
 ARG IDRAC_EXPORTER_VERSION=2.6.3-fivetime
 RUN apk add --no-cache git \
  && git init /src && git -C /src remote add origin "${IDRAC_EXPORTER_REPO}" \
