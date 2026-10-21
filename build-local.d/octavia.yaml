@@ -24,7 +24,7 @@
             - OVN_PROVIDER_REF=stable/2026.1
             # 私有仓库,钉 commit;与 Dockerfile 的 ARG 默认值由
             # PINNED_BUILD_ARGS 强制一致。发版时两处同改。
-            - INCUS_PROVIDER_REF=199511cacf652562c7d77d56278ae1eb7931317d
+            - INCUS_PROVIDER_REF=ef057aa6cccf0a7bd0f87a59f89ba10e8f68346a
             - CONSTRAINTS=https://opendev.org/openstack/requirements/raw/branch/stable/2026.1/upper-constraints.txt
         # 2026.2 on Alpine 3.24 (Python 3.14). ovn-octavia-provider comes from
         # the fork's master: upstream master plus our Service_Monitor/member
@@ -48,7 +48,7 @@
             - OCTAVIA_REF=stable/2026.2
             - OVN_PROVIDER_REPO=https://github.com/fivetime/ovn-octavia-provider
             - OVN_PROVIDER_REF=master
-            - INCUS_PROVIDER_REF=199511cacf652562c7d77d56278ae1eb7931317d
+            - INCUS_PROVIDER_REF=ef057aa6cccf0a7bd0f87a59f89ba10e8f68346a
             - CONSTRAINTS=https://opendev.org/openstack/requirements/raw/branch/stable/2026.2/upper-constraints.txt
         # Production since 2026-10-16: Octavia from the fork's master (upstream
         # master plus the load balancer resize API, 890215, and the provider
@@ -70,5 +70,5 @@
             - OCTAVIA_REF=master
             - OVN_PROVIDER_REPO=https://github.com/fivetime/ovn-octavia-provider
             - OVN_PROVIDER_REF=master
-            - INCUS_PROVIDER_REF=199511cacf652562c7d77d56278ae1eb7931317d
+            - INCUS_PROVIDER_REF=ef057aa6cccf0a7bd0f87a59f89ba10e8f68346a
             - CONSTRAINTS=https://opendev.org/openstack/requirements/raw/branch/master/upper-constraints.txt
