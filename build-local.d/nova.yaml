@@ -18,7 +18,7 @@
             - 2026.2-alpine_3.24
           build_args:
             - NOVA_REF=8df1922926ddf949d681e10670dba7bc731701d3
-            - NOVA_INCUS_REF=0b76609d8e8e0413f8b386e40a93af6d61c156a2
+            - NOVA_INCUS_REF=19d00530e63b20942fcfd6ca9c3c6362910edadb
             - INCUS_SDK_REF=7cf985241bb45670ed069d81714cb911590f1376
             - REQUIREMENTS_REF=bab6cd8e3b9a5ac61b98aa7016c7d98b3000a8ac
 
