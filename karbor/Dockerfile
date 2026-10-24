@@ -14,12 +14,12 @@ ARG KARBOR_REPO=https://github.com/fivetime/openstack-karbor
 # A release tag (or a commit). The repositories are private, so the ref
 # cannot be watched through the API the way public forks are; naming it
 # makes the build reproducible and invalidates the layer by itself.
-ARG KARBOR_REF=2.0.4
+ARG KARBOR_REF=2.0.5
 # karbor-operationengine calls the karbor API through python-karborclient,
 # also retired: the release on PyPI (2.1.0) breaks with the PrettyTable of
 # 2026.2 and upper-constraints no longer lists it. Install the fork's.
 ARG KARBORCLIENT_REPO=https://github.com/fivetime/python-karborclient
-ARG KARBORCLIENT_REF=3.0.0
+ARG KARBORCLIENT_REF=3.0.1
 ARG PROFILES="fluent"
 
 # Use bindep to determine packages needed for this profile set
