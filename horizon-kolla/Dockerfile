@@ -101,6 +101,12 @@ ARG KARBOR_UI_GIT=https://github.com/fivetime/karbor-dashboard
 ARG KARBOR_UI_REF=2.0.3
 ARG KARBORCLIENT_GIT=https://github.com/fivetime/python-karborclient
 ARG KARBORCLIENT_REF=3.0.1
+# qinling-dashboard and python-qinlingclient: Qinling is retired upstream as
+# well (PyPI's last releases predate Django 4 and osc-lib 4); same rules.
+ARG QINLING_UI_GIT=https://github.com/fivetime/qinling-dashboard
+ARG QINLING_UI_REF=16.0.0
+ARG QINLINGCLIENT_GIT=https://github.com/fivetime/python-qinlingclient
+ARG QINLINGCLIENT_REF=6.0.1
 
 # Horizon fixes not yet in the kolla base, applied to the installed horizon.
 # One commit of the fivetime/openstack-horizon branch 27.0.0-fivetime, pinned
@@ -296,6 +302,33 @@ assert c.split('.')[0] == '${KARBORCLIENT_REF}'.split('.')[0], c" \
          /var/lib/kolla/venv/lib/python3*/site-packages/karbor_dashboard \
     && /var/lib/kolla/venv/bin/pip install --no-cache-dir pyflakes \
     && /var/lib/kolla/venv/bin/python3 /tmp/check-ui-plugin.py karbor_dashboard \
+    && /var/lib/kolla/venv/bin/pip uninstall -y pyflakes
+
+# qinling-dashboard, in a layer of its own like karbor's.
+RUN /var/lib/kolla/venv/bin/pip install --no-cache-dir \
+        "python-qinlingclient @ git+${QINLINGCLIENT_GIT}@${QINLINGCLIENT_REF}" \
+        "qinling-dashboard @ git+${QINLING_UI_GIT}@${QINLING_UI_REF}" \
+    && /var/lib/kolla/venv/bin/pip show python-qinlingclient qinling-dashboard \
+        | grep -E "Name|Version" \
+    && /var/lib/kolla/venv/bin/pip check \
+    # the versions come from the tags; 0.x means pbr saw none
+    && /var/lib/kolla/venv/bin/python3 -c "import importlib.metadata as m; \
+v = m.version('qinling-dashboard'); c = m.version('python-qinlingclient'); \
+assert v.split('.')[0] == '${QINLING_UI_REF}'.split('.')[0], v; \
+assert c.split('.')[0] == '${QINLINGCLIENT_REF}'.split('.')[0], c" \
+    # the git install leaves the catalogs uncompiled
+    && for d in django djangojs; do \
+         for po in /var/lib/kolla/venv/lib/python3.*/site-packages/qinling_dashboard/locale/*/LC_MESSAGES/$d.po; do \
+           [ -e "$po" ] || continue; \
+           /var/lib/kolla/venv/bin/pybabel compile -i "$po" -o "${po%.po}.mo" || exit 1; \
+         done; \
+       done \
+    # extra_panels needs enabled/ (silently skipped otherwise)
+    && ls /var/lib/kolla/venv/lib/python3*/site-packages/qinling_dashboard/enabled/_[1-9]*.py >/dev/null \
+    && /var/lib/kolla/venv/bin/python3 -m compileall -q \
+         /var/lib/kolla/venv/lib/python3*/site-packages/qinling_dashboard \
+    && /var/lib/kolla/venv/bin/pip install --no-cache-dir pyflakes \
+    && /var/lib/kolla/venv/bin/python3 /tmp/check-ui-plugin.py qinling_dashboard \
     && /var/lib/kolla/venv/bin/pip uninstall -y pyflakes \
     && rm -f /tmp/check-ui-plugin.py
 
