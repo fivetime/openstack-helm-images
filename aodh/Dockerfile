@@ -66,8 +66,8 @@ RUN if [ -s /etc/image_info/bindep_runtime.txt ]; then \
 RUN find /var/lib/openstack \( -name "*.pyc" -o -name "__pycache__" \) -delete \
     && rm -rf /tmp/* /root/.cache /etc/machine-id
 
-RUN groupadd -g 42425 aodh \
-    && useradd -u 42425 -g 42425 -M -d /var/lib/aodh \
+RUN groupadd -g 42424 aodh \
+    && useradd -u 42424 -g 42424 -M -d /var/lib/aodh \
                -s /usr/sbin/nologin -c "aodh user" aodh \
     && mkdir -p /etc/aodh /var/log/aodh /var/lib/aodh /var/cache/aodh \
     && chown aodh:aodh \
