@@ -1,0 +1,29 @@
+---
+# Fork-only Karbor (Data Protection service) image. Karbor is retired
+# upstream; fivetime/openstack-karbor carries it on 2026.2 with native
+# threads instead of eventlet, along with fivetime/python-karborclient, which
+# karbor-operationengine calls the API with. Built only for 2026.2
+# (Python 3.14, Ubuntu 26.04).
+
+- job:
+    name: build-local-karbor
+    description: Build the Karbor image from the fork's release tags.
+    vars:
+      container_images:
+        - context: .
+          repository: openstackhelm/karbor
+          container_filename: karbor/Dockerfile
+          synthesize_master: false
+          arch:
+            - linux/amd64
+          tags:
+            - 2026.2-ubuntu_resolute
+          build_args:
+            - BASE_VENV_BUILDER=quay.io/airshipit/venv_builder:2026.2-ubuntu_resolute
+            - BASE_RUNTIME=quay.io/airshipit/base:2026.2-ubuntu_resolute
+            - KARBOR_REPO=https://github.com/fivetime/openstack-karbor
+            # The repositories are private: name the release tags (or
+            # commits) to build. Bump them to build newer code.
+            - KARBOR_REF=2.0.0
+            - KARBORCLIENT_REPO=https://github.com/fivetime/python-karborclient
+            - KARBORCLIENT_REF=3.0.0

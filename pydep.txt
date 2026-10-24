@@ -12,9 +12,9 @@ confluent-kafka        [aodh ceilometer senlin]
 # (requirements 里没有 oslo.db,扫不出来);masakari 和 cloudkitty 是踩过的
 # —— 缺了它,PXC 的 caching_sha2_password 在服务端缓存未命中时要走 RSA 全认证,
 # PyMySQL 直接 RuntimeError,而缓存命中期间一切正常,极具迷惑性。
-# senlin is built from the fork (retired upstream), which generate_pydep.py
-# does not scan, so its oslo.db/oslo.messaging drivers are listed here.
-cryptography           [gnocchi placement masakari cloudkitty senlin]
+# senlin and karbor are built from forks (retired upstream), which generate_pydep.py
+# does not scan, so their oslo.db/oslo.messaging drivers are listed here.
+cryptography           [gnocchi placement masakari cloudkitty senlin karbor]
 etcd3gw                [aodh ceilometer gnocchi senlin trove]
 fluent-logger          [fluent]
 httplib2               [placement]
