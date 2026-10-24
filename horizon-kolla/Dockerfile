@@ -98,7 +98,7 @@ ARG SENLINCLIENT_REF=4.0.0
 # (PyPI's last client, 2.1.0, breaks with the PrettyTable of 2026.2); same
 # rules as senlin's.
 ARG KARBOR_UI_GIT=https://github.com/fivetime/karbor-dashboard
-ARG KARBOR_UI_REF=2.0.1
+ARG KARBOR_UI_REF=2.0.2
 ARG KARBORCLIENT_GIT=https://github.com/fivetime/python-karborclient
 ARG KARBORCLIENT_REF=3.0.1
 
