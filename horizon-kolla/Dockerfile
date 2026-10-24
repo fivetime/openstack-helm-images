@@ -94,6 +94,13 @@ ARG SENLIN_UI_GIT=https://github.com/fivetime/senlin-dashboard
 ARG SENLIN_UI_REF=15.0.2
 ARG SENLINCLIENT_GIT=https://github.com/fivetime/python-senlinclient
 ARG SENLINCLIENT_REF=4.0.0
+# karbor-dashboard and python-karborclient: Karbor is retired upstream too
+# (PyPI's last client, 2.1.0, breaks with the PrettyTable of 2026.2); same
+# rules as senlin's.
+ARG KARBOR_UI_GIT=https://github.com/fivetime/karbor-dashboard
+ARG KARBOR_UI_REF=2.0.0
+ARG KARBORCLIENT_GIT=https://github.com/fivetime/python-karborclient
+ARG KARBORCLIENT_REF=3.0.0
 
 # Horizon fixes not yet in the kolla base, applied to the installed horizon.
 # One commit of the fivetime/openstack-horizon branch 27.0.0-fivetime, pinned
@@ -255,6 +262,40 @@ assert os.path.isfile(DEFAULT_POLICY_FILES['cluster']), DEFAULT_POLICY_FILES" \
          /var/lib/kolla/venv/lib/python3*/site-packages/senlin_dashboard \
     && /var/lib/kolla/venv/bin/pip install --no-cache-dir pyflakes \
     && /var/lib/kolla/venv/bin/python3 /tmp/check-ui-plugin.py senlin_dashboard \
+    && /var/lib/kolla/venv/bin/pip uninstall -y pyflakes
+
+# karbor-dashboard, in a layer of its own like senlin's.
+RUN --mount=type=secret,id=src_repo_token \
+    if [ -s /run/secrets/src_repo_token ]; then \
+        TOK="$(cat /run/secrets/src_repo_token)"; \
+        git config --global \
+          url."https://x-access-token:${TOK}@github.com/".insteadOf "https://github.com/"; \
+    fi \
+    && /var/lib/kolla/venv/bin/pip install --no-cache-dir \
+        "python-karborclient @ git+${KARBORCLIENT_GIT}@${KARBORCLIENT_REF}" \
+        "karbor-dashboard @ git+${KARBOR_UI_GIT}@${KARBOR_UI_REF}" \
+    && rm -f /root/.gitconfig \
+    && /var/lib/kolla/venv/bin/pip show python-karborclient karbor-dashboard \
+        | grep -E "Name|Version" \
+    && /var/lib/kolla/venv/bin/pip check \
+    # the versions come from the tags; 0.x means pbr saw none
+    && /var/lib/kolla/venv/bin/python3 -c "import importlib.metadata as m; \
+v = m.version('karbor-dashboard'); c = m.version('python-karborclient'); \
+assert v.split('.')[0] == '${KARBOR_UI_REF}'.split('.')[0], v; \
+assert c.split('.')[0] == '${KARBORCLIENT_REF}'.split('.')[0], c" \
+    # the git install leaves the catalogs uncompiled
+    && for d in django djangojs; do \
+         for po in /var/lib/kolla/venv/lib/python3.*/site-packages/karbor_dashboard/locale/*/LC_MESSAGES/$d.po; do \
+           [ -e "$po" ] || continue; \
+           /var/lib/kolla/venv/bin/pybabel compile -i "$po" -o "${po%.po}.mo" || exit 1; \
+         done; \
+       done \
+    # extra_panels needs enabled/ (silently skipped otherwise)
+    && ls /var/lib/kolla/venv/lib/python3*/site-packages/karbor_dashboard/enabled/_[1-9]*.py >/dev/null \
+    && /var/lib/kolla/venv/bin/python3 -m compileall -q \
+         /var/lib/kolla/venv/lib/python3*/site-packages/karbor_dashboard \
+    && /var/lib/kolla/venv/bin/pip install --no-cache-dir pyflakes \
+    && /var/lib/kolla/venv/bin/python3 /tmp/check-ui-plugin.py karbor_dashboard \
     && /var/lib/kolla/venv/bin/pip uninstall -y pyflakes \
     && rm -f /tmp/check-ui-plugin.py
 
