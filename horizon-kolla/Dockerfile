@@ -104,7 +104,7 @@ ARG KARBORCLIENT_REF=3.0.1
 # qinling-dashboard and python-qinlingclient: Qinling is retired upstream as
 # well (PyPI's last releases predate Django 4 and osc-lib 4); same rules.
 ARG QINLING_UI_GIT=https://github.com/fivetime/qinling-dashboard
-ARG QINLING_UI_REF=16.0.0
+ARG QINLING_UI_REF=16.0.1
 ARG QINLINGCLIENT_GIT=https://github.com/fivetime/python-qinlingclient
 ARG QINLINGCLIENT_REF=6.0.1
 
@@ -323,8 +323,20 @@ assert c.split('.')[0] == '${QINLINGCLIENT_REF}'.split('.')[0], c" \
            /var/lib/kolla/venv/bin/pybabel compile -i "$po" -o "${po%.po}.mo" || exit 1; \
          done; \
        done \
+    && ls /var/lib/kolla/venv/lib/python3*/site-packages/qinling_dashboard/locale/zh_Hans/LC_MESSAGES/django.mo \
     # extra_panels needs enabled/ (silently skipped otherwise)
     && ls /var/lib/kolla/venv/lib/python3*/site-packages/qinling_dashboard/enabled/_[1-9]*.py >/dev/null \
+    # as for senlin: without it every qinling action shows for any role
+    && printf '%s\n' \
+         '# Check the qinling panel actions against the qinling policies.' \
+         'from qinling_dashboard import conf as _qinling_conf' \
+         '_qinling_conf.register_policies(POLICY_FILES, DEFAULT_POLICY_FILES)' \
+         > /etc/openstack-dashboard/local_settings.d/_1610_qinling_policy.py \
+    && /var/lib/kolla/venv/bin/python3 -c "import os; \
+POLICY_FILES = {}; DEFAULT_POLICY_FILES = {}; \
+exec(open('/etc/openstack-dashboard/local_settings.d/_1610_qinling_policy.py').read()); \
+assert os.path.isfile(POLICY_FILES['function_engine']), POLICY_FILES; \
+assert os.path.isfile(DEFAULT_POLICY_FILES['function_engine']), DEFAULT_POLICY_FILES" \
     && /var/lib/kolla/venv/bin/python3 -m compileall -q \
          /var/lib/kolla/venv/lib/python3*/site-packages/qinling_dashboard \
     && /var/lib/kolla/venv/bin/pip install --no-cache-dir pyflakes \
