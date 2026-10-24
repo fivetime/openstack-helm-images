@@ -7,7 +7,7 @@ ARG PYTHON_IMAGE=docker.io/library/python:3.14-slim
 
 FROM ${GIT_IMAGE} AS src
 ARG QINLING_REPO=https://github.com/fivetime/openstack-qinling
-ARG QINLING_REF=17.0.0
+ARG QINLING_REF=17.0.1
 # The repository is private: CI supplies src_repo_token as a BuildKit
 # secret, used only inside this RUN and this stage.
 RUN --mount=type=secret,id=src_repo_token \
@@ -29,7 +29,7 @@ ADD ${UPPER_CONSTRAINTS} /app/upper-constraints.txt
 COPY --from=src /src/project.txt /etc/qinling-runtime-project.txt
 
 # The same user as the runtimes, so that they can read the packages.
-RUN useradd -Mrs /usr/sbin/nologin -u 42480 qinling
+RUN useradd -mrs /usr/sbin/nologin -u 42480 qinling
 
 COPY --from=src /src/runtimes/sidecar/requirements.txt /sidecar/requirements.txt
 RUN pip install --no-cache-dir -c /app/upper-constraints.txt -r /sidecar/requirements.txt

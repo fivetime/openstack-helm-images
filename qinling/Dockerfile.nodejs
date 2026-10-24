@@ -7,7 +7,7 @@ ARG NODE_IMAGE=docker.io/library/node:22-alpine
 
 FROM ${GIT_IMAGE} AS src
 ARG QINLING_REPO=https://github.com/fivetime/openstack-qinling
-ARG QINLING_REF=17.0.0
+ARG QINLING_REF=17.0.1
 # The repository is private: CI supplies src_repo_token as a BuildKit
 # secret, used only inside this RUN and this stage.
 RUN --mount=type=secret,id=src_repo_token \
@@ -31,7 +31,7 @@ RUN npm ci --omit=dev && npm cache clean --force
 COPY --from=src /src/runtimes/nodejs/server.js /usr/src/app/server.js
 
 # The same user as the sidecar, so that the packages are readable.
-RUN adduser -HDS -u 42480 qinling
+RUN adduser -DS -u 42480 qinling
 USER qinling
 EXPOSE 9090
 
