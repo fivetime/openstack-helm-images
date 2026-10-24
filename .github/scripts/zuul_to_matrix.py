@@ -62,6 +62,7 @@ PINNED_BUILD_ARGS = frozenset(
         "OVS_EXPORTER_REF",
         "NETWORK_EXPORTER_REF",
         "IDRAC_EXPORTER_REF",
+        "QINLING_REF",
     }
 )
 

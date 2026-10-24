@@ -1,0 +1,59 @@
+---
+# Fork-only Qinling (Function as a Service) images. Qinling is retired
+# upstream; fivetime/openstack-qinling carries it on 2026.2 with native
+# threads instead of eventlet. Built only for 2026.2 (Python 3.14, Ubuntu
+# 26.04 for the service). The runtime images run the tenants' functions in
+# the Kubernetes cluster qinling manages; their sources are runtimes/ of the
+# same repository.
+
+- job:
+    name: build-local-qinling
+    description: Build the Qinling service and runtime images from the fork's release tags.
+    vars:
+      container_images:
+        - context: .
+          repository: openstackhelm/qinling
+          container_filename: qinling/Dockerfile
+          synthesize_master: false
+          arch:
+            - linux/amd64
+          tags:
+            - 2026.2-ubuntu_resolute
+          build_args:
+            - BASE_VENV_BUILDER=quay.io/airshipit/venv_builder:2026.2-ubuntu_resolute
+            - BASE_RUNTIME=quay.io/airshipit/base:2026.2-ubuntu_resolute
+            - QINLING_REPO=https://github.com/fivetime/openstack-qinling
+            # The repository is private: name the release tag (or commit)
+            # to build, the same in all four images and the Dockerfiles'
+            # defaults (checked). Bump them to build newer code.
+            - QINLING_REF=17.0.0
+        - context: qinling
+          repository: openstackhelm/qinling-runtime-python3
+          container_filename: Dockerfile.python3
+          synthesize_master: false
+          arch:
+            - linux/amd64
+          tags:
+            - 2026.2-python3.14
+          build_args:
+            - QINLING_REF=17.0.0
+        - context: qinling
+          repository: openstackhelm/qinling-runtime-nodejs
+          container_filename: Dockerfile.nodejs
+          synthesize_master: false
+          arch:
+            - linux/amd64
+          tags:
+            - 2026.2-node22
+          build_args:
+            - QINLING_REF=17.0.0
+        - context: qinling
+          repository: openstackhelm/qinling-sidecar
+          container_filename: Dockerfile.sidecar
+          synthesize_master: false
+          arch:
+            - linux/amd64
+          tags:
+            - 2026.2-python3.14
+          build_args:
+            - QINLING_REF=17.0.0

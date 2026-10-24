@@ -1,0 +1,38 @@
+# syntax=docker/dockerfile:1
+# The nodejs runtime of Qinling, built from runtimes/nodejs of the fork
+# (fivetime/openstack-qinling), which also has a Dockerfile for local builds;
+# keep the two alike.
+ARG GIT_IMAGE=docker.io/library/alpine:3.22
+ARG NODE_IMAGE=docker.io/library/node:22-alpine
+
+FROM ${GIT_IMAGE} AS src
+ARG QINLING_REPO=https://github.com/fivetime/openstack-qinling
+ARG QINLING_REF=17.0.0
+# The repository is private: CI supplies src_repo_token as a BuildKit
+# secret, used only inside this RUN and this stage.
+RUN --mount=type=secret,id=src_repo_token \
+    apk add --no-cache git \
+    && if [ -s /run/secrets/src_repo_token ]; then \
+        git config --global \
+          url."https://x-access-token:$(cat /run/secrets/src_repo_token)@github.com/".insteadOf \
+          "https://github.com/"; \
+    fi \
+    && git clone --filter=blob:none ${QINLING_REPO} /src \
+    && git -C /src checkout --detach ${QINLING_REF} \
+    && rm -f /root/.gitconfig \
+    && git -C /src log --oneline -1 > /src/project.txt
+
+FROM ${NODE_IMAGE}
+COPY --from=src /src/project.txt /etc/qinling-runtime-project.txt
+
+WORKDIR /usr/src/app
+COPY --from=src /src/runtimes/nodejs/package.json /src/runtimes/nodejs/package-lock.json /usr/src/app/
+RUN npm ci --omit=dev && npm cache clean --force
+COPY --from=src /src/runtimes/nodejs/server.js /usr/src/app/server.js
+
+# The same user as the sidecar, so that the packages are readable.
+RUN adduser -HDS -u 42480 qinling
+USER qinling
+EXPOSE 9090
+
+CMD ["node", "server.js"]

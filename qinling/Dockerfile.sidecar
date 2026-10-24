@@ -1,0 +1,47 @@
+# syntax=docker/dockerfile:1
+# The sidecar container of the Qinling runtimes, built from runtimes/sidecar of the fork
+# (fivetime/openstack-qinling), which also has a Dockerfile for local builds;
+# keep the two alike.
+ARG GIT_IMAGE=docker.io/library/alpine:3.22
+ARG PYTHON_IMAGE=docker.io/library/python:3.14-slim
+
+FROM ${GIT_IMAGE} AS src
+ARG QINLING_REPO=https://github.com/fivetime/openstack-qinling
+ARG QINLING_REF=17.0.0
+# The repository is private: CI supplies src_repo_token as a BuildKit
+# secret, used only inside this RUN and this stage.
+RUN --mount=type=secret,id=src_repo_token \
+    apk add --no-cache git \
+    && if [ -s /run/secrets/src_repo_token ]; then \
+        git config --global \
+          url."https://x-access-token:$(cat /run/secrets/src_repo_token)@github.com/".insteadOf \
+          "https://github.com/"; \
+    fi \
+    && git clone --filter=blob:none ${QINLING_REPO} /src \
+    && git -C /src checkout --detach ${QINLING_REF} \
+    && rm -f /root/.gitconfig \
+    && git -C /src log --oneline -1 > /src/project.txt
+
+FROM ${PYTHON_IMAGE}
+# The libraries follow the 2026.2 upper constraints, like the services.
+ARG UPPER_CONSTRAINTS=https://releases.openstack.org/constraints/upper/2026.2
+ADD ${UPPER_CONSTRAINTS} /app/upper-constraints.txt
+COPY --from=src /src/project.txt /etc/qinling-runtime-project.txt
+
+# The same user as the runtimes, so that they can read the packages.
+RUN useradd -Mrs /usr/sbin/nologin -u 42480 qinling
+
+COPY --from=src /src/runtimes/sidecar/requirements.txt /sidecar/requirements.txt
+RUN pip install --no-cache-dir -c /app/upper-constraints.txt -r /sidecar/requirements.txt
+
+COPY --from=src /src/runtimes/sidecar/sidecar.py /sidecar/sidecar.py
+RUN mkdir -p /var/lock/qinling /var/qinling/packages && \
+    chown qinling:qinling /var/lock/qinling /var/qinling/packages
+
+WORKDIR /sidecar
+USER qinling
+EXPOSE 9091
+
+CMD ["gunicorn", "--bind", "127.0.0.1:9091", "--workers", "1", \
+     "--threads", "4", "--timeout", "120", "--access-logfile", "-", \
+     "sidecar:app"]
