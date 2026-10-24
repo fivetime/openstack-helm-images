@@ -100,7 +100,7 @@ ARG SENLINCLIENT_REF=4.0.0
 ARG KARBOR_UI_GIT=https://github.com/fivetime/karbor-dashboard
 ARG KARBOR_UI_REF=2.0.0
 ARG KARBORCLIENT_GIT=https://github.com/fivetime/python-karborclient
-ARG KARBORCLIENT_REF=3.0.0
+ARG KARBORCLIENT_REF=3.0.1
 
 # Horizon fixes not yet in the kolla base, applied to the installed horizon.
 # One commit of the fivetime/openstack-horizon branch 27.0.0-fivetime, pinned
