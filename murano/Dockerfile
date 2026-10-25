@@ -14,12 +14,12 @@ ARG MURANO_REPO=https://github.com/fivetime/openstack-murano
 # A release tag (or a commit). The repositories are private, so the ref
 # cannot be watched through the API the way public forks are; naming it
 # makes the build reproducible and invalidates the layer by itself.
-ARG MURANO_REF=17.0.0
+ARG MURANO_REF=17.0.1
 # murano-engine downloads the application packages through
 # python-muranoclient, which needs murano-pkg-check; both are retired too and
 # their last releases on PyPI do not install with 2026.2. Install the forks'.
 ARG MURANOCLIENT_REPO=https://github.com/fivetime/python-muranoclient
-ARG MURANOCLIENT_REF=3.0.0
+ARG MURANOCLIENT_REF=3.0.1
 ARG MURANOPKGCHECK_REPO=https://github.com/fivetime/murano-pkg-check
 ARG MURANOPKGCHECK_REF=0.4.0
 ARG PROFILES="fluent"
