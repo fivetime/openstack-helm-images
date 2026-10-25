@@ -11,16 +11,22 @@ is where the check quietly stops matching what the first one learned.
 """
 import collections
 import importlib
+import importlib.util
 import pkgutil
 import sys
 
 module = sys.argv[1] if len(sys.argv) > 1 else "raas_ui"
-pkg = importlib.import_module(module + ".enabled")
+# murano-dashboard keeps its enabled files in local/enabled, which the
+# chart's extra_panels also looks at.
+enabled = module + ".enabled"
+if importlib.util.find_spec(enabled) is None:
+    enabled = module + ".local.enabled"
+pkg = importlib.import_module(enabled)
 
 seen = collections.defaultdict(list)
 names = [m.name for m in pkgutil.iter_modules(pkg.__path__)]
 for name in names:
-    mod = importlib.import_module(module + ".enabled." + name)
+    mod = importlib.import_module(enabled + "." + name)
     for app in getattr(mod, "ADD_INSTALLED_APPS", []):
         seen[app].append(name)
 dup = {a: f for a, f in seen.items() if len(f) > 1}
@@ -35,7 +41,8 @@ if dup:
 import io
 import subprocess
 
-proc = subprocess.run([sys.executable, "-m", "pyflakes", pkg.__path__[0].rsplit("/", 1)[0]],
+proc = subprocess.run([sys.executable, "-m", "pyflakes",
+                       importlib.import_module(module).__path__[0]],
                       capture_output=True, text=True)
 # Match pyflakes' "undefined name 'x'" only: a star import reports
 # "unable to detect undefined names", which is not a NameError.

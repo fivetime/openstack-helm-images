@@ -107,6 +107,15 @@ ARG QINLING_UI_GIT=https://github.com/fivetime/qinling-dashboard
 ARG QINLING_UI_REF=16.0.1
 ARG QINLINGCLIENT_GIT=https://github.com/fivetime/python-qinlingclient
 ARG QINLINGCLIENT_REF=6.0.1
+# murano-dashboard, python-muranoclient and murano-pkg-check, which the
+# client needs: Murano is retired upstream as well (PyPI's last releases
+# predate Django 4 and do not install with 2026.2); same rules as karbor's.
+ARG MURANO_UI_GIT=https://github.com/fivetime/murano-dashboard
+ARG MURANO_UI_REF=17.0.1
+ARG MURANOCLIENT_GIT=https://github.com/fivetime/python-muranoclient
+ARG MURANOCLIENT_REF=3.0.1
+ARG MURANOPKGCHECK_GIT=https://github.com/fivetime/murano-pkg-check
+ARG MURANOPKGCHECK_REF=0.4.0
 
 # Horizon fixes not yet in the kolla base, applied to the installed horizon.
 # One commit of the fivetime/openstack-horizon branch 27.0.0-fivetime, pinned
@@ -341,6 +350,57 @@ assert os.path.isfile(DEFAULT_POLICY_FILES['function_engine']), DEFAULT_POLICY_F
          /var/lib/kolla/venv/lib/python3*/site-packages/qinling_dashboard \
     && /var/lib/kolla/venv/bin/pip install --no-cache-dir pyflakes \
     && /var/lib/kolla/venv/bin/python3 /tmp/check-ui-plugin.py qinling_dashboard \
+    && /var/lib/kolla/venv/bin/pip uninstall -y pyflakes
+
+# murano-dashboard, in a layer of its own like karbor's. Its own
+# local_settings.d/_50_murano.py is not installed: it switches Horizon to
+# database sessions on an SQLite file, which would log everyone out of a
+# Horizon on cached sessions; only its policy file is registered.
+RUN --mount=type=secret,id=src_repo_token \
+    if [ -s /run/secrets/src_repo_token ]; then \
+        TOK="$(cat /run/secrets/src_repo_token)"; \
+        git config --global \
+          url."https://x-access-token:${TOK}@github.com/".insteadOf "https://github.com/"; \
+    fi \
+    && /var/lib/kolla/venv/bin/pip install --no-cache-dir \
+        "murano-pkg-check @ git+${MURANOPKGCHECK_GIT}@${MURANOPKGCHECK_REF}" \
+        "python-muranoclient @ git+${MURANOCLIENT_GIT}@${MURANOCLIENT_REF}" \
+        "murano-dashboard @ git+${MURANO_UI_GIT}@${MURANO_UI_REF}" \
+    && rm -f /root/.gitconfig \
+    && /var/lib/kolla/venv/bin/pip show murano-pkg-check python-muranoclient murano-dashboard \
+        | grep -E "Name|Version" \
+    && /var/lib/kolla/venv/bin/pip check \
+    # the versions come from the tags; 0.x for the dashboard means pbr saw none
+    && /var/lib/kolla/venv/bin/python3 -c "import importlib.metadata as m; \
+v = m.version('murano-dashboard'); c = m.version('python-muranoclient'); \
+p = m.version('murano-pkg-check'); \
+assert v.split('.')[0] == '${MURANO_UI_REF}'.split('.')[0], v; \
+assert c.split('.')[0] == '${MURANOCLIENT_REF}'.split('.')[0], c; \
+assert p.split('.')[:2] == '${MURANOPKGCHECK_REF}'.split('.')[:2], p" \
+    # the git install leaves the catalogs uncompiled
+    && for d in django djangojs; do \
+         for po in /var/lib/kolla/venv/lib/python3.*/site-packages/muranodashboard/locale/*/LC_MESSAGES/$d.po; do \
+           [ -e "$po" ] || continue; \
+           /var/lib/kolla/venv/bin/pybabel compile -i "$po" -o "${po%.po}.mo" || exit 1; \
+         done; \
+       done \
+    # extra_panels needs local/enabled (silently skipped otherwise)
+    && ls /var/lib/kolla/venv/lib/python3*/site-packages/muranodashboard/local/enabled/_[1-9]*.py >/dev/null \
+    && printf '%s\n' \
+         '# Check the murano panel actions against the murano policies.' \
+         'import os as _os' \
+         'import muranodashboard as _murano' \
+         'POLICY_FILES["murano"] = _os.path.join(' \
+         '    _os.path.dirname(_murano.__file__), "conf", "murano_policy.json")' \
+         > /etc/openstack-dashboard/local_settings.d/_1620_murano_policy.py \
+    && /var/lib/kolla/venv/bin/python3 -c "import os; \
+POLICY_FILES = {}; \
+exec(open('/etc/openstack-dashboard/local_settings.d/_1620_murano_policy.py').read()); \
+assert os.path.isfile(POLICY_FILES['murano']), POLICY_FILES" \
+    && /var/lib/kolla/venv/bin/python3 -m compileall -q \
+         /var/lib/kolla/venv/lib/python3*/site-packages/muranodashboard \
+    && /var/lib/kolla/venv/bin/pip install --no-cache-dir pyflakes \
+    && /var/lib/kolla/venv/bin/python3 /tmp/check-ui-plugin.py muranodashboard \
     && /var/lib/kolla/venv/bin/pip uninstall -y pyflakes \
     && rm -f /tmp/check-ui-plugin.py
 
