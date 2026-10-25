@@ -105,6 +105,9 @@ import sys
 
 import murano.cmd  # noqa: F401
 from oslo_service import backend
+# the options the engine and the DSL read at import, as murano-engine
+# registers them first
+import murano.common.config  # noqa: F401
 import murano.common.engine  # noqa: F401
 import murano.common.server  # noqa: F401
 import murano.httpd  # noqa: F401
