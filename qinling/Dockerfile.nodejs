@@ -7,7 +7,7 @@ ARG NODE_IMAGE=docker.io/library/node:22-alpine
 
 FROM ${GIT_IMAGE} AS src
 ARG QINLING_REPO=https://github.com/fivetime/openstack-qinling
-ARG QINLING_REF=17.0.10
+ARG QINLING_REF=17.1.0
 # The repository is private: CI supplies src_repo_token as a BuildKit
 # secret, used only inside this RUN and this stage.
 RUN --mount=type=secret,id=src_repo_token \
@@ -29,9 +29,15 @@ WORKDIR /usr/src/app
 COPY --from=src /src/runtimes/nodejs/package.json /src/runtimes/nodejs/package-lock.json /usr/src/app/
 RUN npm ci --omit=dev && npm cache clean --force
 COPY --from=src /src/runtimes/nodejs/server.js /usr/src/app/server.js
+# Hands executions to the worker where the engine cannot reach it (Zun).
+COPY --from=src /src/runtimes/nodejs/qinling-invoke /usr/local/bin/qinling-invoke
 
 # The same user as the sidecar, so that the packages are readable.
-RUN adduser -DS -u 42480 qinling
+# /var/qinling/packages is a mounted volume in the pods; Zun's put_archive
+# needs it in the image.
+RUN adduser -DS -u 42480 qinling && \
+    mkdir -p /var/qinling/packages && \
+    chown qinling /var/qinling/packages
 USER qinling
 EXPOSE 9090
 

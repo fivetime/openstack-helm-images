@@ -7,7 +7,7 @@ ARG PYTHON_IMAGE=docker.io/library/python:3.14-slim
 
 FROM ${GIT_IMAGE} AS src
 ARG QINLING_REPO=https://github.com/fivetime/openstack-qinling
-ARG QINLING_REF=17.0.10
+ARG QINLING_REF=17.1.0
 # The repository is private: CI supplies src_repo_token as a BuildKit
 # secret, used only inside this RUN and this stage.
 RUN --mount=type=secret,id=src_repo_token \
@@ -35,6 +35,8 @@ RUN pip install --no-cache-dir -c /app/upper-constraints.txt -r /app/requirement
     && pip freeze > /app/pip.txt
 
 COPY --from=src /src/runtimes/python3/server.py /app/server.py
+# Hands executions to the worker where the engine cannot reach it (Zun).
+COPY --from=src /src/runtimes/python3/qinling-invoke /usr/local/bin/qinling-invoke
 RUN mkdir -p /var/qinling/packages && \
     chown qinling:qinling /var/qinling/packages
 
@@ -42,5 +44,7 @@ WORKDIR /app
 USER qinling
 EXPOSE 9090
 
-CMD ["gunicorn", "--bind", "0.0.0.0:9090", "--workers", "5", \
-     "--timeout", "0", "--access-logfile", "-", "server:app"]
+# Zun containers listen on 127.0.0.1 only (QINLING_WORKER_BIND) and run
+# fewer processes (QINLING_WORKER_PROCESSES).
+CMD ["sh", "-c", "exec gunicorn --bind ${QINLING_WORKER_BIND:-0.0.0.0}:9090 \
+--workers ${QINLING_WORKER_PROCESSES:-5} --timeout 0 --access-logfile - server:app"]
