@@ -27,6 +27,6 @@
             # commits) to build. Bump them to build newer code.
             - MURANO_REF=17.0.3
             - MURANOCLIENT_REPO=https://github.com/fivetime/python-muranoclient
-            - MURANOCLIENT_REF=3.0.1
+            - MURANOCLIENT_REF=3.0.2
             - MURANOPKGCHECK_REPO=https://github.com/fivetime/murano-pkg-check
             - MURANOPKGCHECK_REF=0.4.0

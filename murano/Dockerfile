@@ -19,7 +19,7 @@ ARG MURANO_REF=17.0.3
 # python-muranoclient, which needs murano-pkg-check; both are retired too and
 # their last releases on PyPI do not install with 2026.2. Install the forks'.
 ARG MURANOCLIENT_REPO=https://github.com/fivetime/python-muranoclient
-ARG MURANOCLIENT_REF=3.0.1
+ARG MURANOCLIENT_REF=3.0.2
 ARG MURANOPKGCHECK_REPO=https://github.com/fivetime/murano-pkg-check
 ARG MURANOPKGCHECK_REF=0.4.0
 ARG PROFILES="fluent"
