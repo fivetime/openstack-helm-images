@@ -7,7 +7,7 @@ ARG PYTHON_IMAGE=docker.io/library/python:3.14-slim
 
 FROM ${GIT_IMAGE} AS src
 ARG QINLING_REPO=https://github.com/fivetime/openstack-qinling
-ARG QINLING_REF=17.1.1
+ARG QINLING_REF=17.1.2
 # The repository is private: CI supplies src_repo_token as a BuildKit
 # secret, used only inside this RUN and this stage.
 RUN --mount=type=secret,id=src_repo_token \
