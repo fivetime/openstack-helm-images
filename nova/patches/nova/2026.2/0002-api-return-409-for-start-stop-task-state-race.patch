@@ -1,0 +1,56 @@
+From b69a29797308b5588e9e2ee72a96937189ac7b55 Mon Sep 17 00:00:00 2001
+From: Simon Zhou <td@fivetime.ltd>
+Date: Mon, 26 Oct 2026 05:10:58 +0000
+Subject: [PATCH] api: Return 409 for a start or stop that lost a task state
+ race
+
+compute.API.start() and stop() check the server's vm_state, then set
+task_state with a conditional save (expected_task_state=[None]). Two
+requests for the same server that arrive together both pass the check,
+and the second one's save raises UnexpectedTaskStateError. The os-start
+and os-stop actions did not handle it, so that client got a 500
+Unexpected API Error although the server was being started (or
+stopped) by the first request. Map it to 409 Conflict, as os-shelve
+already does, so a client can tell "already in progress" from a
+failure.
+
+Assisted-By: Claude Opus 5.5 <noreply@anthropic.com>
+Change-Id: I2b07f45b756f6a871c1c01a44827f4519b9e717d
+Signed-off-by: Simon Zhou <td@fivetime.ltd>
+---
+ nova/api/openstack/compute/servers.py | 12 ++++++++++--
+ 1 file changed, 10 insertions(+), 2 deletions(-)
+
+diff --git a/nova/api/openstack/compute/servers.py b/nova/api/openstack/compute/servers.py
+index 3e60f3edb7..3fa13de57b 100644
+--- a/nova/api/openstack/compute/servers.py
++++ b/nova/api/openstack/compute/servers.py
+@@ -1547,7 +1547,11 @@ class ServersController(wsgi.Controller):
+                             'project_id': instance.project_id})
+         try:
+             self.compute_api.start(context, instance)
+-        except (exception.InstanceNotReady, exception.InstanceIsLocked) as e:
++        except (
++            exception.InstanceNotReady,
++            exception.InstanceIsLocked,
++            exception.UnexpectedTaskStateError,
++        ) as e:
+             raise webob.exc.HTTPConflict(explanation=e.format_message())
+         except exception.InstanceInvalidState as state_error:
+             common.raise_http_conflict_for_instance_invalid_state(state_error,
+@@ -1567,7 +1571,11 @@ class ServersController(wsgi.Controller):
+                             'project_id': instance.project_id})
+         try:
+             self.compute_api.stop(context, instance)
+-        except (exception.InstanceNotReady, exception.InstanceIsLocked) as e:
++        except (
++            exception.InstanceNotReady,
++            exception.InstanceIsLocked,
++            exception.UnexpectedTaskStateError,
++        ) as e:
+             raise webob.exc.HTTPConflict(explanation=e.format_message())
+         except exception.InstanceInvalidState as state_error:
+             common.raise_http_conflict_for_instance_invalid_state(
+-- 
+2.53.0
+
