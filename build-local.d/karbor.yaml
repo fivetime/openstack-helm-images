@@ -24,6 +24,6 @@
             - KARBOR_REPO=https://github.com/fivetime/openstack-karbor
             # The repositories are private: name the release tags (or
             # commits) to build. Bump them to build newer code.
-            - KARBOR_REF=2.0.16
+            - KARBOR_REF=2.0.17
             - KARBORCLIENT_REPO=https://github.com/fivetime/python-karborclient
             - KARBORCLIENT_REF=3.0.1
