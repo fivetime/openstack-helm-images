@@ -22,12 +22,14 @@ RUN --mount=type=secret,id=src_repo_token \
 # Pinned by digest: the release tag is mutable and must not silently pull a
 # newer Nova build while this image only adds the Incus RPC object registry
 # and the control-plane patches. Our CI's nova:2026.2-ubuntu_resolute as of
-# 2026-10-16 (openstack-helm-images f12b5f6): Nova stable/2026.2 8df1922926
-# with nova/patches/nova/2026.2 (osprofiler tracing decided after the config
-# is parsed), Ubuntu 26.04.1, Python 3.14.4, with osprofiler, the
-# OpenTelemetry exporter and the osprofiler-otlp patches (it replaces
-# quay.io/airshipit/nova, which carries no osprofiler).
-FROM ghcr.io/fivetime/openstackhelm/nova@sha256:4fde9774f4150226bd79478be4e798d9a4f8a3eebef64f1c98ad9ef7aa23af2f
+# 2026-10-26 (openstack-helm-images 9013e71, Build All Images run
+# 40273504917): Nova stable/2026.2 8df1922926 with nova/patches/nova/2026.2
+# (osprofiler tracing decided after the config is parsed; 409 for a start
+# or stop that lost a task state race), Ubuntu 26.04.1, Python 3.14.4,
+# with osprofiler, the OpenTelemetry exporter and the osprofiler-otlp
+# patches (it replaces quay.io/airshipit/nova, which carries no
+# osprofiler).
+FROM ghcr.io/fivetime/openstackhelm/nova@sha256:fc02e8b58f7489a6ed295e260adc7577b1bf367a7bbc6b518f7379f4fac43611
 
 ARG SITE_PACKAGES=/var/lib/openstack/lib/python3.14/site-packages
 
@@ -114,6 +116,12 @@ print('Nova Incus control-plane migrate-data 1.7 OK')
 print('Nova Incus control-plane Manila migration contract OK')
 print('Nova user-token SDK service configuration OK')
 print('Nova evacuate rebuild-state refusal OK')
+from nova.api.openstack.compute import servers
+assert 'UnexpectedTaskStateError' in inspect.getsource(
+    servers.ServersController._start)
+assert 'UnexpectedTaskStateError' in inspect.getsource(
+    servers.ServersController._stop)
+print('Nova os-start/os-stop task state race 409 OK')
 
 # Tracing comes with the base image: osprofiler's otlp driver and the RPC
 # context cleanup from osprofiler-otlp/ (patched in nova/Dockerfile's build).
