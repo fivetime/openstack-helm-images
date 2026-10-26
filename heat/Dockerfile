@@ -23,7 +23,8 @@ RUN if [ -s /etc/image_info/bindep_build.txt ]; then \
     fi
 
 RUN sed -i '/^heat===/d' /upper-constraints.txt \
-    && git clone --filter=blob:none -b ${HEAT_REF} ${HEAT_REPO} /tmp/heat \
+    && git clone --filter=blob:none ${HEAT_REPO} /tmp/heat \
+    && git -C /tmp/heat checkout -q ${HEAT_REF} \
     && uv pip install \
          --build-constraint /upper-constraints.txt \
          -c /upper-constraints.txt \

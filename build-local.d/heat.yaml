@@ -1,0 +1,31 @@
+---
+# Heat from fivetime/openstack-heat: upstream stable/2026.2 plus the Senlin
+# resources, client plugin and constraints that upstream removed when
+# Senlin was retired (0357a47900). The upstream rows in zuul.d/heat.yaml
+# keep building opendev's code under their own tags; this row has a tag of
+# its own so the two never push the same tag.
+#
+# HEAT_REF is a commit of the fork's fivetime/stable/2026.2 branch: a branch
+# name in an unchanging RUN gets its layer reused and builds old code, and
+# a tag in a pbr project's fork breaks every later build. Bump it to build
+# newer code. Being a 2026.2 row, it builds FROM our own venv_builder, like
+# the upstream 2026.2 row.
+
+- job:
+    name: build-local-heat-fork
+    description: Build Heat from the fork's fivetime/stable/2026.2.
+    vars:
+      container_images:
+        - context: .
+          repository: openstackhelm/heat
+          container_filename: heat/Dockerfile
+          synthesize_master: false
+          arch:
+            - linux/amd64
+          tags:
+            - 2026.2-ubuntu_resolute-fork
+          build_args:
+            - BASE_VENV_BUILDER=quay.io/airshipit/venv_builder:2026.2-ubuntu_resolute
+            - BASE_RUNTIME=quay.io/airshipit/base:2026.2-ubuntu_resolute
+            - HEAT_REPO=https://github.com/fivetime/openstack-heat
+            - HEAT_REF=09a2c8fa46b570dd9af61c6b534f0c6f2394a5d4
