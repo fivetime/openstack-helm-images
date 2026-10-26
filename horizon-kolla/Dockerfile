@@ -111,7 +111,7 @@ ARG QINLINGCLIENT_REF=6.0.1
 # client needs: Murano is retired upstream as well (PyPI's last releases
 # predate Django 4 and do not install with 2026.2); same rules as karbor's.
 ARG MURANO_UI_GIT=https://github.com/fivetime/murano-dashboard
-ARG MURANO_UI_REF=17.0.3
+ARG MURANO_UI_REF=17.0.4
 ARG MURANOCLIENT_GIT=https://github.com/fivetime/python-muranoclient
 ARG MURANOCLIENT_REF=3.0.2
 ARG MURANOPKGCHECK_GIT=https://github.com/fivetime/murano-pkg-check
