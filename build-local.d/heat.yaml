@@ -28,4 +28,4 @@
             - BASE_VENV_BUILDER=quay.io/airshipit/venv_builder:2026.2-ubuntu_resolute
             - BASE_RUNTIME=quay.io/airshipit/base:2026.2-ubuntu_resolute
             - HEAT_REPO=https://github.com/fivetime/openstack-heat
-            - HEAT_REF=d7281157387d23ce3b08d2447b0c01fd029abd6d
+            - HEAT_REF=32bdedbca9a23f18c8641bbe6ab62b9d6b97ece2
