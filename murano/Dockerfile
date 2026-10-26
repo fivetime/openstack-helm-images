@@ -14,7 +14,7 @@ ARG MURANO_REPO=https://github.com/fivetime/openstack-murano
 # A release tag (or a commit). The repositories are private, so the ref
 # cannot be watched through the API the way public forks are; naming it
 # makes the build reproducible and invalidates the layer by itself.
-ARG MURANO_REF=17.0.3
+ARG MURANO_REF=17.0.4
 # murano-engine downloads the application packages through
 # python-muranoclient, which needs murano-pkg-check; both are retired too and
 # their last releases on PyPI do not install with 2026.2. Install the forks'.
