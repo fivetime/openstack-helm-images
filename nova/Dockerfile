@@ -33,7 +33,9 @@ RUN if [ -s /etc/image_info/bindep_build.txt ]; then \
 #   2026.2/0002-api-return-409-for-start-stop-task-state-race.patch -- two
 #     concurrent os-start (or os-stop) requests for one server: the slower
 #     one lost the conditional task_state save and got a 500 instead of a
-#     409, although the server was being started (runtime file only).
+#     409, although the server was being started
+#     (https://review.opendev.org/c/openstack/nova/+/1012220, bug 2172200;
+#     runtime file only, the tests stay in the change).
 # A patch that stops applying fails the build on purpose: rebase it, or drop it
 # once merged.
 COPY nova/patches/nova/ /tmp/patches/nova/
