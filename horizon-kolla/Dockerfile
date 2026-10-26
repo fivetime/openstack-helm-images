@@ -104,9 +104,9 @@ ARG KARBORCLIENT_REF=3.0.1
 # qinling-dashboard and python-qinlingclient: Qinling is retired upstream as
 # well (PyPI's last releases predate Django 4 and osc-lib 4); same rules.
 ARG QINLING_UI_GIT=https://github.com/fivetime/qinling-dashboard
-ARG QINLING_UI_REF=16.0.1
+ARG QINLING_UI_REF=16.1.0
 ARG QINLINGCLIENT_GIT=https://github.com/fivetime/python-qinlingclient
-ARG QINLINGCLIENT_REF=6.0.1
+ARG QINLINGCLIENT_REF=6.1.0
 # murano-dashboard, python-muranoclient and murano-pkg-check, which the
 # client needs: Murano is retired upstream as well (PyPI's last releases
 # predate Django 4 and do not install with 2026.2); same rules as karbor's.
