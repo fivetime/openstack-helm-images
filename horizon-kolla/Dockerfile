@@ -111,9 +111,9 @@ ARG QINLINGCLIENT_REF=6.0.1
 # client needs: Murano is retired upstream as well (PyPI's last releases
 # predate Django 4 and do not install with 2026.2); same rules as karbor's.
 ARG MURANO_UI_GIT=https://github.com/fivetime/murano-dashboard
-ARG MURANO_UI_REF=17.0.1
+ARG MURANO_UI_REF=17.0.3
 ARG MURANOCLIENT_GIT=https://github.com/fivetime/python-muranoclient
-ARG MURANOCLIENT_REF=3.0.1
+ARG MURANOCLIENT_REF=3.0.2
 ARG MURANOPKGCHECK_GIT=https://github.com/fivetime/murano-pkg-check
 ARG MURANOPKGCHECK_REF=0.4.0
 
@@ -355,7 +355,10 @@ assert os.path.isfile(DEFAULT_POLICY_FILES['function_engine']), DEFAULT_POLICY_F
 # murano-dashboard, in a layer of its own like karbor's. Its own
 # local_settings.d/_50_murano.py is not installed: it switches Horizon to
 # database sessions on an SQLite file, which would log everyone out of a
-# Horizon on cached sessions; only its policy file is registered.
+# Horizon on cached sessions; only its policy file is registered. That
+# file is a copy whose "default" requires member, as the API's policy in
+# this cloud does (overrides/murano/policy.yaml; murano's own default
+# passes any role), so readers see no buttons the API refuses.
 RUN --mount=type=secret,id=src_repo_token \
     if [ -s /run/secrets/src_repo_token ]; then \
         TOK="$(cat /run/secrets/src_repo_token)"; \
@@ -386,17 +389,20 @@ assert p.split('.')[:2] == '${MURANOPKGCHECK_REF}'.split('.')[:2], p" \
        done \
     # extra_panels needs local/enabled (silently skipped otherwise)
     && ls /var/lib/kolla/venv/lib/python3*/site-packages/muranodashboard/local/enabled/_[1-9]*.py >/dev/null \
+    && /var/lib/kolla/venv/bin/python3 -c "import json, os, muranodashboard; \
+src = os.path.join(os.path.dirname(muranodashboard.__file__), 'conf', 'murano_policy.json'); \
+rules = json.load(open(src)); \
+assert rules['default'] == '', rules['default']; \
+rules['default'] = 'role:admin or role:member'; \
+json.dump(rules, open('/etc/openstack-dashboard/murano_policy.json', 'w'), indent=4)" \
     && printf '%s\n' \
          '# Check the murano panel actions against the murano policies.' \
-         'import os as _os' \
-         'import muranodashboard as _murano' \
-         'POLICY_FILES["murano"] = _os.path.join(' \
-         '    _os.path.dirname(_murano.__file__), "conf", "murano_policy.json")' \
+         'POLICY_FILES["murano"] = "/etc/openstack-dashboard/murano_policy.json"' \
          > /etc/openstack-dashboard/local_settings.d/_1620_murano_policy.py \
-    && /var/lib/kolla/venv/bin/python3 -c "import os; \
+    && /var/lib/kolla/venv/bin/python3 -c "import json, os; \
 POLICY_FILES = {}; \
 exec(open('/etc/openstack-dashboard/local_settings.d/_1620_murano_policy.py').read()); \
-assert os.path.isfile(POLICY_FILES['murano']), POLICY_FILES" \
+assert json.load(open(POLICY_FILES['murano']))['default'] == 'role:admin or role:member', POLICY_FILES" \
     && /var/lib/kolla/venv/bin/python3 -m compileall -q \
          /var/lib/kolla/venv/lib/python3*/site-packages/muranodashboard \
     && /var/lib/kolla/venv/bin/pip install --no-cache-dir pyflakes \
