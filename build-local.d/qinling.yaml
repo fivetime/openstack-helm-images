@@ -26,7 +26,7 @@
             # The repository is private: name the release tag (or commit)
             # to build, the same in all four images and the Dockerfiles'
             # defaults (checked). Bump them to build newer code.
-            - QINLING_REF=17.2.2
+            - QINLING_REF=17.2.3
         - context: qinling
           repository: openstackhelm/qinling-runtime-python3
           container_filename: Dockerfile.python3
@@ -36,7 +36,7 @@
           tags:
             - 2026.2-python3.14
           build_args:
-            - QINLING_REF=17.2.2
+            - QINLING_REF=17.2.3
         - context: qinling
           repository: openstackhelm/qinling-runtime-nodejs
           container_filename: Dockerfile.nodejs
@@ -46,7 +46,7 @@
           tags:
             - 2026.2-node22
           build_args:
-            - QINLING_REF=17.2.2
+            - QINLING_REF=17.2.3
         - context: qinling
           repository: openstackhelm/qinling-sidecar
           container_filename: Dockerfile.sidecar
@@ -56,4 +56,4 @@
           tags:
             - 2026.2-python3.14
           build_args:
-            - QINLING_REF=17.2.2
+            - QINLING_REF=17.2.3
