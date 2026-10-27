@@ -94,6 +94,10 @@
             - "MISTRAL_EXTRA_REPO=https://github.com/fivetime/openstack-mistral-extra.git"
             - "MISTRAL_EXTRA_REF=fivetime/stable/2026.2"
             - "MISTRAL_EXTRA_REF_URL=https://api.github.com/repos/fivetime/openstack-mistral-extra/git/refs/heads/fivetime/stable/2026.2"
+            # Its Murano actions need python-muranoclient and murano-pkg-check
+            # from the private forks (release tags, as in the murano image).
+            - "MURANOCLIENT_REF=3.0.2"
+            - "MURANOPKGCHECK_REF=0.4.0"
     files: &mistral_files
       - mistral/.*
       - zuul.d/mistral.yaml

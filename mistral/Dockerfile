@@ -23,6 +23,16 @@ ARG MISTRAL_REF=stable/2026.1
 # which has the Senlin actions); an explicit value still wins.
 ARG MISTRAL_EXTRA_REPO=https://opendev.org/openstack/mistral-extra
 ARG MISTRAL_EXTRA_REF=${MISTRAL_REF}
+# The Murano actions of mistral-extra need python-muranoclient, and it needs
+# murano-pkg-check; both are retired and their last releases on PyPI do not
+# install with 2026.2, so a cell whose mistral-extra has the Murano actions
+# installs the forks' (the same as the murano image). Empty refs install
+# neither. The forks are private: the refs are tags, not branches watched
+# through the API.
+ARG MURANOCLIENT_REPO=https://github.com/fivetime/python-muranoclient
+ARG MURANOCLIENT_REF=
+ARG MURANOPKGCHECK_REPO=https://github.com/fivetime/murano-pkg-check
+ARG MURANOPKGCHECK_REF=
 ARG PROFILES="fluent apache"
 
 # Use bindep to determine packages needed for this profile set
@@ -53,19 +63,45 @@ ADD ${MISTRAL_REF_URL} /tmp/mistral.ref
 ARG MISTRAL_EXTRA_REF_URL=${MISTRAL_REF_URL}
 ADD ${MISTRAL_EXTRA_REF_URL} /tmp/mistral-extra.ref
 
-RUN sed -i '/^mistral===/d;/^mistral-extra===/d' /upper-constraints.txt \
+# CI supplies src_repo_token as a BuildKit secret for the private murano
+# forks; the token and the temporary git rewrite live only inside this RUN
+# and never reach an image layer. Full (blobless) clones: pbr computes the
+# versions from the tags.
+RUN --mount=type=secret,id=src_repo_token \
+    sed -i '/^mistral===/d;/^mistral-extra===/d' /upper-constraints.txt \
     && git clone --filter=blob:none -b ${MISTRAL_REF} ${MISTRAL_REPO} /tmp/mistral \
     && git clone --filter=blob:none -b ${MISTRAL_EXTRA_REF} ${MISTRAL_EXTRA_REPO} /tmp/mistral-extra \
+    && murano_pkgs="" \
+    && if [ -n "${MURANOCLIENT_REF}" ]; then \
+         if [ -s /run/secrets/src_repo_token ]; then \
+           token="$(cat /run/secrets/src_repo_token)"; \
+           git config --global \
+             url."https://x-access-token:${token}@github.com/".insteadOf \
+             "https://github.com/"; \
+         fi \
+         && git clone --filter=blob:none ${MURANOCLIENT_REPO} /tmp/muranoclient \
+         && git clone --filter=blob:none ${MURANOPKGCHECK_REPO} /tmp/muranopkgcheck \
+         # Still authenticated: a blobless checkout fetches the blobs it needs.
+         && git -C /tmp/muranoclient checkout --detach ${MURANOCLIENT_REF} \
+         && git -C /tmp/muranopkgcheck checkout --detach ${MURANOPKGCHECK_REF} \
+         && rm -f /root/.gitconfig \
+         && sed -i '/^python-muranoclient===/d;/^murano-pkg-check===/d' /upper-constraints.txt \
+         && murano_pkgs="/tmp/muranoclient /tmp/muranopkgcheck"; \
+       fi \
     && uv pip install \
          --build-constraint /upper-constraints.txt \
          -c /upper-constraints.txt \
          -r /etc/image_info/python_packages.txt \
-         /tmp/mistral /tmp/mistral-extra \
+         /tmp/mistral /tmp/mistral-extra ${murano_pkgs} \
     && echo "mistral ${MISTRAL_REF} (${MISTRAL_REPO})" > /etc/image_info/project.txt \
     && git -C /tmp/mistral log --oneline -1 >> /etc/image_info/project.txt \
     && echo "mistral-extra ${MISTRAL_EXTRA_REF} (${MISTRAL_EXTRA_REPO})" >> /etc/image_info/project.txt \
     && git -C /tmp/mistral-extra log --oneline -1 >> /etc/image_info/project.txt \
-    && rm -rf /tmp/mistral /tmp/mistral-extra \
+    && if [ -n "${murano_pkgs}" ]; then \
+         git -C /tmp/muranoclient log --oneline -1 >> /etc/image_info/project.txt \
+         && git -C /tmp/muranopkgcheck log --oneline -1 >> /etc/image_info/project.txt; \
+       fi \
+    && rm -rf /tmp/mistral /tmp/mistral-extra /tmp/muranoclient /tmp/muranopkgcheck \
     && uv pip freeze > /etc/image_info/pip.txt
 
 FROM ${BASE_RUNTIME} AS runtime
