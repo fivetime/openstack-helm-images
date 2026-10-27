@@ -8,4 +8,4 @@
           arch: [linux/amd64, linux/arm64]
           tags: [latest]
           build_args:
-            - OPENSTACK_EXPORTER_REF=b2d1e80c24fe17ee6e07979f5f1b6a867f27a973
+            - OPENSTACK_EXPORTER_REF=52f9647566c9efa2381e6e22b4ef4dc050fc00c0

@@ -6,7 +6,7 @@ ARG GOLANG_VERSION=1.26
 ARG ALPINE_VERSION=3.22
 FROM docker.io/library/golang:${GOLANG_VERSION}-alpine AS build
 ARG OPENSTACK_EXPORTER_REPO=https://github.com/fivetime/openstack-exporter.git
-ARG OPENSTACK_EXPORTER_REF=b2d1e80c24fe17ee6e07979f5f1b6a867f27a973
+ARG OPENSTACK_EXPORTER_REF=52f9647566c9efa2381e6e22b4ef4dc050fc00c0
 RUN apk add --no-cache git \
  && git init /src && git -C /src remote add origin "${OPENSTACK_EXPORTER_REPO}" \
  && git -C /src fetch --depth=1 origin "${OPENSTACK_EXPORTER_REF}" \
