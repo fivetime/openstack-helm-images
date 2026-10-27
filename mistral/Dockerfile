@@ -19,8 +19,8 @@ ARG MISTRAL_REF=stable/2026.1
 # mistral-extra too. The 2026.1 cell passes MISTRAL_REF=master and pairs with
 # mistral-extra master, and the opendev cells pass stable/<release>. A ref
 # that mistral-extra does not carry must pass MISTRAL_EXTRA_REF explicitly
-# (the 2026.2 cell does, for the fork's fivetime/stable/2026.2); an explicit
-# value still wins.
+# (the 2026.2 cell passes the mistral-extra fork's own fivetime/stable/2026.2,
+# which has the Senlin actions); an explicit value still wins.
 ARG MISTRAL_EXTRA_REPO=https://opendev.org/openstack/mistral-extra
 ARG MISTRAL_EXTRA_REF=${MISTRAL_REF}
 ARG PROFILES="fluent apache"
@@ -48,6 +48,10 @@ RUN if [ -s /etc/image_info/bindep_build.txt ]; then \
 # would only rebuild when master happens to move.
 ARG MISTRAL_REF_URL=https://api.github.com/repos/fivetime/openstack-mistral/git/refs/heads/master
 ADD ${MISTRAL_REF_URL} /tmp/mistral.ref
+# The same for a cell that builds mistral-extra from a fork branch; by
+# default it repeats the mistral ref.
+ARG MISTRAL_EXTRA_REF_URL=${MISTRAL_REF_URL}
+ADD ${MISTRAL_EXTRA_REF_URL} /tmp/mistral-extra.ref
 
 RUN sed -i '/^mistral===/d;/^mistral-extra===/d' /upper-constraints.txt \
     && git clone --filter=blob:none -b ${MISTRAL_REF} ${MISTRAL_REPO} /tmp/mistral \

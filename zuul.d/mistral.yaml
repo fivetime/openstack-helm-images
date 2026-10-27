@@ -81,13 +81,19 @@
             # event engine spins a whole core while idle. Drop the fork
             # here once both merge and reach stable/2026.2.
             #
-            # mistral-extra has no fivetime/ branch, so its ref is passed
-            # explicitly instead of following MISTRAL_REF, and the cache
-            # bust has to track this branch rather than the fork's master.
+            # The cache bust has to track this branch rather than the
+            # fork's master.
+            #
+            # mistral-extra comes from its own fork's fivetime/stable/2026.2:
+            # upstream stable/2026.2 plus the Senlin actions, which upstream
+            # removed when Senlin was retired, back on the clustering proxy
+            # of openstacksdk. Its branch has a cache bust of its own.
             - "MISTRAL_REPO=https://github.com/fivetime/openstack-mistral.git"
             - "MISTRAL_REF=fivetime/stable/2026.2"
             - "MISTRAL_REF_URL=https://api.github.com/repos/fivetime/openstack-mistral/git/refs/heads/fivetime/stable/2026.2"
-            - "MISTRAL_EXTRA_REF=stable/2026.2"
+            - "MISTRAL_EXTRA_REPO=https://github.com/fivetime/openstack-mistral-extra.git"
+            - "MISTRAL_EXTRA_REF=fivetime/stable/2026.2"
+            - "MISTRAL_EXTRA_REF_URL=https://api.github.com/repos/fivetime/openstack-mistral-extra/git/refs/heads/fivetime/stable/2026.2"
     files: &mistral_files
       - mistral/.*
       - zuul.d/mistral.yaml
