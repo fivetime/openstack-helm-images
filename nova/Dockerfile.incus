@@ -12,7 +12,7 @@ ARG NOVA_REF=8df1922926ddf949d681e10670dba7bc731701d3
 ARG NOVA_INCUS_REPO=https://github.com/fivetime/nova-incus-driver.git
 ARG NOVA_INCUS_REF=3f6b986e33e98a21efd1c1c23fab0956d64779e2
 ARG INCUS_SDK_REPO=https://github.com/fivetime/incus-python-sdk.git
-ARG INCUS_SDK_REF=7cf985241bb45670ed069d81714cb911590f1376
+ARG INCUS_SDK_REF=b9fd81ee6cd52298def32d800bc1165ae2149615
 ARG REQUIREMENTS_REPO=https://opendev.org/openstack/requirements
 ARG REQUIREMENTS_REF=bab6cd8e3b9a5ac61b98aa7016c7d98b3000a8ac
 # Notifications go to Redpanda (oslo_messaging_notifications driver kafka).
