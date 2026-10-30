@@ -278,7 +278,8 @@ RUN export PYTHONDONTWRITEBYTECODE=1 \
  && python3 -c "import json; from importlib.metadata import distribution as d; u=d('neutron').read_text('direct_url.json'); assert u and 'vcs_info' in json.loads(u), 'neutron is no longer the git build -- a dependency resolver replaced it'; print('neutron still the git build OK')" \
  && python3 -c "import psycopg2, confluent_kafka, pymysql; print('db+kafka drivers OK')" \
  && python3 -c "import ovs.dns_resolve as d; assert getattr(d, '_ovnic_dns_patched', False); print('DNS patch active')" \
- && python3 -c "from neutron.common.ovn import constants as c; from neutron.plugins.ml2.drivers.ovn.mech_driver.ovsdb import impl_idl_ovn as i; assert c.CMS_OPT_CHASSIS_AS_EVPN_GW == 'enable-chassis-as-evpn-gw'; assert hasattr(i.OvsdbSbOvnIdl, 'get_evpn_gateway_chassis'); print('EVPN gateway chassis patch active')" \
+ && python3 -c "from neutron.common.ovn import constants as c; from neutron.plugins.ml2.drivers.ovn.mech_driver.ovsdb import impl_idl_ovn as i; assert c.CMS_OPT_CHASSIS_AS_EVPN_GW == 'enable-chassis-as-evpn-gw'; assert hasattr(i.OvsdbSbOvnIdl, 'get_evpn_gateway_chassis_with_az_filter'); print('EVPN gateway chassis patch active')" \
+ && python3 -c "from neutron.plugins.ml2.drivers.ovn.mech_driver.ovsdb import ovsdb_monitor as m; assert 'key' in vars(m.WaitForChassisNbCfgEvent); print('live migration wait-per-port patch active')" \
  && vtysh --help > /dev/null && echo "vtysh from $(apk info -e -v frr) OK" \
  && echo "venv layout OK (neutron in /var/lib/openstack)"
 
