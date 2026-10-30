@@ -184,6 +184,12 @@ RUN SP=$(PYTHONDONTWRITEBYTECODE=1 /var/lib/openstack/bin/python3 -c "import sys
 #     for EVPN router ports (upstream schedules among every gateway chassis)
 #     (fork commit fa9298c0c8 on fivetime/openstack-neutron
 #     evpn-gateway-chassis-rebase, rebased onto the upstream scheduler).
+#   neutron/0002-ovn-live-migration-wait-per-port.patch -- the wait for the
+#     destination chassis nb_cfg during a live migration is keyed by port, so
+#     an instance with two ports claimed on the same chassis gets both set UP
+#     (the second wait used to equal the first and was dropped, nova timed out
+#     on network-vif-plugged) (fork commit 1af387eb3a on
+#     fivetime/openstack-neutron fix/ovn-lm-wait-per-port).
 #   pyroute2/0001-bridge-accept-24-bit-tunnel-ids.patch -- vlan_tunnel_info
 #     silently dropped tunnel ids (VNIs) above 4094, so the OVN agent's EVPN
 #     SVD got no VLAN-to-VNI mapping and FRR saw no L3 VNI (fivetime/pyroute2
