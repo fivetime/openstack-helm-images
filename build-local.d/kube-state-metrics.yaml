@@ -1,0 +1,11 @@
+- job:
+    name: build-local-kube-state-metrics
+    vars:
+      container_images:
+        - context: kube-state-metrics
+          repository: openstackhelm/kube-state-metrics
+          container_filename: Dockerfile
+          arch: [linux/amd64, linux/arm64]
+          tags: [latest, v2.20.0-ds-update-strategy]
+          build_args:
+            - KUBE_STATE_METRICS_REF=1f1aa3cc20c90ff005c5950d43c774432321189d
