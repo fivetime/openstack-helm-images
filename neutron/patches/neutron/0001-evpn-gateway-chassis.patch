@@ -1,8 +1,8 @@
 diff --git a/neutron/common/ovn/constants.py b/neutron/common/ovn/constants.py
-index 971ac7a03a..b58339e23d 100644
+index aac12d3c7a..5bddf2b10b 100644
 --- a/neutron/common/ovn/constants.py
 +++ b/neutron/common/ovn/constants.py
-@@ -473,6 +473,7 @@ OVN_CMS_OPTIONS = 'ovn-cms-options'
+@@ -476,6 +476,7 @@ OVN_CMS_OPTIONS = 'ovn-cms-options'
  OVN_BRIDGE_MAPPINGS = 'ovn-bridge-mappings'
  CMS_OPT_CHASSIS_AS_GW = 'enable-chassis-as-gw'
  CMS_OPT_CHASSIS_AS_EXTPORT_HOST = 'enable-chassis-as-extport-host'
@@ -11,10 +11,10 @@ index 971ac7a03a..b58339e23d 100644
  CMS_OPT_CARD_SERIAL_NUMBER = 'card-serial-number'
  
 diff --git a/neutron/common/ovn/utils.py b/neutron/common/ovn/utils.py
-index 4ac8fc04a8..dda84e5468 100644
+index fb3806a198..a873386b56 100644
 --- a/neutron/common/ovn/utils.py
 +++ b/neutron/common/ovn/utils.py
-@@ -940,6 +940,12 @@ def is_extport_host_chassis(chassis):
+@@ -941,6 +941,12 @@ def is_extport_host_chassis(chassis):
              get_ovn_cms_options(chassis))
  
  
@@ -28,79 +28,110 @@ index 4ac8fc04a8..dda84e5468 100644
      """Return a list of port's capabilities"""
      return port.get(portbindings.PROFILE, {}).get(constants.PORT_CAP_PARAM, [])
 diff --git a/neutron/plugins/ml2/drivers/ovn/mech_driver/ovsdb/api.py b/neutron/plugins/ml2/drivers/ovn/mech_driver/ovsdb/api.py
-index 47b9934123..f1226358fa 100644
+index 47b9934123..af7d3c089e 100644
 --- a/neutron/plugins/ml2/drivers/ovn/mech_driver/ovsdb/api.py
 +++ b/neutron/plugins/ml2/drivers/ovn/mech_driver/ovsdb/api.py
-@@ -650,6 +650,22 @@ class SbAPI(api.API, metaclass=abc.ABCMeta):
+@@ -650,6 +650,24 @@ class SbAPI(api.API, metaclass=abc.ABCMeta):
          value. And hostname and physnets are related to the same host.
          """
  
 +    @abc.abstractmethod
-+    def get_evpn_gateway_chassis(self):
-+        """Get the names of the chassis that can host EVPN router ports.
++    def get_evpn_gateway_chassis_with_az_filter(self, az_hints=None):
++        """Get the chassis that can host EVPN router ports.
 +
-+        An EVPN router port needs the EVPN pieces on the chassis it is bound
-+        to (the OVN agent's ovn-evpn extension and a BGP speaker), which not
-+        every gateway chassis has. Chassis marked with
++        An EVPN router port needs the OVN agent with the ovn-evpn extension
++        and a BGP speaker on the chassis it is bound to, which a deployment
++        may have on only some of its gateway chassis. Those chassis add
++        enable-chassis-as-evpn-gw to their ovn-cms-options, next to
++        enable-chassis-as-gw.
 +
-+        ovs-vsctl set open .
-+           external_ids:ovn-cms-options="enable-chassis-as-evpn-gw"
++        Only the gateway chassis that set enable-chassis-as-evpn-gw are
++        eligible.
 +
-+        are returned when there is at least one; otherwise every gateway
-+        chassis (enable-chassis-as-gw) is returned, as before this option
-+        existed.
++        :param az_hints: availability zone hints of the router.
++        :returns: tuple (eligible chassis names, the names among them that
++                  match az_hints, or all of them when there are no hints).
 +        """
 +
      @abc.abstractmethod
      def get_gateway_chassis_from_cms_options(self, name_only=True):
          """Get chassis eligible for external connectivity from CMS options.
 diff --git a/neutron/plugins/ml2/drivers/ovn/mech_driver/ovsdb/impl_idl_ovn.py b/neutron/plugins/ml2/drivers/ovn/mech_driver/ovsdb/impl_idl_ovn.py
-index f44d312b14..25e7b2996b 100644
+index f44d312b14..e3cc0759d3 100644
 --- a/neutron/plugins/ml2/drivers/ovn/mech_driver/ovsdb/impl_idl_ovn.py
 +++ b/neutron/plugins/ml2/drivers/ovn/mech_driver/ovsdb/impl_idl_ovn.py
-@@ -1080,6 +1080,14 @@ class OvsdbSbOvnIdl(sb_impl_idl.OvnSbApiIdlImpl, Backend):
-                 for ch in self.chassis_list().execute(check_error=True)
-                 if utils.is_gateway_chassis(ch)]
+@@ -1096,19 +1096,29 @@ class OvsdbSbOvnIdl(sb_impl_idl.OvnSbApiIdlImpl, Backend):
+             chassis_azs[ch.name] = utils.get_chassis_availability_zones(ch)
+         return chassis_azs
  
-+    def get_evpn_gateway_chassis(self):
-+        chassis = self.chassis_list().execute(check_error=True)
-+        evpn_gw = [ch.name for ch in chassis
-+                   if utils.is_evpn_gateway_chassis(ch)]
-+        if evpn_gw:
-+            return evpn_gw
-+        return [ch.name for ch in chassis if utils.is_gateway_chassis(ch)]
+-    def get_gateway_chassis_with_az_filter(self, az_hints=None):
++    @staticmethod
++    def _filter_chassis_by_az(chassis, az_hints):
+         az_hints = set(az_hints) if az_hints else set()
+-        gw_chassis = set()
++        names = set()
+         candidates = set()
+-        for ch in self.chassis_list().execute(check_error=True):
+-            if not utils.is_gateway_chassis(ch):
+-                continue
+-            gw_chassis.add(ch.name)
++        for ch in chassis:
++            names.add(ch.name)
+             if not az_hints:
+                 candidates.add(ch.name)
+             elif az_hints & utils.get_chassis_availability_zones(ch):
+                 candidates.add(ch.name)
+-        return gw_chassis, candidates
++        return names, candidates
 +
-     def get_extport_chassis_from_cms_options(self):
-         return [ch for ch in self.chassis_list().execute(check_error=True)
-                 if utils.is_extport_host_chassis(ch)]
++    def get_gateway_chassis_with_az_filter(self, az_hints=None):
++        chassis = self.chassis_list().execute(check_error=True)
++        return self._filter_chassis_by_az(
++            [ch for ch in chassis if utils.is_gateway_chassis(ch)], az_hints)
++
++    def get_evpn_gateway_chassis_with_az_filter(self, az_hints=None):
++        chassis = self.chassis_list().execute(check_error=True)
++        return self._filter_chassis_by_az(
++            [ch for ch in chassis if utils.is_gateway_chassis(ch) and
++             utils.is_evpn_gateway_chassis(ch)], az_hints)
+ 
+     def get_all_chassis(self, chassis_type=None):
+         # TODO(azbiswas): Use chassis_type as input once the compute type
 diff --git a/neutron/services/evpn/db_sync.py b/neutron/services/evpn/db_sync.py
-index 9cfd7cdfa7..3d805dd100 100644
+index 6ef6ee2ba3..1d3c234f2f 100644
 --- a/neutron/services/evpn/db_sync.py
 +++ b/neutron/services/evpn/db_sync.py
-@@ -232,8 +232,7 @@ class EvpnOvnSynchronizer(db_sync_base.BaseOvnDbSynchronizer):
- 
-         repair = self.mode == n_lib_ovn_const.OVN_DB_SYNC_MODE_REPAIR
-         if repair:
--            gw_chassis = (
--                self.ovn_sb_api.get_gateway_chassis_from_cms_options())
-+            gw_chassis = self.ovn_sb_api.get_evpn_gateway_chassis()
-             syncer = EvpnRepairSynchronizer(self.ovn_nb_api, gw_chassis)
-         else:
-             syncer = EvpnLoggingSynchronizer()
+@@ -84,7 +84,7 @@ class EvpnRepairSynchronizer(EvpnLoggingSynchronizer):
+         LOG.warning("Repairing EVPN topology for router %s",
+                     router_id)
+         gw_ch_candidates_tuple = (
+-            self.ovn_sb_api.get_gateway_chassis_with_az_filter(
++            self.ovn_sb_api.get_evpn_gateway_chassis_with_az_filter(
+                 az_hints=inst.get('availability_zone_hints', [])))
+         ordered_chassis = self._scheduler.select(
+             candidates=gw_ch_candidates_tuple[1],
 diff --git a/neutron/services/evpn/plugin.py b/neutron/services/evpn/plugin.py
-index 5c8903a44a..56a684e54a 100644
+index 4cdc80011b..462fba28d7 100644
 --- a/neutron/services/evpn/plugin.py
 +++ b/neutron/services/evpn/plugin.py
-@@ -157,6 +157,12 @@ class EVPNPlugin(service_base.ServicePluginBase):
+@@ -156,7 +156,7 @@ class EVPNPlugin(service_base.ServicePluginBase):
+         vlan = self._evpn_db.get_vlan_for_router(payload.context, router_id)
+ 
          gw_chassis, candidates = (
-             self._sb_idl.get_gateway_chassis_with_az_filter(
+-            self._sb_idl.get_gateway_chassis_with_az_filter(
++            self._sb_idl.get_evpn_gateway_chassis_with_az_filter(
                  az_hints=router.get('availability_zone_hints', [])))
-+        # Only chassis with the EVPN pieces can host the VRF: when some
-+        # chassis are marked enable-chassis-as-evpn-gw, schedule among them
-+        # (every gateway chassis otherwise, see get_evpn_gateway_chassis).
-+        evpn_gw_chassis = set(self._sb_idl.get_evpn_gateway_chassis())
-+        gw_chassis &= evpn_gw_chassis
-+        candidates &= evpn_gw_chassis
  
          hcg_load = self._compute_hcg_primary_load(chassis_names=gw_chassis)
-         scheduler = evpn_scheduler.LeastLoadedChassisScheduler(hcg_load)
+@@ -165,8 +165,9 @@ class EVPNPlugin(service_base.ServicePluginBase):
+             candidates=candidates, max_chassis=ovn_const.MAX_GW_CHASSIS)
+         if not ordered_chassis:
+             LOG.warning("No gateway chassis available for EVPN router %s. "
+-                        "The VRF will remain unhosted until chassis "
+-                        "matching the requested AZ hints become available.",
++                        "The VRF will remain unhosted until gateway chassis "
++                        "with enable-chassis-as-evpn-gw matching the "
++                        "requested AZ hints become available.",
+                         router_id)
+ 
+         with self._nb_idl.transaction(check_error=True) as txn:

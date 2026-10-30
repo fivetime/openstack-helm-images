@@ -1,5 +1,5 @@
 diff --git a/neutron/plugins/ml2/drivers/ovn/mech_driver/ovsdb/ovsdb_monitor.py b/neutron/plugins/ml2/drivers/ovn/mech_driver/ovsdb/ovsdb_monitor.py
-index 1b0c751cf6..e740ee5f52 100644
+index 1c4fdee887..25a0a03ee0 100644
 --- a/neutron/plugins/ml2/drivers/ovn/mech_driver/ovsdb/ovsdb_monitor.py
 +++ b/neutron/plugins/ml2/drivers/ovn/mech_driver/ovsdb/ovsdb_monitor.py
 @@ -258,6 +258,16 @@ class WaitForChassisNbCfgEvent(utils.TimedOnetimeEvent):
