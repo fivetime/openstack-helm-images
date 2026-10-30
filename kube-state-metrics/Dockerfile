@@ -15,7 +15,7 @@ WORKDIR /src
 # like the upstream image.
 RUN --mount=type=cache,target=/go/pkg/mod --mount=type=cache,target=/root/.cache/go-build \
     make build-local \
- && ./kube-state-metrics --version 2>&1 | grep -q "revision: $(git rev-parse --short HEAD)" \
+ && ./kube-state-metrics version 2>&1 | grep -q "revision: $(git rev-parse --short HEAD)" \
  && mkdir -p /out/etc/image_info && echo "${KUBE_STATE_METRICS_REF}" > /out/etc/image_info/kube-state-metrics.txt
 
 FROM gcr.io/distroless/static-debian13:latest
