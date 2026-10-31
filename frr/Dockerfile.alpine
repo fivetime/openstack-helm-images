@@ -31,6 +31,23 @@ RUN apk add --no-cache --update-cache git \
  && git clone --quiet --depth 1 --branch frr-${FRR_VERSION} \
         https://github.com/FRRouting/frr.git /src \
  && test "$(git -C /src rev-parse HEAD)" = "${FRR_COMMIT}"
+# Fixes carried until an FRR release has them, applied before `make dist` so
+# the APKs are built from the patched source; a patch that stops applying
+# fails the build on purpose:
+#   0001-zebra-read-kernel-route-notifications-in-order-with-link-events.patch
+#     -- FRRouting/frr#23480 backported to 10.7.1 (master fixed it with
+#     #23356, in no 10.x release). zebra could handle a route added to a VRF
+#     table right after the VRF was created before the VRF itself, file it
+#     under the default VRF and never redistribute it into the VRF's BGP
+#     instance (FRRouting/frr#18041). ovn-controller creates the VRF of an
+#     EVPN router and installs its routes back to back, so a gateway that
+#     took over a router sometimes advertised none of its routes, and the
+#     misfiled routes stayed in zebra after the router was deleted.
+COPY patches/ /patches/
+RUN for p in /patches/*.patch; do \
+        echo "applying ${p##*/}"; \
+        git -C /src apply --verbose "${p}" || exit 1; \
+    done
 # APKBUILD.in leaves libyang out of makedepends: FRR's own image builds and
 # installs a libyang APK beforehand. Here it is Alpine's, so add it.
 RUN source /src/alpine/APKBUILD.in \
@@ -81,5 +98,6 @@ RUN apk add --no-cache --update-cache tini \
  && vtysh --help > /dev/null \
  && /usr/lib/frr/bgpd --version | grep -q "version ${FRR_VERSION}" \
  && echo "FRR ${FRR_VERSION} OK"
+COPY patches/ /usr/share/doc/frr-patches/
 ENTRYPOINT ["/sbin/tini", "--"]
 CMD ["/usr/lib/frr/docker-start"]
