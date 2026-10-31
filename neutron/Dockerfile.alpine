@@ -286,7 +286,7 @@ RUN export PYTHONDONTWRITEBYTECODE=1 \
  && python3 -c "import ovs.dns_resolve as d; assert getattr(d, '_ovnic_dns_patched', False); print('DNS patch active')" \
  && python3 -c "from neutron.common.ovn import constants as c; from neutron.plugins.ml2.drivers.ovn.mech_driver.ovsdb import impl_idl_ovn as i; assert c.CMS_OPT_CHASSIS_AS_EVPN_GW == 'enable-chassis-as-evpn-gw'; assert hasattr(i.OvsdbSbOvnIdl, 'get_evpn_gateway_chassis_with_az_filter'); print('EVPN gateway chassis patch active')" \
  && python3 -c "from neutron.plugins.ml2.drivers.ovn.mech_driver.ovsdb import ovsdb_monitor as m; assert 'key' in vars(m.WaitForChassisNbCfgEvent); print('live migration wait-per-port patch active')" \
- && python3 -c "import inspect; from neutron.privileged.agent.linux import svd as s; assert inspect.getsource(s.del_vni).count('_del_vlan_filter(') == 3; print('SVD VNI-mapping-first patch active')" \
+ && python3 -c "import ast; from neutron.privileged.agent.linux import svd as s; src = open(s.__file__).read(); f = [n for n in ast.parse(src).body if getattr(n, 'name', '') == 'del_vni'][0]; assert ast.get_source_segment(src, f).count('_del_vlan_filter(') == 3; print('SVD VNI-mapping-first patch active')" \
  && vtysh --help > /dev/null && echo "vtysh from $(apk info -e -v frr) OK" \
  && echo "venv layout OK (neutron in /var/lib/openstack)"
 
