@@ -190,6 +190,12 @@ RUN SP=$(PYTHONDONTWRITEBYTECODE=1 /var/lib/openstack/bin/python3 -c "import sys
 #     (the second wait used to equal the first and was dropped, nova timed out
 #     on network-vif-plugged) (bug 2172645; fork commit 99a830fa57 on
 #     fivetime/openstack-neutron fix/ovn-lm-wait-per-port).
+#   neutron/0003-evpn-svd-remove-vni-mapping-before-vlan.patch -- the OVN
+#     agent's SVD removes a VNI's tunnel mapping in its own request before
+#     the VLAN; removing both in one request left FRR's zebra with the VNI as
+#     an L2 VNI after every deprovision, still advertising a Type-3 route
+#     (fork commit c255ad791e on fivetime/openstack-neutron
+#     fix/evpn-svd-del-tunnel-first).
 #   pyroute2/0001-bridge-accept-24-bit-tunnel-ids.patch -- vlan_tunnel_info
 #     silently dropped tunnel ids (VNIs) above 4094, so the OVN agent's EVPN
 #     SVD got no VLAN-to-VNI mapping and FRR saw no L3 VNI (fivetime/pyroute2
@@ -280,6 +286,7 @@ RUN export PYTHONDONTWRITEBYTECODE=1 \
  && python3 -c "import ovs.dns_resolve as d; assert getattr(d, '_ovnic_dns_patched', False); print('DNS patch active')" \
  && python3 -c "from neutron.common.ovn import constants as c; from neutron.plugins.ml2.drivers.ovn.mech_driver.ovsdb import impl_idl_ovn as i; assert c.CMS_OPT_CHASSIS_AS_EVPN_GW == 'enable-chassis-as-evpn-gw'; assert hasattr(i.OvsdbSbOvnIdl, 'get_evpn_gateway_chassis_with_az_filter'); print('EVPN gateway chassis patch active')" \
  && python3 -c "from neutron.plugins.ml2.drivers.ovn.mech_driver.ovsdb import ovsdb_monitor as m; assert 'key' in vars(m.WaitForChassisNbCfgEvent); print('live migration wait-per-port patch active')" \
+ && python3 -c "import inspect; from neutron.privileged.agent.linux import svd as s; assert inspect.getsource(s.del_vni).count('_del_vlan_filter(') == 3; print('SVD VNI-mapping-first patch active')" \
  && vtysh --help > /dev/null && echo "vtysh from $(apk info -e -v frr) OK" \
  && echo "venv layout OK (neutron in /var/lib/openstack)"
 
