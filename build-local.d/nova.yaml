@@ -73,7 +73,7 @@
             - 2026.2-alpine_3.24
           build_args:
             - NOVA_REF=8df1922926ddf949d681e10670dba7bc731701d3
-            - NOVA_KATA_REF=9d09cfdf195a3654cea458f4ea4eb471accab28c
+            - NOVA_KATA_REF=97d5063befaaab7d390e011aadc7c9e7dc1c414e
             - REQUIREMENTS_REF=bab6cd8e3b9a5ac61b98aa7016c7d98b3000a8ac
 
 - job:
@@ -87,8 +87,8 @@
           arch:
             - linux/amd64
           tags:
-            - 2026.2-20261029
+            - 2026.2-20261031
           build_args:
-            - NOVA_KATA_REF=5ed053db2be21749b6a91df012c95a363456dc3b
-            - NOVA_KATA_BUNDLE_TAG=20261029
-            - NOVA_KATA_BUNDLE_SHA256=ae3c0641868e85f05a07e57042a25f8c1bcb3152973784fb1297dd6f340517a5
+            - NOVA_KATA_REF=97d5063befaaab7d390e011aadc7c9e7dc1c414e
+            - NOVA_KATA_BUNDLE_TAG=20261031
+            - NOVA_KATA_BUNDLE_SHA256=a7d47bdd86af98c9f8bc0f6b6f24d881391cbcf12740fdd3fdd2042c10a34a30
