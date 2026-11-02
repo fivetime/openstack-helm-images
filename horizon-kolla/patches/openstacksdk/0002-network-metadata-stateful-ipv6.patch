@@ -1,0 +1,18 @@
+diff --git a/openstack/network/v2/network.py b/openstack/network/v2/network.py
+index ab4aef2..6c25e01 100644
+--- a/openstack/network/v2/network.py
++++ b/openstack/network/v2/network.py
+@@ -74,6 +74,13 @@ class Network(_base.NetworkResource, _base.TagMixinNetwork):
+     #: the network, which is ``True`` or ``False``. *Type: bool*
+     #: Available with the ``network-internal-dns`` extension.
+     is_internal_dns_enabled = resource.Body('internal_dns_enabled', type=bool)
++    #: Whether the metadata port gets an address on the IPv6 subnets of the
++    #: network whose addresses are not assigned automatically, which is
++    #: ``True`` or ``False``. *Type: bool*
++    #: Available with the ``network-metadata-stateful-ipv6`` extension.
++    is_metadata_stateful_ipv6_address = resource.Body(
++        'metadata_stateful_ipv6_address', type=bool
++    )
+     #: Whether or not this is the default external network.
+     #: *Type: bool*
+     is_default = resource.Body('is_default', type=bool)
