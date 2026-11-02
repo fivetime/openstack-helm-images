@@ -1,0 +1,89 @@
+diff --git a/neutron_lib/api/definitions/__init__.py b/neutron_lib/api/definitions/__init__.py
+index 7442eead..699d5462 100644
+--- a/neutron_lib/api/definitions/__init__.py
++++ b/neutron_lib/api/definitions/__init__.py
+@@ -84,6 +84,7 @@ from neutron_lib.api.definitions import network
+ from neutron_lib.api.definitions import network_availability_zone
+ from neutron_lib.api.definitions import network_cascade_delete
+ from neutron_lib.api.definitions import network_ha
++from neutron_lib.api.definitions import network_internal_dns
+ from neutron_lib.api.definitions import network_ip_availability
+ from neutron_lib.api.definitions import network_ip_availability_details
+ from neutron_lib.api.definitions import network_mtu
+@@ -256,6 +257,7 @@ _ALL_API_DEFINITIONS = {
+     network_availability_zone,
+     network_cascade_delete,
+     network_ha,
++    network_internal_dns,
+     network_ip_availability,
+     network_ip_availability_details,
+     network_mtu,
+diff --git a/neutron_lib/api/definitions/base.py b/neutron_lib/api/definitions/base.py
+index 110894b1..3c13cd92 100644
+--- a/neutron_lib/api/definitions/base.py
++++ b/neutron_lib/api/definitions/base.py
+@@ -30,6 +30,7 @@ KNOWN_ATTRIBUTES = (
+     'gateway_ip',
+     'host_routes',
+     'id',
++    'internal_dns_enabled',
+     'ip_version',
+     'ipv6_address_mode',
+     'ipv6_ra_mode',
+diff --git a/neutron_lib/api/definitions/network_internal_dns.py b/neutron_lib/api/definitions/network_internal_dns.py
+new file mode 100644
+index 00000000..16d26b43
+--- /dev/null
++++ b/neutron_lib/api/definitions/network_internal_dns.py
+@@ -0,0 +1,51 @@
++#    Licensed under the Apache License, Version 2.0 (the "License"); you may
++#    not use this file except in compliance with the License. You may obtain
++#    a copy of the License at
++#
++#         http://www.apache.org/licenses/LICENSE-2.0
++#
++#    Unless required by applicable law or agreed to in writing, software
++#    distributed under the License is distributed on an "AS IS" BASIS, WITHOUT
++#    WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. See the
++#    License for the specific language governing permissions and limitations
++#    under the License.
++
++from neutron_lib.api import converters
++from neutron_lib.api.definitions import network
++from neutron_lib.types import (
++    ActionMap,
++    ResourceAttributeMap,
++    SubResourceAttributeMap,
++)
++
++
++ALIAS = 'network-internal-dns'
++IS_SHIM_EXTENSION = False
++IS_STANDARD_ATTR_EXTENSION = False
++NAME = 'Network Internal DNS'
++API_PREFIX = ''
++DESCRIPTION = 'Per-network enable/disable of the internal DNS resolution.'
++UPDATED_TIMESTAMP = '2026-11-01T10:00:00-00:00'
++RESOURCE_NAME = network.RESOURCE_NAME
++COLLECTION_NAME = network.COLLECTION_NAME
++
++INTERNAL_DNS_ENABLED = 'internal_dns_enabled'
++
++RESOURCE_ATTRIBUTE_MAP: ResourceAttributeMap = {
++    COLLECTION_NAME: {
++        INTERNAL_DNS_ENABLED: {
++            'allow_post': True,
++            'allow_put': True,
++            'is_visible': True,
++            'default': True,
++            'convert_to': converters.convert_to_boolean,
++            'enforce_policy': True,
++        },
++    }
++}
++
++SUB_RESOURCE_ATTRIBUTE_MAP: SubResourceAttributeMap = {}
++ACTION_MAP: ActionMap = {}
++REQUIRED_EXTENSIONS = []
++OPTIONAL_EXTENSIONS = []
++ACTION_STATUS = {}

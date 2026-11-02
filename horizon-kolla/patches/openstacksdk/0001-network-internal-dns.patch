@@ -1,0 +1,15 @@
+diff --git a/openstack/network/v2/network.py b/openstack/network/v2/network.py
+index 12a77fa..ab4aef2 100644
+--- a/openstack/network/v2/network.py
++++ b/openstack/network/v2/network.py
+@@ -70,6 +70,10 @@ class Network(_base.NetworkResource, _base.TagMixinNetwork):
+     #: The administrative state of the network, which is up ``True`` or
+     #: down ``False``. *Type: bool*
+     is_admin_state_up = resource.Body('admin_state_up', type=bool)
++    #: Whether the names of the ports of the network are resolved from within
++    #: the network, which is ``True`` or ``False``. *Type: bool*
++    #: Available with the ``network-internal-dns`` extension.
++    is_internal_dns_enabled = resource.Body('internal_dns_enabled', type=bool)
+     #: Whether or not this is the default external network.
+     #: *Type: bool*
+     is_default = resource.Body('is_default', type=bool)

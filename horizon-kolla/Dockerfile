@@ -420,4 +420,18 @@ RUN curl -fsSL -o /tmp/horizon-fix.patch \
          openstack_dashboard/api openstack_dashboard/dashboards/project/volumes \
          openstack_dashboard/dashboards/admin/volumes \
     && rm -f /tmp/horizon-fix.patch
+
+# The per-network internal DNS option, until upstream changes 1013445 (horizon)
+# and 1013442 (openstacksdk) merge. openstacksdk drops the attributes it does
+# not know, so the form needs both. A patch that stops applying fails the build.
+COPY horizon-kolla/patches/ /tmp/horizon-patches/
+RUN cd "$(echo /var/lib/kolla/venv/lib/python3.*/site-packages)" \
+    && git apply --verbose /tmp/horizon-patches/horizon/0001-network-internal-dns.patch \
+    && git apply --verbose /tmp/horizon-patches/openstacksdk/0001-network-internal-dns.patch \
+    && grep -q internal_dns openstack_dashboard/dashboards/project/networks/workflows.py \
+    && grep -q is_internal_dns_enabled openstack/network/v2/network.py \
+    && /var/lib/kolla/venv/bin/python3 -m compileall -q \
+         openstack_dashboard/dashboards/project/networks \
+         openstack_dashboard/dashboards/admin/networks openstack/network/v2 \
+    && rm -rf /tmp/horizon-patches
 USER horizon

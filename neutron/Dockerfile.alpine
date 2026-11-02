@@ -196,6 +196,11 @@ RUN SP=$(PYTHONDONTWRITEBYTECODE=1 /var/lib/openstack/bin/python3 -c "import sys
 #     an L2 VNI after every deprovision, still advertising a Type-3 route
 #     (fork commit c255ad791e on fivetime/openstack-neutron
 #     fix/evpn-svd-del-tunnel-first).
+#   neutron/0004-network-internal-dns.patch and
+#   neutron_lib/0001-network-internal-dns.patch -- the per-network
+#     internal_dns_enabled attribute (upstream changes 1013443 patch set 2 and
+#     1013441). The ML2 driver's entry point is added to the dist-info below,
+#     as pyproject.toml is not installed.
 #   pyroute2/0001-bridge-accept-24-bit-tunnel-ids.patch -- vlan_tunnel_info
 #     silently dropped tunnel ids (VNIs) above 4094, so the OVN agent's EVPN
 #     SVD got no VLAN-to-VNI mapping and FRR saw no L3 VNI (fivetime/pyroute2
@@ -205,6 +210,7 @@ RUN SP=$(PYTHONDONTWRITEBYTECODE=1 /var/lib/openstack/bin/python3 -c "import sys
 # the code, so the patch has to be rebased (or dropped once merged).
 COPY neutron/patches/neutron/ /tmp/patches/neutron/
 COPY neutron/patches/pyroute2/ /tmp/patches/pyroute2/
+COPY neutron/patches/neutron_lib/ /tmp/patches/neutron_lib/
 
 # vtysh, which the OVN agent's ovn-evpn extension runs (through privsep)
 # against the FRR of the chart's daemonset_ovn_evpn_frr. It is the frr APK the
@@ -224,6 +230,7 @@ RUN apk add --no-cache --virtual .patch-deps patch \
         echo "${project} patch ${p##*/}" >> /etc/image_info/patches.txt; \
         find "${SP}/${project}" -type d -name '__pycache__' -prune -exec rm -rf {} +; \
     done \
+ && sed -i '/^\[neutron.ml2.extension_drivers\]/a network_internal_dns = neutron.plugins.ml2.extensions.network_internal_dns:NetworkInternalDnsExtensionDriver' "${SP}"/neutron-*.dist-info/entry_points.txt \
  && apk del .patch-deps \
  && rm -rf /tmp/patches /var/cache/apk/*
 
@@ -287,6 +294,7 @@ RUN export PYTHONDONTWRITEBYTECODE=1 \
  && python3 -c "from neutron.common.ovn import constants as c; from neutron.plugins.ml2.drivers.ovn.mech_driver.ovsdb import impl_idl_ovn as i; assert c.CMS_OPT_CHASSIS_AS_EVPN_GW == 'enable-chassis-as-evpn-gw'; assert hasattr(i.OvsdbSbOvnIdl, 'get_evpn_gateway_chassis_with_az_filter'); print('EVPN gateway chassis patch active')" \
  && python3 -c "from neutron.plugins.ml2.drivers.ovn.mech_driver.ovsdb import ovsdb_monitor as m; assert 'key' in vars(m.WaitForChassisNbCfgEvent); print('live migration wait-per-port patch active')" \
  && python3 -c "import ast; from neutron.privileged.agent.linux import svd as s; src = open(s.__file__).read(); f = [n for n in ast.parse(src).body if getattr(n, 'name', '') == 'del_vni'][0]; assert ast.get_source_segment(src, f).count('_del_vlan_filter(') == 3; print('SVD VNI-mapping-first patch active')" \
+ && python3 -c "from importlib.metadata import entry_points as e; assert 'network_internal_dns' in {x.name for x in e(group='neutron.ml2.extension_drivers')}; from neutron_lib.api.definitions import network_internal_dns as d; from neutron.common.ovn import extensions as x; assert d.ALIAS in x.ML2_SUPPORTED_API_EXTENSIONS; from neutron.plugins.ml2.extensions import network_internal_dns; print('network-internal-dns patch active')" \
  && vtysh --help > /dev/null && echo "vtysh from $(apk info -e -v frr) OK" \
  && echo "venv layout OK (neutron in /var/lib/openstack)"
 
