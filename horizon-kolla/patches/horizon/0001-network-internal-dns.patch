@@ -1,0 +1,229 @@
+diff --git a/openstack_dashboard/conf/neutron_policy.yaml b/openstack_dashboard/conf/neutron_policy.yaml
+index 4f1a87574..c53ab44af 100644
+--- a/openstack_dashboard/conf/neutron_policy.yaml
++++ b/openstack_dashboard/conf/neutron_policy.yaml
+@@ -1075,6 +1075,10 @@
+ # since W in favor of "create_network:is_default":"rule:admin_only".
+ # The network API now supports system scope and default roles.
+ 
++# Specify ``internal_dns_enabled`` attribute when creating a network
++# POST  /networks
++#"create_network:internal_dns_enabled": "(rule:admin_only) or (role:member and project_id:%(project_id)s)"
++
+ # Specify ``port_security_enabled`` attribute when creating a network
+ # POST  /networks
+ # Intended scope(s): project
+@@ -1322,6 +1326,10 @@
+ # since W in favor of "update_network:is_default":"rule:admin_only".
+ # The network API now supports system scope and default roles.
+ 
++# Specify ``internal_dns_enabled`` attribute when updating a network
++# PUT  /networks/{id}
++#"update_network:internal_dns_enabled": "(rule:admin_only) or (role:member and project_id:%(project_id)s)"
++
+ # Update ``port_security_enabled`` attribute of a network
+ # PUT  /networks/{id}
+ # Intended scope(s): project
+diff --git a/openstack_dashboard/dashboards/admin/networks/forms.py b/openstack_dashboard/dashboards/admin/networks/forms.py
+index 00a3a3ae1..5bceb6d73 100644
+--- a/openstack_dashboard/dashboards/admin/networks/forms.py
++++ b/openstack_dashboard/dashboards/admin/networks/forms.py
+@@ -157,6 +157,14 @@ class CreateNetwork(forms.SelfHandlingForm):
+         help_text=_("Maximum Transmission Unit. "
+                     "Minimum is 68 bytes for the IPv4 subnet "
+                     "and 1280 bytes for the IPv6 subnet."))
++    internal_dns = forms.BooleanField(
++        label=_("Internal DNS"),
++        initial=True,
++        required=False,
++        help_text=_("If checked, the names of the ports of the network are "
++                    "resolved from within the network. Uncheck it when the "
++                    "instances only use a DNS service reachable from the "
++                    "network."))
+ 
+     @classmethod
+     def _instantiate(cls, request, *args, **kwargs):
+@@ -171,6 +179,10 @@ class CreateNetwork(forms.SelfHandlingForm):
+                 tenant_choices.append((tenant.id, tenant.name))
+         self.fields['tenant_id'].choices = tenant_choices
+ 
++        if not api.neutron.is_extension_supported(request,
++                                                  'network-internal-dns'):
++            del self.fields['internal_dns']
++
+         try:
+             is_extension_supported = \
+                 api.neutron.is_extension_supported(request, 'provider')
+@@ -296,6 +308,9 @@ class CreateNetwork(forms.SelfHandlingForm):
+                 params['availability_zone_hints'] = data['az_hints']
+             if data['mtu']:
+                 params['mtu'] = data['mtu']
++            # NOTE: an unset value means the field is not in the form.
++            if data.get('internal_dns') is False:
++                params['internal_dns_enabled'] = False
+             network = api.neutron.network_create(request, **params)
+             LOG.debug('Network %s was successfully created.', data['name'])
+             return network
+@@ -358,15 +373,30 @@ class UpdateNetwork(forms.SelfHandlingForm):
+                     "facility that is not managed by "
+                     "Neutron")
+     )
++    internal_dns = forms.BooleanField(
++        label=_("Internal DNS"),
++        required=False,
++        help_text=_("If checked, the names of the ports of the network are "
++                    "resolved from within the network. Uncheck it when the "
++                    "instances only use a DNS service reachable from the "
++                    "network."))
+ 
+     failure_url = 'horizon:admin:networks:index'
+ 
++    def __init__(self, request, *args, **kwargs):
++        super().__init__(request, *args, **kwargs)
++        if self.initial.get('internal_dns') is None:
++            del self.fields['internal_dns']
++
+     def handle(self, request, data):
+         try:
+             params = {'name': data['name'],
+                       'admin_state_up': data['admin_state'],
+                       'shared': data['shared'],
+                       'router:external': data['external']}
++            if ('internal_dns' in self.fields and
++                    data['internal_dns'] != self.initial['internal_dns']):
++                params['internal_dns_enabled'] = data['internal_dns']
+             network = api.neutron.network_update(request,
+                                                  self.initial['network_id'],
+                                                  **params)
+diff --git a/openstack_dashboard/dashboards/admin/networks/views.py b/openstack_dashboard/dashboards/admin/networks/views.py
+index c4c671fba..d61d7a543 100644
+--- a/openstack_dashboard/dashboards/admin/networks/views.py
++++ b/openstack_dashboard/dashboards/admin/networks/views.py
+@@ -162,7 +162,8 @@ class UpdateView(user_views.UpdateView):
+                 'name': network['name'],
+                 'admin_state': network['is_admin_state_up'],
+                 'shared': network['is_shared'],
+-                'external': network['is_router_external']}
++                'external': network['is_router_external'],
++                'internal_dns': network.get('is_internal_dns_enabled')}
+ 
+ 
+ class NetworkDetailsTabs(tabs.DetailTabsGroup):
+diff --git a/openstack_dashboard/dashboards/project/networks/forms.py b/openstack_dashboard/dashboards/project/networks/forms.py
+index d41545407..5d48a866a 100644
+--- a/openstack_dashboard/dashboards/project/networks/forms.py
++++ b/openstack_dashboard/dashboards/project/networks/forms.py
+@@ -43,6 +43,13 @@ class UpdateNetwork(forms.SelfHandlingForm):
+         required=False,
+         help_text=_("Share the network between projects")
+     )
++    internal_dns = forms.BooleanField(
++        label=_("Internal DNS"),
++        required=False,
++        help_text=_("If checked, the names of the ports of the network are "
++                    "resolved from within the network. Uncheck it when the "
++                    "instances only use a DNS service reachable from the "
++                    "network."))
+     failure_url = 'horizon:project:networks:index'
+ 
+     def __init__(self, request, *args, **kwargs):
+@@ -50,6 +57,11 @@ class UpdateNetwork(forms.SelfHandlingForm):
+ 
+         if not policy.check((("network", "update_network:shared"),), request):
+             self.fields['shared'].widget = forms.HiddenInput()
++        if (self.initial.get('internal_dns') is None or
++                not policy.check(
++                    (("network", "update_network:internal_dns_enabled"),),
++                    request)):
++            del self.fields['internal_dns']
+ 
+     def handle(self, request, data):
+         try:
+@@ -60,6 +72,9 @@ class UpdateNetwork(forms.SelfHandlingForm):
+             # change it neutron sends back a 403 error
+             if policy.check((("network", "update_network:shared"),), request):
+                 params['shared'] = data['shared']
++            if ('internal_dns' in self.fields and
++                    data['internal_dns'] != self.initial['internal_dns']):
++                params['internal_dns_enabled'] = data['internal_dns']
+             network = api.neutron.network_update(request,
+                                                  self.initial['network_id'],
+                                                  **params)
+diff --git a/openstack_dashboard/dashboards/project/networks/templates/networks/_detail_overview.html b/openstack_dashboard/dashboards/project/networks/templates/networks/_detail_overview.html
+index 240baf355..3bdba3b79 100644
+--- a/openstack_dashboard/dashboards/project/networks/templates/networks/_detail_overview.html
++++ b/openstack_dashboard/dashboards/project/networks/templates/networks/_detail_overview.html
+@@ -18,6 +18,10 @@
+     <dd>{{ network.is_router_external|yesno|capfirst }}</dd>
+     <dt title="{% trans 'MTU' %}">{% trans "MTU" %}</dt>
+     <dd>{{ network.mtu|default:_("Unknown") }}</dd>
++    {% if network.is_internal_dns_enabled is not None %}
++    <dt title="{% trans 'Internal DNS' %}">{% trans "Internal DNS" %}</dt>
++    <dd>{{ network.is_internal_dns_enabled|yesno|capfirst }}</dd>
++    {% endif %}
+     {% if network.provider_network_type %}
+     <dt title="{% trans 'Provider Network' %}">{% trans "Provider Network" %}</dt>
+     <dd>{% trans "Network Type:" %} {{ network.provider_network_type|default:_("Unknown") }}</dd>
+diff --git a/openstack_dashboard/dashboards/project/networks/views.py b/openstack_dashboard/dashboards/project/networks/views.py
+index c99a6acd4..865e6d235 100644
+--- a/openstack_dashboard/dashboards/project/networks/views.py
++++ b/openstack_dashboard/dashboards/project/networks/views.py
+@@ -128,7 +128,8 @@ class UpdateView(forms.ModalFormView):
+                 'tenant_id': network['tenant_id'],
+                 'name': network['name'],
+                 'admin_state': network['is_admin_state_up'],
+-                'shared': network['is_shared']}
++                'shared': network['is_shared'],
++                'internal_dns': network.get('is_internal_dns_enabled')}
+ 
+ 
+ class DetailView(tabs.TabbedTableView):
+diff --git a/openstack_dashboard/dashboards/project/networks/workflows.py b/openstack_dashboard/dashboards/project/networks/workflows.py
+index 1e76ad0f5..7c695a850 100644
+--- a/openstack_dashboard/dashboards/project/networks/workflows.py
++++ b/openstack_dashboard/dashboards/project/networks/workflows.py
+@@ -72,11 +72,25 @@ class CreateNetworkInfoAction(workflows.Action):
+         help_text=_("Maximum Transmission Unit. "
+                     "Minimum is 68 bytes for the IPv4 subnet "
+                     "and 1280 bytes for the IPv6 subnet."))
++    internal_dns = forms.BooleanField(
++        label=_("Internal DNS"),
++        initial=True,
++        required=False,
++        help_text=_("If checked, the names of the ports of the network are "
++                    "resolved from within the network. Uncheck it when the "
++                    "instances only use a DNS service reachable from the "
++                    "network."))
+ 
+     def __init__(self, request, *args, **kwargs):
+         super().__init__(request, *args, **kwargs)
+         if not policy.check((("network", "create_network:shared"),), request):
+             self.fields['shared'].widget = forms.HiddenInput()
++        internal_dns_rule = (("network",
++                              "create_network:internal_dns_enabled"),)
++        if not (api.neutron.is_extension_supported(request,
++                                                   'network-internal-dns') and
++                policy.check(internal_dns_rule, request)):
++            del self.fields['internal_dns']
+         try:
+             if api.neutron.is_extension_supported(request,
+                                                   'network_availability_zone'):
+@@ -101,7 +115,7 @@ class CreateNetworkInfoAction(workflows.Action):
+ class CreateNetworkInfo(workflows.Step):
+     action_class = CreateNetworkInfoAction
+     contributes = ("net_name", "admin_state", "with_subnet", "shared",
+-                   "az_hints", "mtu")
++                   "az_hints", "mtu", "internal_dns")
+ 
+ 
+ class CreateSubnetInfoAction(workflows.Action):
+@@ -494,6 +508,9 @@ class CreateNetwork(workflows.Workflow):
+                 params['availability_zone_hints'] = data['az_hints']
+             if data['mtu']:
+                 params['mtu'] = data['mtu']
++            # NOTE: an unset value means the field is not in the form.
++            if data.get('internal_dns') is False:
++                params['internal_dns_enabled'] = False
+             network = api.neutron.network_create(request, **params)
+             self.context['net_id'] = network.id
+             LOG.debug('Network "%s" was successfully created.',
