@@ -1,0 +1,238 @@
+diff --git a/openstack_dashboard/conf/neutron_policy.yaml b/openstack_dashboard/conf/neutron_policy.yaml
+index c53ab44af..e908b4b63 100644
+--- a/openstack_dashboard/conf/neutron_policy.yaml
++++ b/openstack_dashboard/conf/neutron_policy.yaml
+@@ -1079,6 +1079,10 @@
+ # POST  /networks
+ #"create_network:internal_dns_enabled": "(rule:admin_only) or (role:member and project_id:%(project_id)s)"
+ 
++# Specify ``metadata_stateful_ipv6_address`` attribute when creating a network
++# POST  /networks
++#"create_network:metadata_stateful_ipv6_address": "(rule:admin_only) or (role:member and project_id:%(project_id)s)"
++
+ # Specify ``port_security_enabled`` attribute when creating a network
+ # POST  /networks
+ # Intended scope(s): project
+@@ -1330,6 +1334,10 @@
+ # PUT  /networks/{id}
+ #"update_network:internal_dns_enabled": "(rule:admin_only) or (role:member and project_id:%(project_id)s)"
+ 
++# Specify ``metadata_stateful_ipv6_address`` attribute when updating a network
++# PUT  /networks/{id}
++#"update_network:metadata_stateful_ipv6_address": "(rule:admin_only) or (role:member and project_id:%(project_id)s)"
++
+ # Update ``port_security_enabled`` attribute of a network
+ # PUT  /networks/{id}
+ # Intended scope(s): project
+diff --git a/openstack_dashboard/dashboards/admin/networks/forms.py b/openstack_dashboard/dashboards/admin/networks/forms.py
+index 5bceb6d73..875a07f6d 100644
+--- a/openstack_dashboard/dashboards/admin/networks/forms.py
++++ b/openstack_dashboard/dashboards/admin/networks/forms.py
+@@ -165,6 +165,14 @@ class CreateNetwork(forms.SelfHandlingForm):
+                     "resolved from within the network. Uncheck it when the "
+                     "instances only use a DNS service reachable from the "
+                     "network."))
++    metadata_stateful_ipv6 = forms.BooleanField(
++        label=_("Metadata address on stateful IPv6 subnets"),
++        initial=False,
++        required=False,
++        help_text=_("If checked, the metadata port gets an address on the "
++                    "IPv6 subnets of the network whose addresses are not "
++                    "assigned automatically, using an address of each of "
++                    "them."))
+ 
+     @classmethod
+     def _instantiate(cls, request, *args, **kwargs):
+@@ -182,6 +190,9 @@ class CreateNetwork(forms.SelfHandlingForm):
+         if not api.neutron.is_extension_supported(request,
+                                                   'network-internal-dns'):
+             del self.fields['internal_dns']
++        if not api.neutron.is_extension_supported(
++                request, 'network-metadata-stateful-ipv6'):
++            del self.fields['metadata_stateful_ipv6']
+ 
+         try:
+             is_extension_supported = \
+@@ -311,6 +322,8 @@ class CreateNetwork(forms.SelfHandlingForm):
+             # NOTE: an unset value means the field is not in the form.
+             if data.get('internal_dns') is False:
+                 params['internal_dns_enabled'] = False
++            if data.get('metadata_stateful_ipv6'):
++                params['metadata_stateful_ipv6_address'] = True
+             network = api.neutron.network_create(request, **params)
+             LOG.debug('Network %s was successfully created.', data['name'])
+             return network
+@@ -380,6 +393,13 @@ class UpdateNetwork(forms.SelfHandlingForm):
+                     "resolved from within the network. Uncheck it when the "
+                     "instances only use a DNS service reachable from the "
+                     "network."))
++    metadata_stateful_ipv6 = forms.BooleanField(
++        label=_("Metadata address on stateful IPv6 subnets"),
++        required=False,
++        help_text=_("If checked, the metadata port gets an address on the "
++                    "IPv6 subnets of the network whose addresses are not "
++                    "assigned automatically, using an address of each of "
++                    "them."))
+ 
+     failure_url = 'horizon:admin:networks:index'
+ 
+@@ -387,6 +407,8 @@ class UpdateNetwork(forms.SelfHandlingForm):
+         super().__init__(request, *args, **kwargs)
+         if self.initial.get('internal_dns') is None:
+             del self.fields['internal_dns']
++        if self.initial.get('metadata_stateful_ipv6') is None:
++            del self.fields['metadata_stateful_ipv6']
+ 
+     def handle(self, request, data):
+         try:
+@@ -397,6 +419,11 @@ class UpdateNetwork(forms.SelfHandlingForm):
+             if ('internal_dns' in self.fields and
+                     data['internal_dns'] != self.initial['internal_dns']):
+                 params['internal_dns_enabled'] = data['internal_dns']
++            if ('metadata_stateful_ipv6' in self.fields and
++                    data['metadata_stateful_ipv6'] !=
++                    self.initial['metadata_stateful_ipv6']):
++                params['metadata_stateful_ipv6_address'] = (
++                    data['metadata_stateful_ipv6'])
+             network = api.neutron.network_update(request,
+                                                  self.initial['network_id'],
+                                                  **params)
+diff --git a/openstack_dashboard/dashboards/admin/networks/views.py b/openstack_dashboard/dashboards/admin/networks/views.py
+index d61d7a543..5a45dae36 100644
+--- a/openstack_dashboard/dashboards/admin/networks/views.py
++++ b/openstack_dashboard/dashboards/admin/networks/views.py
+@@ -163,7 +163,9 @@ class UpdateView(user_views.UpdateView):
+                 'admin_state': network['is_admin_state_up'],
+                 'shared': network['is_shared'],
+                 'external': network['is_router_external'],
+-                'internal_dns': network.get('is_internal_dns_enabled')}
++                'internal_dns': network.get('is_internal_dns_enabled'),
++                'metadata_stateful_ipv6': network.get(
++                    'is_metadata_stateful_ipv6_address')}
+ 
+ 
+ class NetworkDetailsTabs(tabs.DetailTabsGroup):
+diff --git a/openstack_dashboard/dashboards/project/networks/forms.py b/openstack_dashboard/dashboards/project/networks/forms.py
+index 5d48a866a..fb777f45c 100644
+--- a/openstack_dashboard/dashboards/project/networks/forms.py
++++ b/openstack_dashboard/dashboards/project/networks/forms.py
+@@ -50,6 +50,13 @@ class UpdateNetwork(forms.SelfHandlingForm):
+                     "resolved from within the network. Uncheck it when the "
+                     "instances only use a DNS service reachable from the "
+                     "network."))
++    metadata_stateful_ipv6 = forms.BooleanField(
++        label=_("Metadata address on stateful IPv6 subnets"),
++        required=False,
++        help_text=_("If checked, the metadata port gets an address on the "
++                    "IPv6 subnets of the network whose addresses are not "
++                    "assigned automatically, using an address of each of "
++                    "them."))
+     failure_url = 'horizon:project:networks:index'
+ 
+     def __init__(self, request, *args, **kwargs):
+@@ -62,6 +69,12 @@ class UpdateNetwork(forms.SelfHandlingForm):
+                     (("network", "update_network:internal_dns_enabled"),),
+                     request)):
+             del self.fields['internal_dns']
++        if (self.initial.get('metadata_stateful_ipv6') is None or
++                not policy.check(
++                    (("network",
++                      "update_network:metadata_stateful_ipv6_address"),),
++                    request)):
++            del self.fields['metadata_stateful_ipv6']
+ 
+     def handle(self, request, data):
+         try:
+@@ -75,6 +88,11 @@ class UpdateNetwork(forms.SelfHandlingForm):
+             if ('internal_dns' in self.fields and
+                     data['internal_dns'] != self.initial['internal_dns']):
+                 params['internal_dns_enabled'] = data['internal_dns']
++            if ('metadata_stateful_ipv6' in self.fields and
++                    data['metadata_stateful_ipv6'] !=
++                    self.initial['metadata_stateful_ipv6']):
++                params['metadata_stateful_ipv6_address'] = (
++                    data['metadata_stateful_ipv6'])
+             network = api.neutron.network_update(request,
+                                                  self.initial['network_id'],
+                                                  **params)
+diff --git a/openstack_dashboard/dashboards/project/networks/templates/networks/_detail_overview.html b/openstack_dashboard/dashboards/project/networks/templates/networks/_detail_overview.html
+index 3bdba3b79..18a7d1121 100644
+--- a/openstack_dashboard/dashboards/project/networks/templates/networks/_detail_overview.html
++++ b/openstack_dashboard/dashboards/project/networks/templates/networks/_detail_overview.html
+@@ -22,6 +22,10 @@
+     <dt title="{% trans 'Internal DNS' %}">{% trans "Internal DNS" %}</dt>
+     <dd>{{ network.is_internal_dns_enabled|yesno|capfirst }}</dd>
+     {% endif %}
++    {% if network.is_metadata_stateful_ipv6_address is not None %}
++    <dt title="{% trans 'Metadata address on stateful IPv6 subnets' %}">{% trans "Metadata address on stateful IPv6 subnets" %}</dt>
++    <dd>{{ network.is_metadata_stateful_ipv6_address|yesno|capfirst }}</dd>
++    {% endif %}
+     {% if network.provider_network_type %}
+     <dt title="{% trans 'Provider Network' %}">{% trans "Provider Network" %}</dt>
+     <dd>{% trans "Network Type:" %} {{ network.provider_network_type|default:_("Unknown") }}</dd>
+diff --git a/openstack_dashboard/dashboards/project/networks/views.py b/openstack_dashboard/dashboards/project/networks/views.py
+index 865e6d235..4a6fdbc77 100644
+--- a/openstack_dashboard/dashboards/project/networks/views.py
++++ b/openstack_dashboard/dashboards/project/networks/views.py
+@@ -129,7 +129,9 @@ class UpdateView(forms.ModalFormView):
+                 'name': network['name'],
+                 'admin_state': network['is_admin_state_up'],
+                 'shared': network['is_shared'],
+-                'internal_dns': network.get('is_internal_dns_enabled')}
++                'internal_dns': network.get('is_internal_dns_enabled'),
++                'metadata_stateful_ipv6': network.get(
++                    'is_metadata_stateful_ipv6_address')}
+ 
+ 
+ class DetailView(tabs.TabbedTableView):
+diff --git a/openstack_dashboard/dashboards/project/networks/workflows.py b/openstack_dashboard/dashboards/project/networks/workflows.py
+index 7c695a850..b3f74ddea 100644
+--- a/openstack_dashboard/dashboards/project/networks/workflows.py
++++ b/openstack_dashboard/dashboards/project/networks/workflows.py
+@@ -80,6 +80,14 @@ class CreateNetworkInfoAction(workflows.Action):
+                     "resolved from within the network. Uncheck it when the "
+                     "instances only use a DNS service reachable from the "
+                     "network."))
++    metadata_stateful_ipv6 = forms.BooleanField(
++        label=_("Metadata address on stateful IPv6 subnets"),
++        initial=False,
++        required=False,
++        help_text=_("If checked, the metadata port gets an address on the "
++                    "IPv6 subnets of the network whose addresses are not "
++                    "assigned automatically, using an address of each of "
++                    "them."))
+ 
+     def __init__(self, request, *args, **kwargs):
+         super().__init__(request, *args, **kwargs)
+@@ -91,6 +99,12 @@ class CreateNetworkInfoAction(workflows.Action):
+                                                    'network-internal-dns') and
+                 policy.check(internal_dns_rule, request)):
+             del self.fields['internal_dns']
++        metadata_ipv6_rule = (
++            ("network", "create_network:metadata_stateful_ipv6_address"),)
++        if not (api.neutron.is_extension_supported(
++                    request, 'network-metadata-stateful-ipv6') and
++                policy.check(metadata_ipv6_rule, request)):
++            del self.fields['metadata_stateful_ipv6']
+         try:
+             if api.neutron.is_extension_supported(request,
+                                                   'network_availability_zone'):
+@@ -115,7 +129,8 @@ class CreateNetworkInfoAction(workflows.Action):
+ class CreateNetworkInfo(workflows.Step):
+     action_class = CreateNetworkInfoAction
+     contributes = ("net_name", "admin_state", "with_subnet", "shared",
+-                   "az_hints", "mtu", "internal_dns")
++                   "az_hints", "mtu", "internal_dns",
++                   "metadata_stateful_ipv6")
+ 
+ 
+ class CreateSubnetInfoAction(workflows.Action):
+@@ -511,6 +526,8 @@ class CreateNetwork(workflows.Workflow):
+             # NOTE: an unset value means the field is not in the form.
+             if data.get('internal_dns') is False:
+                 params['internal_dns_enabled'] = False
++            if data.get('metadata_stateful_ipv6'):
++                params['metadata_stateful_ipv6_address'] = True
+             network = api.neutron.network_create(request, **params)
+             self.context['net_id'] = network.id
+             LOG.debug('Network "%s" was successfully created.',

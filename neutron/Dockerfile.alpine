@@ -201,6 +201,16 @@ RUN SP=$(PYTHONDONTWRITEBYTECODE=1 /var/lib/openstack/bin/python3 -c "import sys
 #     internal_dns_enabled attribute (upstream changes 1013443 patch set 2 and
 #     1013441). The ML2 driver's entry point is added to the dist-info below,
 #     as pyproject.toml is not installed.
+#   neutron/0005-ovn-metadata-namespace-ipv6-addresses.patch -- the OVN agent
+#     configures the IPv6 addresses of the metadata port in the metadata
+#     namespace, for the subnets with a VIF port on the chassis, as it does for
+#     IPv4 (upstream change 1013461, bug 2172738).
+#   neutron/0006-network-metadata-stateful-ipv6.patch and
+#   neutron_lib/0002-network-metadata-stateful-ipv6.patch -- the per-network
+#     metadata_stateful_ipv6_address attribute, False by default: the metadata
+#     port gets an address on the IPv6 subnets whose addresses are not assigned
+#     automatically. Fork only, not submitted upstream (fivetime/openstack-neutron
+#     and openstack-neutron-lib feature/network-metadata-stateful-ipv6).
 #   pyroute2/0001-bridge-accept-24-bit-tunnel-ids.patch -- vlan_tunnel_info
 #     silently dropped tunnel ids (VNIs) above 4094, so the OVN agent's EVPN
 #     SVD got no VLAN-to-VNI mapping and FRR saw no L3 VNI (fivetime/pyroute2
@@ -231,6 +241,7 @@ RUN apk add --no-cache --virtual .patch-deps patch \
         find "${SP}/${project}" -type d -name '__pycache__' -prune -exec rm -rf {} +; \
     done \
  && sed -i '/^\[neutron.ml2.extension_drivers\]/a network_internal_dns = neutron.plugins.ml2.extensions.network_internal_dns:NetworkInternalDnsExtensionDriver' "${SP}"/neutron-*.dist-info/entry_points.txt \
+ && sed -i '/^\[neutron.ml2.extension_drivers\]/a network_metadata_stateful_ipv6 = neutron.plugins.ml2.extensions.network_metadata_stateful_ipv6:NetworkMetadataStatefulIpv6ExtensionDriver' "${SP}"/neutron-*.dist-info/entry_points.txt \
  && apk del .patch-deps \
  && rm -rf /tmp/patches /var/cache/apk/*
 
@@ -295,6 +306,7 @@ RUN export PYTHONDONTWRITEBYTECODE=1 \
  && python3 -c "from neutron.plugins.ml2.drivers.ovn.mech_driver.ovsdb import ovsdb_monitor as m; assert 'key' in vars(m.WaitForChassisNbCfgEvent); print('live migration wait-per-port patch active')" \
  && python3 -c "import ast; from neutron.privileged.agent.linux import svd as s; src = open(s.__file__).read(); f = [n for n in ast.parse(src).body if getattr(n, 'name', '') == 'del_vni'][0]; assert ast.get_source_segment(src, f).count('_del_vlan_filter(') == 3; print('SVD VNI-mapping-first patch active')" \
  && python3 -c "from importlib.metadata import entry_points as e; assert 'network_internal_dns' in {x.name for x in e(group='neutron.ml2.extension_drivers')}; from neutron_lib.api.definitions import network_internal_dns as d; from neutron.common.ovn import extensions as x; assert d.ALIAS in x.ML2_SUPPORTED_API_EXTENSIONS; from neutron.plugins.ml2.extensions import network_internal_dns; print('network-internal-dns patch active')" \
+ && python3 -c "from importlib.metadata import entry_points as e; assert 'network_metadata_stateful_ipv6' in {x.name for x in e(group='neutron.ml2.extension_drivers')}; from neutron_lib.api.definitions import network_metadata_stateful_ipv6 as d; from neutron.common.ovn import extensions as x; assert d.ALIAS in x.ML2_SUPPORTED_API_EXTENSIONS; from neutron.plugins.ml2.extensions import network_metadata_stateful_ipv6; print('network-internal-dns patch active')" \
  && vtysh --help > /dev/null && echo "vtysh from $(apk info -e -v frr) OK" \
  && echo "venv layout OK (neutron in /var/lib/openstack)"
 
