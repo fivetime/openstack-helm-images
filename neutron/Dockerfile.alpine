@@ -211,6 +211,13 @@ RUN SP=$(PYTHONDONTWRITEBYTECODE=1 /var/lib/openstack/bin/python3 -c "import sys
 #     port gets an address on the IPv6 subnets whose addresses are not assigned
 #     automatically. Fork only, not submitted upstream (fivetime/openstack-neutron
 #     and openstack-neutron-lib feature/network-metadata-stateful-ipv6).
+#   neutron/0007-ovn-shared-metadata-haproxy.patch -- metadata_haproxy.shared_proxy,
+#     False by default: one haproxy serves the metadata namespaces of a node, in
+#     place of one per network. Fork only, until bug 2172768 is decided
+#     (fivetime/openstack-neutron feature/ovn-shared-metadata-haproxy-master). Its
+#     reload needs a rootwrap filter, written below next to the installed filters
+#     because the chart's l3.filters does not have it; the chart's rootwrap.conf
+#     reads this directory too.
 #   pyroute2/0001-bridge-accept-24-bit-tunnel-ids.patch -- vlan_tunnel_info
 #     silently dropped tunnel ids (VNIs) above 4094, so the OVN agent's EVPN
 #     SVD got no VLAN-to-VNI mapping and FRR saw no L3 VNI (fivetime/pyroute2
@@ -241,6 +248,7 @@ RUN apk add --no-cache --virtual .patch-deps patch \
         find "${SP}/${project}" -type d -name '__pycache__' -prune -exec rm -rf {} +; \
     done \
  && sed -i '/^\[neutron.ml2.extension_drivers\]/a network_internal_dns = neutron.plugins.ml2.extensions.network_internal_dns:NetworkInternalDnsExtensionDriver' "${SP}"/neutron-*.dist-info/entry_points.txt \
+ && printf '[Filters]\nhaproxy_reload: RegExpFilter, haproxy, root, haproxy, -f, .*, -x, .*, -sf, [0-9]+\n' > /var/lib/openstack/etc/neutron/rootwrap.d/ovn-shared-metadata-haproxy.filters \
  && sed -i '/^\[neutron.ml2.extension_drivers\]/a network_metadata_stateful_ipv6 = neutron.plugins.ml2.extensions.network_metadata_stateful_ipv6:NetworkMetadataStatefulIpv6ExtensionDriver' "${SP}"/neutron-*.dist-info/entry_points.txt \
  && apk del .patch-deps \
  && rm -rf /tmp/patches /var/cache/apk/*
