@@ -98,14 +98,15 @@ RUN apk add --no-cache \
  && rm -rf /root/.cargo /root/.cache /tmp/* /var/cache/apk/* /etc/machine-id
 
 # OVSDB by host name: the same synchronous getaddrinfo replacement for
-# ovs.dns_resolve.resolve as the neutron Alpine image, from the one copy in
-# neutron/patches. The stock python ovs library resolves names only through
+# ovs.dns_resolve.resolve as the neutron Alpine image (a copy of
+# neutron/patches/ovsdb_dns.py; the build context is this directory). The
+# stock python ovs library resolves names only through
 # the unbound library, which the image does not carry, so a connection string
 # such as ssl:ovn-ovsdb-nb-0.ovn-ovsdb-nb.openstack.svc.cluster.local:6651
 # failed with "Connection refused" and ovn_nb_connection had to be a bare IP.
 # The .pth applies it to every python process of the image (api, driver-agent,
 # worker, health-manager, housekeeping).
-COPY neutron/patches/ovsdb_dns.py /tmp/ovsdb_dns_patch.py
+COPY patches/ovsdb_dns.py /tmp/ovsdb_dns_patch.py
 # PYTHONDONTWRITEBYTECODE: the venv .pth files would otherwise write bytecode
 # into this layer during this python call.
 RUN SP=$(PYTHONDONTWRITEBYTECODE=1 /var/lib/openstack/bin/python3 -c "import sysconfig; print(sysconfig.get_paths()['purelib'])") \
