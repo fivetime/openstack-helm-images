@@ -33,9 +33,13 @@ db_part_of_cluster() {
   fi
   echo "Found ${pod} ip: $init_ip"
   init_ip=$(bracketify $init_ip)
-  target=$(ovn-${db}ctl --timeout=5 --db=${transport}:${init_ip}:${port} ${ovndb_ctl_ssl_opts} \
+  # The Connection table may hold several listeners (plain and TLS during a
+  # migration, one per SB role afterwards): any listener means the cluster has
+  # been set up. OVN_DB_CHECK_* say how to reach it once plain TCP is closed.
+  target=$(ovn-${db}ctl --timeout=5 --db=${OVN_DB_CHECK_TRANSPORT:-${transport}}:${init_ip}:${OVN_DB_CHECK_PORT:-${port}} \
+               ${OVN_DB_CHECK_SSL_OPTS:-${ovndb_ctl_ssl_opts}} \
                --data=bare --no-headings --columns=target list connection 2>&1)
-  if [[ "x${target}" != "xp${transport}:${port}${ovn_raft_conn_ip_url_suffix}" ]]; then
+  if ! echo "${target}" | grep -qE '^p(tcp|ssl):'; then
     echo "Unable to check correct target ${target} "
     return 1
   fi
@@ -190,7 +194,11 @@ set_connection() {
     # this instance is a leader, check if we need to make any changes
     echo "found the current value of target and inactivity probe to be ${output}"
     target=$(echo "${output}" | awk 'ORS=","')
-    if [[ "${target}" != "p${transport}:${port}${ovn_raft_conn_ip_url_suffix},0," ]]; then
+    # Listeners already set up are left alone: this runs on every restart of
+    # pod 0 and must not throw away TLS listeners added since the bootstrap.
+    if echo "${output}" | grep -qE '^p(tcp|ssl):'; then
+      echo "the connection table already has listeners, leaving it as it is"
+    elif [[ "${target}" != "p${transport}:${port}${ovn_raft_conn_ip_url_suffix},0," ]]; then
       ovn-${db}ctl --inactivity-probe=0 set-connection p${transport}:${port}${ovn_raft_conn_ip_url_suffix}
       if [[ $? != 0 ]]; then
         echo "Failed to set connection and disable inactivity probe. Exiting...."
