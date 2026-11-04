@@ -1,11 +1,12 @@
 # Prometheus exporter for OVN. Built from the fivetime fork, which adds
 # -collector.components/-collector.topology so a remote, topology-only
-# exporter does not report the local daemons as down.
+# exporter does not report the local daemons as down, and mutual TLS to the
+# databases (-database.ssl.*).
 ARG GOLANG_VERSION=1.26
 ARG ALPINE_VERSION=3.22
 FROM docker.io/library/golang:${GOLANG_VERSION}-alpine AS build
 ARG OVN_EXPORTER_REPO=https://github.com/fivetime/ovn_exporter.git
-ARG OVN_EXPORTER_REF=37a6c153dc42412b1fa1c9e89d88aad31f425c47
+ARG OVN_EXPORTER_REF=b70dfc71b804e2eb4f55e436de06501220b90ee6
 RUN apk add --no-cache git \
  && git init /src && git -C /src remote add origin "${OVN_EXPORTER_REPO}" \
  && git -C /src fetch --depth=1 origin "${OVN_EXPORTER_REF}" \
@@ -20,7 +21,8 @@ RUN apk add --no-cache ca-certificates tzdata \
  && mkdir -p /etc/image_info && echo "${OVN_EXPORTER_REF}" > /etc/image_info/ovn_exporter.txt
 COPY --from=build /out/ovn_exporter /usr/local/bin/ovn_exporter
 # Fails the build if the binary does not run or is not the fork build
-# (upstream has no collector switches).
-RUN /usr/local/bin/ovn_exporter -h 2>&1 | grep -q -- '-collector.components'
+# (upstream has no collector switches and no TLS).
+RUN /usr/local/bin/ovn_exporter -h 2>&1 | grep -q -- '-collector.components' \
+ && /usr/local/bin/ovn_exporter -h 2>&1 | grep -q -- '-database.ssl.ca-cert'
 EXPOSE 9476
 ENTRYPOINT ["/usr/local/bin/ovn_exporter"]
