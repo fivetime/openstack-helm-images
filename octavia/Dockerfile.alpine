@@ -97,6 +97,22 @@ RUN apk add --no-cache \
  && find /var/lib/openstack -type d -name '__pycache__' -delete \
  && rm -rf /root/.cargo /root/.cache /tmp/* /var/cache/apk/* /etc/machine-id
 
+# OVSDB by host name: the same synchronous getaddrinfo replacement for
+# ovs.dns_resolve.resolve as the neutron Alpine image, from the one copy in
+# neutron/patches. The stock python ovs library resolves names only through
+# the unbound library, which the image does not carry, so a connection string
+# such as ssl:ovn-ovsdb-nb-0.ovn-ovsdb-nb.openstack.svc.cluster.local:6651
+# failed with "Connection refused" and ovn_nb_connection had to be a bare IP.
+# The .pth applies it to every python process of the image (api, driver-agent,
+# worker, health-manager, housekeeping).
+COPY neutron/patches/ovsdb_dns.py /tmp/ovsdb_dns_patch.py
+# PYTHONDONTWRITEBYTECODE: the venv .pth files would otherwise write bytecode
+# into this layer during this python call.
+RUN SP=$(PYTHONDONTWRITEBYTECODE=1 /var/lib/openstack/bin/python3 -c "import sysconfig; print(sysconfig.get_paths()['purelib'])") \
+ && cp /tmp/ovsdb_dns_patch.py "${SP}/ovsdb_dns_patch.py" \
+ && printf 'import ovsdb_dns_patch\n' > "${SP}/zzz_ovsdb_dns_patch.pth" \
+ && rm /tmp/ovsdb_dns_patch.py
+
 # Match the uid/gid and filesystem layout of octavia/Dockerfile.
 RUN addgroup -g 42424 octavia \
  && adduser -D -H -u 42424 -G octavia -h /var/lib/octavia \
@@ -121,4 +137,5 @@ RUN export PYTHONDONTWRITEBYTECODE=1 \
  && { command -v octavia-incus-admin >/dev/null || { echo "MISSING octavia-incus-admin"; exit 1; }; } \
  && python3 -c "import psycopg2, confluent_kafka, pymysql; print('db+kafka drivers OK')" \
  && python3 -c "import redis, redis.sentinel; print('taskflow jobboard redis client OK')" \
+ && python3 -c "import ovs.dns_resolve as d; assert getattr(d, '_ovnic_dns_patched', False); print('OVSDB DNS patch active')" \
  && echo "venv layout OK (octavia in /var/lib/openstack)"
