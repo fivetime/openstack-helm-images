@@ -132,7 +132,7 @@ index 9ad087446b..e5a213281c 100644
              self._process_monitor, namespace, n_const.METADATA_PORT,
 diff --git a/neutron/agent/ovn/extensions/metadata/shared_proxy.py b/neutron/agent/ovn/extensions/metadata/shared_proxy.py
 new file mode 100644
-index 0000000000..73d25712a0
+index 0000000000..fbb3fde4a5
 --- /dev/null
 +++ b/neutron/agent/ovn/extensions/metadata/shared_proxy.py
 @@ -0,0 +1,362 @@
@@ -399,6 +399,7 @@ index 0000000000..73d25712a0
 +            if active:
 +                self._pm.disable(sig=str(int(signal.SIGTERM)))
 +            return True
++        fileutils.ensure_tree(self._cfg_dir, mode=0o755)
 +        self._write_state(networks)
 +        config = self.render(networks, self._pm.get_pid_file_name())
 +        if active and config == self._read_config():
@@ -428,7 +429,6 @@ index 0000000000..73d25712a0
 +        return linux_utils.read_if_exists(self.cfg_path, run_as_root=True)
 +
 +    def _write_config(self, config):
-+        fileutils.ensure_tree(self._cfg_dir, mode=0o755)
 +        temp = self.cfg_path + '.new'
 +        with open(temp, 'w') as f:
 +            f.write(config)
