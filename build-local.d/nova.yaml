@@ -87,8 +87,8 @@
           arch:
             - linux/amd64
           tags:
-            - 2026.2-20261105b
+            - 2026.2-20261124
           build_args:
-            - NOVA_KATA_REF=7bb7e565aea26ff92378b706fad520da3e9eee5a
-            - NOVA_KATA_BUNDLE_TAG=20261105b
-            - NOVA_KATA_BUNDLE_SHA256=c751c0656101524979186429812a97e328525534289303aa546dfbdb59041d72
+            - NOVA_KATA_REF=8222ef68dbafdb626f573a3442d652ec7be2fbd5
+            - NOVA_KATA_BUNDLE_TAG=20261124
+            - NOVA_KATA_BUNDLE_SHA256=abdf66d52e54a36908015e2ad037a47c2aeac2fc06b2aa148374b5ffab85d621
