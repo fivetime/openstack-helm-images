@@ -57,15 +57,19 @@
             - "REQUIREMENTS_REF=stable/2026.2"
             - "SETUPTOOLS_CONSTRAINT=''"
             # fivetime: oslo.messaging with rabbit_server_queues_ttl (per-server
-            # RPC queues that expire, review.opendev.org/c/openstack/
-            # oslo.messaging/+/1008824) and delete_rpc_server_queues (remove
-            # the queues of a topic that is not used again, +/1008831). Every
+            # RPC queues that expire; abandoned upstream, +/1008824, for a
+            # RabbitMQ policy, and no longer set), delete_rpc_server_queues
+            # (remove the queues of a topic that is not used again,
+            # review.opendev.org/c/openstack/oslo.messaging/+/1008831), and the
+            # prefetch count set before each consume (a channel error reopens
+            # the channel without it, and a stream fanout queue then refuses
+            # the consumer). Every
             # 2026.2 service image is built FROM this venv_builder
             # (zuul_to_matrix.py points them at it), so they all get them.
-            # Drop these two lines once a release that has both is in the
+            # Drop these two lines once a release that has the last two is in the
             # stable/2026.2 constraints.
             - "OSLO_MESSAGING_REPO=https://github.com/fivetime/oslo.messaging"
-            - "OSLO_MESSAGING_REF=a80adc33dfa5c93ce4dd448cf2aae550189d2bce"
+            - "OSLO_MESSAGING_REF=eff455ec2af5cadb59fd1db071276439da400181"
 
 - job:
     name: openstack-helm-images-upload-venv-builder
