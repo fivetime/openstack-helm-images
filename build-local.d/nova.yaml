@@ -73,7 +73,7 @@
             - 2026.2-alpine_3.24
           build_args:
             - NOVA_REF=8df1922926ddf949d681e10670dba7bc731701d3
-            - NOVA_KATA_REF=7bb7e565aea26ff92378b706fad520da3e9eee5a
+            - NOVA_KATA_REF=9ef96d5b7a8480b7fb6d59e7c7a84f6bd20e0e97
             - REQUIREMENTS_REF=bab6cd8e3b9a5ac61b98aa7016c7d98b3000a8ac
 
 - job:
